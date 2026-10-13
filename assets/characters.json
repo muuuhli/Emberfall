@@ -1,0 +1,41 @@
+{
+  "file": "characters.png",
+  "tileWidth": 64,
+  "tileHeight": 96,
+  "columns": 32,
+  "rows": 8,
+  "classes": [
+    "guardian",
+    "paladin",
+    "ranger",
+    "nightblade",
+    "flamecaller",
+    "frostweaver",
+    "druid",
+    "shadowbinder"
+  ],
+  "directions": [
+    "south",
+    "east",
+    "north",
+    "west"
+  ],
+  "poses": [
+    "idle",
+    "walk1",
+    "walk2",
+    "walk3",
+    "walk4",
+    "attack1",
+    "attack2",
+    "downed"
+  ],
+  "pivot": [
+    32,
+    67
+  ],
+  "source": "original Blender geometry",
+  "blenderVersion": "5.4.0 Alpha",
+  "normalized": true,
+  "pixelRatio": 2
+}

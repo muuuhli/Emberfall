@@ -1,0 +1,181 @@
+{
+  "game": "Emberfall – Die letzte Glut",
+  "artDirection": {
+    "view": "top-down 2D",
+    "world": "Original Canvas fantasy landscapes with emerald and olive forests, teal ice, violet corruption, amber waste and twelve additional frontier palettes",
+    "interface": "dark moss, aged brass, warm ivory, restrained serif typography",
+    "filtering": "Smoothed Canvas rendering; orthographic character sprites sampled from a 2x atlas",
+    "characters": "Eight original Blender class silhouettes with distinct armor, robes, shields, bow, blades and staffs; four directions and eight poses per direction"
+  },
+  "assets": [
+    {
+      "file": "cover.png",
+      "role": "title-screen backdrop",
+      "source": "OpenAI built-in image_gen tool",
+      "created": "2026-10-13",
+      "prompt": "Use case: stylized-concept. Original title background illustration for a 2D fantasy action RPG called Emberfall. No text. Wide landscape. A tiny wandering knight with muted burgundy cloak and golden ember lantern stands in the foreground on a mossy stone path leading toward a cozy medieval timber village and an ancient circular stone gate. Vast twilight emerald forests, distant blue frosted mountain ridges on the left and a smoldering volcanic ruin on the far right. A great glowing amber sun diffused behind cloudy dusk sky. Painterly premium high-detail pixel art landscape with intentional square color clusters, atmospheric perspective, rich inky dark green shadows, olive moss, teal water, warm ochre lights. Widescreen game key art, compelling cinematic composition, readable silhouette and a strong sweeping path. Center/left upper area quiet dark atmospheric space for code-rendered title. Cohesive handcrafted game atmosphere, no UI, no writing, no logos, no border, no famous franchise characters.",
+      "transparent": false,
+      "status": "visually inspected",
+      "bytes": 2677953,
+      "sha256": "a741ceb8285da9053684e0065c77e349a2c87fd4def9bcdcc01d60dca8abca5c",
+      "width": 1672,
+      "height": 941,
+      "format": "PNG",
+      "published": true,
+      "hasAlphaChannel": false
+    },
+    {
+      "file": "characters.png",
+      "role": "runtime atlas for player and party character animations",
+      "source": "Original Blender geometry rendered with Blender Eevee",
+      "created": "2026-10-13",
+      "blenderVersion": "5.4.0 Alpha",
+      "versionSource": "characters.json",
+      "generator": "build_characters.py",
+      "scene": "characters.blend",
+      "logicalTileWidth": 64,
+      "logicalTileHeight": 96,
+      "physicalTileWidth": 128,
+      "physicalTileHeight": 192,
+      "pixelRatio": 2,
+      "columns": 32,
+      "rows": 8,
+      "frames": 256,
+      "classes": [
+        "guardian",
+        "paladin",
+        "ranger",
+        "nightblade",
+        "flamecaller",
+        "frostweaver",
+        "druid",
+        "shadowbinder"
+      ],
+      "directions": [
+        "south",
+        "east",
+        "north",
+        "west"
+      ],
+      "poses": [
+        "idle",
+        "walk1",
+        "walk2",
+        "walk3",
+        "walk4",
+        "attack1",
+        "attack2",
+        "downed"
+      ],
+      "pivot": [
+        32,
+        67
+      ],
+      "normalized": true,
+      "published": true,
+      "status": "Final corrected Blender scene rendered; PNG dimensions and runtime metadata checked",
+      "bytes": 3275495,
+      "sha256": "5efb743b3fb430182800d7bbe4983a1bd7169cf81413db6f9e96afe723e9fb92",
+      "width": 4096,
+      "height": 1536,
+      "format": "PNG",
+      "transparent": true,
+      "hasAlphaChannel": true
+    },
+    {
+      "file": "characters.json",
+      "role": "runtime class, direction, pose and atlas-coordinate metadata",
+      "source": "Blender generator metadata with logical pivot and 2x pixel ratio",
+      "published": true,
+      "bytes": 599,
+      "sha256": "99d7538bd9c694398e34da302104787779857f27b06af950ae85cf293c5e2357"
+    },
+    {
+      "file": "characters.blend",
+      "role": "editable source scene with corrected class ordering and final 2x render settings",
+      "source": "Original scripted Blender meshes, curves, materials, orthographic camera and lights",
+      "importedThirdPartyModels": false,
+      "published": false,
+      "status": "Saved corrected scene used for the final atlas render",
+      "bytes": 2533035,
+      "sha256": "698a33d4429aa90fedd4be2676fbdcf80a3428194e2f933e0b0774c93e57b976"
+    },
+    {
+      "file": "build_characters.py",
+      "role": "character-model and atlas generator",
+      "source": "Original Python using Blender bpy",
+      "command": "Blender --background --python assets/build_characters.py",
+      "renderEngine": "BLENDER_EEVEE",
+      "published": false,
+      "status": "Generator matches corrected scene ordering, pivot and 4096x1536 output configuration",
+      "bytes": 8651,
+      "sha256": "fea80fb03e4579fbbc1a2d90f251306c167f7aa7aeae060b1799dc297ad80cc9"
+    },
+    {
+      "file": "characters-source.png",
+      "role": "retained original 1x render before class-order correction and final 2x render",
+      "source": "Original Blender Eevee render",
+      "published": false,
+      "status": "Historical source retained for provenance; not used by the runtime renderer",
+      "bytes": 782458,
+      "sha256": "56f5b7ce78f5214e284578cb94d7b6755b2c35f57540e63588974db45b647b96",
+      "width": 2048,
+      "height": 768,
+      "format": "PNG",
+      "transparent": true,
+      "hasAlphaChannel": true
+    },
+    {
+      "file": "characters-preview.png",
+      "role": "Native-size contact sheet of all eight classes, idle and downed",
+      "source": "Final 2x Blender runtime atlas",
+      "published": false,
+      "status": "Final atlas contact sheet visually inspected",
+      "bytes": 81095,
+      "sha256": "947f217ba69c53cec0976200138e7ea1739cff8a5f34b532b2badd78ff01081b",
+      "width": 1024,
+      "height": 384,
+      "format": "PNG",
+      "hasAlphaChannel": true
+    },
+    {
+      "file": "../src/renderer.js",
+      "role": "Canvas world, enemy silhouettes, environment and effects; character atlas integration",
+      "source": "Original code-native graphics and atlas animation",
+      "published": true,
+      "status": "Integrated with characters.png and characters.json"
+    },
+    {
+      "file": "../src/audio.js",
+      "role": "music and sound effects",
+      "source": "Original Web Audio synthesis",
+      "published": true,
+      "status": "Procedural"
+    }
+  ],
+  "version": "2.0.0",
+  "updated": "2026-10-13",
+  "developmentStatus": {
+    "releaseState": "playable development build",
+    "implementedContent": {
+      "classes": 8,
+      "maxLevel": 100,
+      "regions": 16,
+      "quests": 72,
+      "dungeons": 8,
+      "gearBases": 38,
+      "normalAffixes": 12,
+      "gearSets": 4,
+      "maxDungeonTier": 30,
+      "maxPartySize": 8,
+      "repeatableRegionalContracts": true,
+      "eligibleOffersPerRegion": 3,
+      "maxActiveContracts": 3
+    },
+    "campaignHoursTarget": 200,
+    "fullCampaignHoursVerified": 0,
+    "externalStarRating": null,
+    "internetMultiplayerBackendDeployed": false,
+    "note": "Content counts and automated checks do not establish 200 hours of varied play or completed long-term balance."
+  }
+}

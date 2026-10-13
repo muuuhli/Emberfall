@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.tar.gz
+.DS_Store
+.openai/.local/
+.emberfall-server/
+assets/*.blend1
