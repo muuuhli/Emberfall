@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#101b17" />
-  <meta name="description" content="Emberfall – Die letzte Glut. Ein offenes 2D Action-Rollenspiel voller vergessener Orte, gefährlicher Kreaturen und eigener Entscheidungen." />
+  <meta name="theme-color" content="#100d0d" />
+  <meta name="description" content="Emberfall – Die letzte Glut. Ein düsteres Action-Rollenspiel voller verwüsteter Lande, gefährlicher Bossformen, mächtiger Beute und eigener Entscheidungen." />
   <title>EMBERFALL · Die letzte Glut</title>
   <link rel="stylesheet" href="/src/style.css" />
 </head>
@@ -37,18 +37,24 @@
     <symbol id="i-bow" viewBox="0 0 24 24"><path d="M5 3c15 0 15 18 0 18L5 3ZM5 12h17m-4-4 4 4-4 4"/></symbol>
     <symbol id="i-snowflake" viewBox="0 0 24 24"><path d="M12 2v20M3 7l18 10M3 17 21 7M8 3l4 4 4-4M8 21l4-4 4 4M3 11l4-1-1-4M21 13l-4 1 1 4M3 13l4 1-1 4M21 11l-4-1 1-4"/></symbol>
     <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 21 3 12C-3 5 6-2 12 5c6-7 15 0 9 7l-9 9Z"/><path d="M12 8v8M8 12h8"/></symbol>
+    <symbol id="i-skull" viewBox="0 0 24 24"><path d="M7 17c-3-1-4-4-4-7a9 9 0 0 1 18 0c0 3-1 6-4 7v4H7v-4Z"/><circle cx="8" cy="11" r="2"/><circle cx="16" cy="11" r="2"/><path d="m12 14-1 3h2l-1-3ZM10 18v3M14 18v3"/></symbol>
+    <symbol id="i-relic" viewBox="0 0 24 24"><path d="m12 2 4 5-4 5-4-5 4-5ZM12 12v10M5 17h14M7 22h10M3 11l3 3M21 11l-3 3"/></symbol>
+    <symbol id="i-crown" viewBox="0 0 24 24"><path d="m3 5 4 5 5-7 5 7 4-5-3 14H6L3 5ZM6 22h12M7 15h10"/></symbol>
+    <symbol id="i-helmet" viewBox="0 0 24 24"><path d="M4 13V10a8 8 0 0 1 16 0v9l-5 3v-7l-3 2-3-2v7l-5-3v-6ZM5 10l7 3 7-3M12 2v11"/></symbol>
+    <symbol id="i-gloves" viewBox="0 0 24 24"><path d="M6 22v-7l-3-4 2-2 3 3V3l3-1v8-7l3-1v8-6l3-1v8-4l3-1v10l-3 6H6Z"/></symbol>
+    <symbol id="i-boots" viewBox="0 0 24 24"><path d="M9 2h10v12l3 5v3H3v-4l6-5V2ZM9 7h10M4 17h8M3 22h19"/></symbol>
+    <symbol id="i-ring" viewBox="0 0 24 24"><path d="m9 2 6 0 3 4-6 5-6-5 3-4ZM9 9a8 8 0 1 0 6 0"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 2 3 6 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-6Z"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><path d="M6 10V7a6 6 0 0 1 12 0v3M4 10h16v12H4V10ZM12 14v4"/></symbol>
   </defs></svg>
   <div class="game-shell">
     <header class="topbar">
       <button class="brand" type="button" data-panel="world" aria-label="Emberfall – Weltübersicht"><span class="brand-crest"><svg><use href="#i-flame" /></svg></span><span>EMBERFALL<small>DIE LETZTE GLUT</small></span></button>
-      <nav class="main-nav" aria-label="Spielmenü">
-        <button type="button" class="nav-item" data-panel="map" aria-label="Weltkarte" aria-haspopup="dialog"><svg><use href="#i-map" /></svg><span>Welt</span><kbd>M</kbd></button>
-        <button type="button" class="nav-item" data-panel="character" aria-label="Charakter" aria-haspopup="dialog"><svg><use href="#i-shield" /></svg><span>Charakter</span><kbd>C</kbd></button>
-        <button type="button" class="nav-item" data-panel="inventory" aria-label="Inventar" aria-haspopup="dialog"><svg><use href="#i-bag" /></svg><span>Inventar</span><kbd>I</kbd></button>
-        <button type="button" class="nav-item" data-panel="talents" aria-label="Talente" aria-haspopup="dialog"><svg><use href="#i-tree" /></svg><span>Talente</span><span class="nav-badge" id="talent-badge" hidden>1</span><kbd>T</kbd></button>
-        <button type="button" class="nav-item" data-panel="craft" aria-label="Handwerk" aria-haspopup="dialog"><svg><use href="#i-craft" /></svg><span>Handwerk</span><kbd>B</kbd></button>
-        <button type="button" class="nav-item" data-panel="dungeons" aria-label="Dungeonübersicht" aria-haspopup="dialog"><svg><use href="#i-portal" /></svg><span>Dungeons</span></button>
-        <button type="button" class="nav-item" data-panel="party" aria-label="Gruppe und Multiplayer" aria-haspopup="dialog"><svg><use href="#i-group" /></svg><span>Gruppe</span><kbd>P</kbd></button>
+      <nav class="main-nav" aria-label="Spielbereiche">
+        <button type="button" class="nav-item" data-panel="character" aria-label="Held: Ausrüstung, Werte und Talente" aria-haspopup="dialog"><svg><use href="#i-shield" /></svg><span>Held</span><span class="nav-badge" id="talent-badge" hidden>1</span><kbd>C</kbd></button>
+        <button type="button" class="nav-item" data-panel="inventory" aria-label="Arsenal: Gepäck, Lager und Handwerk" aria-haspopup="dialog"><svg><use href="#i-bag" /></svg><span>Arsenal</span><kbd>I</kbd></button>
+        <button type="button" class="nav-item" data-panel="journal" aria-label="Chronik: Questen, Ruf und Bestiarium" aria-haspopup="dialog"><svg><use href="#i-book" /></svg><span>Chronik</span><kbd>L</kbd></button>
+        <button type="button" class="nav-item" data-panel="map" aria-label="Welt: Atlas, Ereignisse und Dungeons" aria-haspopup="dialog"><svg><use href="#i-map" /></svg><span>Welt</span><kbd>M</kbd></button>
       </nav>
       <div class="topbar-end"><span class="save-state" id="save-state">Lokal gespeichert</span><button type="button" class="icon-button" data-panel="settings" aria-label="Einstellungen"><svg><use href="#i-settings" /></svg></button></div>
     </header>
@@ -57,12 +63,13 @@
       <div class="vignette" aria-hidden="true"></div>
       <div class="world-hud" id="world-hud">
         <div class="region-label"><div class="region-rule"></div><div><h1 id="region-name">Weidenwacht</h1><p id="region-subtitle">DIE FREIEN LANDE · STUFE 1–3</p></div></div>
-        <div class="exploration-pill" id="exploration-pill"><svg><use href="#i-marker" /></svg><span>Eine Welt, die auf dich wartet</span></div>
+        <div class="exploration-pill" id="exploration-pill"><svg><use href="#i-marker" /></svg><span id="waypoint-text">Jenseits des Feuers wartet die Finsternis</span></div>
         <aside id="party-hud" class="party-hud" aria-label="Gruppenstatus" hidden></aside>
         <aside class="minimap-wrap" aria-label="Minikarte"><button class="minimap-button" type="button" data-panel="map" aria-label="Weltkarte öffnen"><canvas id="minimap" width="154" height="154"></canvas><span class="minimap-north">N</span></button><div class="world-time"><svg><use href="#i-sun" /></svg><span id="world-time">08:30</span><span class="dot"></span><span id="world-weather">Morgenlicht</span></div></aside>
-        <aside class="quest-tracker" aria-label="Aktuelle Questen"><div class="tracker-heading"><span>DEINE REISE</span><button type="button" data-panel="journal" aria-label="Questtagebuch öffnen"><svg><use href="#i-book" /></svg></button></div><div id="quest-tracker"></div></aside>
+        <aside class="quest-tracker" aria-label="Aktuelle Questen"><div class="tracker-heading"><span>CHRONIK DER ASCHE</span><button type="button" id="tracker-toggle" class="tracker-toggle" data-command="toggle-tracker" aria-expanded="false" aria-controls="quest-tracker"><span id="tracker-toggle-label">Chronik der Asche</span><svg><use href="#i-arrow" /></svg></button><button type="button" data-panel="journal" aria-label="Questtagebuch öffnen"><svg><use href="#i-book" /></svg></button></div><div id="quest-tracker"></div></aside>
         <div id="interact-prompt" class="interact-prompt" hidden><kbd>E</kbd><span>Interagieren</span></div>
-        <section class="player-vitals" aria-label="Charakterstatus"><div class="portrait"><svg><use href="#i-flame" /></svg><span id="player-level">1</span></div><div class="vitals-info"><div class="vitals-name"><strong id="player-name">Wanderer</strong><span id="player-class">WÄCHTER</span></div><div class="vital-bar hp"><div id="hp-fill"></div><span id="hp-text">100 / 100</span></div><small id="hp-shield" class="hp-shield" hidden></small><div class="vital-bar mana"><div id="mana-fill"></div><span id="mana-text">60 / 60</span></div></div></section>
+        <section class="player-vitals" aria-label="Charakterstatus"><div class="portrait"><svg><use href="#i-flame" /></svg><span id="player-level">1</span></div><div class="vitals-info"><div class="vitals-name"><strong id="player-name">Wanderer</strong><span id="player-class">WÄCHTER</span></div><div class="vital-bar hp" role="progressbar" aria-label="Lebenspunkte" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><b class="orb-label">LEBEN</b><div id="hp-fill"></div><span id="hp-text">100 / 100</span></div><small id="hp-shield" class="hp-shield" hidden></small><div class="vital-bar mana" role="progressbar" aria-label="Mana" aria-valuemin="0" aria-valuemax="60" aria-valuenow="60"><b class="orb-label">MANA</b><div id="mana-fill"></div><span id="mana-text">60 / 60</span></div></div></section>
+        <aside id="world-effects" class="world-effects" aria-label="Aktive Gaben" hidden></aside>
         <section class="actionbar" aria-label="Fähigkeiten">
           <button type="button" data-action="attack" class="ability" aria-label="Schwerthieb, J oder Linksklick"><kbd>J</kbd><svg><use href="#i-sword" /></svg><span>Hieb</span><div class="cooldown-cover"></div></button>
           <button type="button" data-action="dash" class="ability" aria-label="Ausweichen, Leertaste oder Rechtsklick"><kbd>SPACE</kbd><svg><use href="#i-dash" /></svg><span>Ausweichen</span><div class="cooldown-cover"></div></button>
@@ -91,10 +98,10 @@
         </div>
       </div>
       <div id="notice-stack" class="notice-stack" role="status" aria-live="polite" aria-atomic="false"></div>
-      <div id="panel-overlay" class="panel-overlay" hidden><section id="game-panel" class="game-panel" role="dialog" aria-modal="true" aria-labelledby="panel-title"><header class="panel-header"><div><h2 id="panel-title">Inventar</h2><p id="panel-description"></p></div><button id="close-panel" class="icon-button" type="button" aria-label="Fenster schließen"><svg><use href="#i-close" /></svg></button></header><div id="panel-content" class="panel-content"></div><footer class="panel-footer"><span><kbd>ESC</kbd> Zurück zur Welt</span><span id="panel-footer-right">Dein Abenteuer wird automatisch gespeichert.</span></footer></section></div>
-      <div id="welcome-overlay" class="welcome-overlay"><section class="welcome-content" aria-labelledby="welcome-title"><div class="welcome-mark"><svg><use href="#i-flame" /></svg></div><h2 id="welcome-title">EMBERFALL</h2><p class="welcome-subtitle">Die letzte Glut</p><p class="welcome-description">Die alten Leuchtfeuer sind erloschen.<br>Doch in dir lebt noch ein Funke.</p><div id="welcome-classes"></div><div class="welcome-start-actions"><button id="start-button" type="button" class="primary-button">Deine Reise beginnt<svg><use href="#i-arrow" /></svg></button><button type="button" class="small-button" data-panel="party">Gemeinsam spielen<svg><use href="#i-group" /></svg></button></div><button id="continue-button" type="button" class="text-button" hidden>Gespeicherte Reise fortsetzen</button><div class="welcome-features"><span>OFFENE WELT</span><i></i><span>ACHT KLASSEN</span><i></i><span>STUFE 100</span></div><p class="welcome-hint">WASD bewegen · J kämpfen · E entdecken · P Gruppe</p></section></div>
+      <div id="panel-overlay" class="panel-overlay" hidden><section id="game-panel" class="game-panel" role="dialog" aria-modal="true" aria-labelledby="panel-title" aria-describedby="panel-description"><header class="panel-header"><div><h2 id="panel-title">Inventar</h2><p id="panel-description"></p></div><button id="close-panel" class="icon-button" type="button" aria-label="Fenster schließen"><svg><use href="#i-close" /></svg></button></header><nav id="panel-navigation" class="panel-navigation" aria-label="Spielbereiche"></nav><div id="panel-content" class="panel-content"></div><footer class="panel-footer"><span><kbd>ESC</kbd> Zurück zur Welt</span><span id="panel-footer-right">Fortschritt wird automatisch gespeichert.</span></footer></section></div>
+      <div id="welcome-overlay" class="welcome-overlay"><section class="welcome-content" aria-labelledby="welcome-title"><p class="welcome-kicker">EIN REICH AUS ASCHE. EIN LETZTES FEUER.</p><div class="welcome-mark"><svg><use href="#i-flame" /></svg></div><h2 id="welcome-title">EMBERFALL</h2><p class="welcome-subtitle">Die letzte Glut</p><p class="welcome-description">Die Glocken schweigen. Die Toten erwachen.<br>Trage die letzte Glut in ein Reich, das sein Licht verloren hat.</p><div id="welcome-classes"></div><div class="welcome-start-actions"><button id="start-button" type="button" class="primary-button">Die Dunkelheit betreten<svg><use href="#i-arrow" /></svg></button><button type="button" class="small-button" data-panel="party">Gemeinsam spielen<svg><use href="#i-group" /></svg></button></div><button id="continue-button" type="button" class="text-button" hidden>Gespeicherte Reise fortsetzen</button><div class="welcome-features"><span>ACHT KLASSEN</span><i></i><span>JEDER GEGNER EIN BOSS</span><i></i><span>BEUTE & TALENTPFADE</span></div><p class="welcome-hint">WASD bewegen · J kämpfen · E entdecken · P Gruppe</p></section></div>
     </main>
-    <footer class="game-footer"><div class="control-hints"><span><kbd>W A S D</kbd> Bewegen</span><span><kbd>J / KLICK</kbd> Angreifen</span><span><kbd>SPACE</kbd> Ausweichen</span><span><kbd>E</kbd> Interagieren</span><span><kbd>L</kbd> Questen</span><span><kbd>P</kbd> Gruppe</span></div><span class="footer-status"><i></i> DEIN ABENTEUER. DEIN TEMPO.</span></footer>
+    <footer class="game-footer"><div class="control-hints"><span><kbd>W A S D</kbd> Bewegen</span><span><kbd>J / KLICK</kbd> Angreifen</span><span><kbd>SPACE</kbd> Ausweichen</span><span><kbd>E</kbd> Interagieren</span><span><kbd>L</kbd> Questen</span><span><kbd>P</kbd> Gruppe</span></div><span class="footer-status"><i></i> KEIN LICHT OHNE OPFER.</span></footer>
   </div>
   <input type="file" id="save-import" accept="application/json,.json" hidden />
   <script type="module" src="/src/main.js"></script>

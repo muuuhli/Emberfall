@@ -158,3 +158,113 @@ test('a static camera reuses terrain chunks instead of repainting them every fra
   assert.equal(renderer.terrainStats.misses, misses);
   assert.ok(renderer.terrainStats.hits >= 12);
 }));
+
+test('world interactions remain visible before activation and expose locked-state hints', () => environment(({canvas})=>{
+  const world=makeWorld(),renderer=new Renderer(canvas(),world),game=gameFor(world);
+  const object={id:'unopened',kind:'sealed_cache',x:520,y:1250,label:'Gruftvorrat bergen',used:false,active:false,locked:true};
+  renderer.worldLabels=[];renderer.worldObject(renderer.worldCtx,object,game);
+  assert.ok(renderer.worldLabels.some(label=>label[0]==='Gruftvorrat bergen'));
+  assert.ok(renderer.worldLabels.some(label=>label[0]==='Versiegelt · Kette finden'));
+  renderer.worldLabels=[];renderer.worldObject(renderer.worldCtx,{...object,used:true},game);
+  assert.equal(renderer.worldLabels.length,0,'Consumed interactions no longer invite another reward');
+}));
+
+test('charge warnings match the attack corridor and fan warnings preserve the locked angle', () => environment(({canvas})=>{
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld());
+  renderer.bounds={x:0,y:0,w:3000,h:2400};
+  renderer.telegraph(view.context,{type:'glacier_ram',x:400,y:500,telegraphPattern:'charge',telegraphAngle:0,attackTimer:.5},game);
+  const moves=view.context.calls.filter(call=>call.method==='moveTo'||call.method==='lineTo').map(call=>call.args);
+  assert.ok(moves.some(([x,y])=>x===400&&y===535));
+  assert.ok(moves.some(([x,y])=>x===400&&y===465));
+  assert.ok(moves.some(([x,y])=>x>400&&y===535));
+  view.context.calls.length=0;
+  renderer.telegraph(view.context,{type:'ice_spider',x:400,y:500,telegraphPattern:'fan',telegraphAngle:Math.PI/2,attackTimer:.5},game);
+  const rays=view.context.calls.filter(call=>call.method==='lineTo');
+  assert.ok(rays.some(call=>Math.abs(call.args[0]-400)<.0001&&call.args[1]>600),'Middle ray follows the locked southward aim');
+}));
+
+test('the dynamic darkness mask is bounded by the half-resolution viewport', () => environment(({canvas})=>{
+  const renderer=new Renderer(canvas(),makeWorld()),game=gameFor(makeWorld());renderer.draw(game);
+  assert.equal(renderer.lightCanvas.width,renderer.worldCanvas.width);
+  assert.equal(renderer.lightCanvas.height,renderer.worldCanvas.height);
+  assert.equal(renderer.lightCanvas.width,500);assert.equal(renderer.lightCanvas.height,350);
+  assert.ok(renderer.lightCtx.calls.some(call=>call.method==='clearRect'));
+  assert.ok(renderer.worldCtx.calls.some(call=>call.method==='drawImage'&&call.args[0]===renderer.lightCanvas));
+}));
+
+test('world object labels follow the selected interaction and active challenges keep their warning', () => environment(({canvas})=>{
+  const world=makeWorld(),renderer=new Renderer(canvas(),world),game=gameFor(world);
+  const first={id:'urn',kind:'urn',x:530,y:1250,label:'Aschenurne bergen',used:false,active:false};
+  const second={id:'altar',kind:'altar',x:540,y:1250,label:'Bluteid opfern',used:false,active:false};
+  game.nearby=()=>({object:second});renderer.worldLabels=[];
+  renderer.worldObject(renderer.worldCtx,first,game);renderer.worldObject(renderer.worldCtx,second,game);
+  assert.deepEqual(renderer.worldLabels.map(label=>label[0]),['Bluteid opfern']);
+  assert.ok(!renderer.worldLabels.some(label=>label[0]==='E · Interagieren'));
+  renderer.worldLabels=[];game.nearby=()=>null;
+  renderer.worldObject(renderer.worldCtx,{...first,active:true,x:620},game);
+  assert.deepEqual(renderer.worldLabels.map(label=>label[0]),['Herausforderung · Wächter besiegen']);
+}));
+
+test('world event actors render each role while hidden rewards stay invisible', () => environment(({canvas})=>{
+  const world=makeWorld(),renderer=new Renderer(canvas(),world),game=gameFor(world);
+  world.worldEvents=[{id:'test',state:'active',elapsed:1,warningUntil:3,objective:{label:'Schütze den Wagen',progress:2,goal:10},stageIndex:0}];
+  renderer.worldLabels=[];renderer.eventWarnings=new Set();
+  for(const role of ['start','rune','choice','escort','objective','reward'])renderer.worldEventObject(renderer.worldCtx,{id:`test:${role}`,eventId:'test',role,x:520,y:1250,color:'#ccbbaa',hp:50,maxHp:100,choice:'risk'},game);
+  assert.ok(renderer.worldLabels.some(label=>label[0]==='HINTERHALT · 2s'));
+  assert.equal(renderer.worldLabels.filter(label=>label[0]==='HINTERHALT · 2s').length,1,'Stage warnings appear once per event');
+  renderer.worldCtx.calls.length=0;renderer.worldEventObject(renderer.worldCtx,{id:'hidden',role:'reward',eventId:'test',x:520,y:1250,hidden:true},game);
+  assert.equal(renderer.worldCtx.calls.length,0);
+}));
+
+test('a tracked target draws a world beacon nearby and a direction marker outside the viewport', () => environment(({canvas})=>{
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld());
+  game.waypointTarget=()=>({x:560,y:1250,label:'Die Trauerglocke'});renderer.draw(game);
+  assert.ok(renderer.activeWaypoint);assert.ok(view.context.calls.some(call=>call.method==='fillText'&&call.args[0]==='Die Trauerglocke'));
+  view.context.calls.length=0;game.waypointTarget=()=>({x:2800,y:2000,label:'Karawane der letzten Brunnen'});renderer.draw(game);
+  assert.ok(view.context.calls.some(call=>call.method==='rotate'),'Offscreen marker follows the direction of the tracked target');
+  assert.equal(renderer.activeWaypoint.label,'Karawane der letzten Brunnen');
+  assert.ok(!view.context.calls.some(call=>call.method==='fillText'&&String(call.args[0]).startsWith('Karawane')),'The HUD names the offscreen goal without a second floating caption');
+}));
+
+const projectileEndpoints=(calls,center,range)=>calls.filter(call=>call.method==='lineTo'&&Math.abs(Math.hypot(call.args[0]-center.x,call.args[1]-center.y)-range)<1e-6).map(call=>call.args);
+
+test('ring warnings show the locked projectile count and rotated firing directions',()=>environment(({canvas})=>{
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld()),center={x:400,y:500},angle=.37,range=650;
+  renderer.bounds={x:0,y:0,w:3000,h:2400};view.context.calls.length=0;
+  renderer.telegraph(view.context,{type:'frost_witch',...center,telegraphPattern:'ring',telegraphProjectileCount:6,telegraphRange:range,telegraphAngle:angle,attackTimer:.5},game);
+  const tips=projectileEndpoints(view.context.calls,center,range);assert.equal(tips.length,6,'A six-shot ring has six warning rays');
+  for(let i=0;i<6;i++){const a=angle+i*Math.PI*2/6;assert.ok(tips.some(([x,y])=>Math.abs(x-center.x-Math.cos(a)*range)<1e-6&&Math.abs(y-center.y-Math.sin(a)*range)<1e-6));}
+}));
+
+test('champion lunge warnings use the collision corridor and the distance frozen at windup',()=>environment(({canvas})=>{
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld());renderer.bounds={x:0,y:0,w:3000,h:2400};
+  view.context.calls.length=0;
+  renderer.telegraph(view.context,{type:'root_hulk_boss',x:400,y:500,telegraphPattern:'charge',telegraphChargeDistance:287,telegraphAngle:0,attackTimer:.5},game);
+  const points=view.context.calls.filter(call=>['moveTo','lineTo'].includes(call.method)).map(call=>call.args);
+  assert.ok(points.some(([x,y])=>x===687&&y===535));assert.ok(points.some(([x,y])=>x===687&&y===465));
+  assert.ok(points.some(([x,y])=>x===687&&y===500),'The arrow ends at the announced 287-unit lunge');
+}));
+
+test('a phase-two extra fan uses its own locked angle, count and range',()=>environment(({canvas})=>{
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld()),center={x:400,y:500};renderer.bounds={x:0,y:0,w:3000,h:2400};
+  view.context.calls.length=0;
+  renderer.telegraph(view.context,{type:'frost_witch_boss',...center,telegraphPattern:'ring',telegraphProjectileCount:6,telegraphRange:650,telegraphAngle:.2,telegraphExtraFan:{angle:Math.PI/2,count:3,spread:.8,range:440,speed:260},attackTimer:.5},game);
+  assert.equal(projectileEndpoints(view.context.calls,center,650).length,6);
+  const tips=projectileEndpoints(view.context.calls,center,440);assert.equal(tips.length,3);
+  for(const a of [Math.PI/2-.4,Math.PI/2,Math.PI/2+.4])assert.ok(tips.some(([x,y])=>Math.abs(x-center.x-Math.cos(a)*440)<1e-6&&Math.abs(y-center.y-Math.sin(a)*440)<1e-6));
+}));
+
+test('summoner warnings include the announced projectile direction',()=>environment(({canvas})=>{
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld()),center={x:400,y:500};renderer.bounds={x:0,y:0,w:3000,h:2400};
+  view.context.calls.length=0;
+  renderer.telegraph(view.context,{type:'grave_cantor',...center,telegraphPattern:'summoner',telegraphProjectileCount:1,telegraphRange:650,attackAngle:Math.PI,attackTimer:.5},game);
+  const tips=projectileEndpoints(view.context.calls,center,650);assert.equal(tips.length,1);assert.ok(Math.abs(tips[0][0]+250)<1e-6);assert.ok(Math.abs(tips[0][1]-500)<1e-6);
+}));
+
+test('fan warnings use the projectile spread frozen at windup instead of the catalog default',()=>environment(({canvas})=>{
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld()),center={x:400,y:500},angle=.4,range=320;
+  renderer.bounds={x:0,y:0,w:3000,h:2400};view.context.calls.length=0;
+  renderer.telegraph(view.context,{type:'ice_spider',...center,telegraphPattern:'fan',telegraphProjectileCount:3,telegraphProjectileSpread:1.2,telegraphRange:range,telegraphAngle:angle,attackTimer:.5},game);
+  const tips=projectileEndpoints(view.context.calls,center,range);assert.equal(tips.length,3);
+  for(const a of [angle-.6,angle,angle+.6])assert.ok(tips.some(([x,y])=>Math.abs(x-center.x-Math.cos(a)*range)<1e-6&&Math.abs(y-center.y-Math.sin(a)*range)<1e-6));
+}));

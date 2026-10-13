@@ -1,6 +1,7 @@
 // The frontier is authored as connected regions; seeded dressing never changes the routes.
 // A region owns its generation stream, so loading it later yields the same encounters.
 import { DUNGEONS } from './dungeons.js';
+import { REGION_ENEMY_POOLS, createBestiaryEnemy } from './bestiary.js';
 
 export const FRONTIER_BOUNDS = Object.freeze({ width: 19200, height: 14400 });
 
@@ -192,14 +193,22 @@ export function populateSector(world, regionId) {
   const onPath = (x, y) => regionPaths.some(p => p.points.slice(1).some((b, i) => lineDistance(x, y, p.points[i], b) < p.width / 2 + 50));
   // Encounters cluster around five landmarks. Every landmark has a broad safe approach.
   battlePoints.forEach((point, spot) => {
+    const species = REGION_ENEMY_POOLS[region.id];
     for (let n = 0; n < 6; n++) {
       const angle = n * Math.PI / 3 + rng() * .25, radius = 150 + rng() * 135;
       const x = point.x + Math.cos(angle) * radius, y = point.y + Math.sin(angle) * radius;
       if (protectedSpot(x, y)) continue;
       const level = Math.min(region.maxLevel || 100, region.level + spot % 4);
-      const hp = Math.round(90 + level * 13 + level * level * .13), damage = 14 + Math.round(level * 1.8);
-      world.enemies.push({ id: `${region.id}-enemy-${spot}-${n}`, type: region.enemy, region: region.id, x, y, homeX: x, homeY: y, hp, maxHp: hp, damage, xp: Math.round(35 + level * level * 2.3), gold: 15 + level * 3, lootLevel: level, attackTimer: 0, phase: 'idle', alive: true, respawnAt: 0, boss: false, level });
+      // Half the packs retain the chapter's quest target. The remaining packs
+      // rotate through every local species rather than copying a distant foe.
+      const localPool=species.includes(region.enemy)?species.slice(1):species;
+      const type=n<3?region.enemy:localPool[(spot*3+n-3)%localPool.length];
+      world.enemies.push(createBestiaryEnemy(type,`${region.id}-enemy-${spot}-${n}`,x,y,{level,region:region.id}));
     }
+    // Each species can appear as a champion. Five isolated nests keep these
+    // optional fights away from the broad route and from each other's packs.
+    const championType=species[spot],championX=point.x+260,championY=point.y+(spot%2?420:-420);
+    if(!protectedSpot(championX,championY,60))world.enemies.push(createBestiaryEnemy(championType,`${region.id}-champion-${spot}`,championX,championY,{level:Math.min(region.maxLevel||100,region.level+spot%4),region:region.id,boss:true}));
     world.chests.push({ id: `${region.id}-chest-${spot}`, region: region.id, x: point.x + 65, y: point.y + 60, opened: false, level: region.level, lootTable: region.level >= 75 ? 'endgame' : 'frontier' });
     for (let n = 0; n < 12; n++) {
       const a = n * Math.PI / 6, r = 310 + rng() * 140;

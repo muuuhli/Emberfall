@@ -4,6 +4,12 @@ import { GEM_TYPES, SETS, ITEM_BASES, itemPower, describeStat } from './loot.js'
 import { ABILITIES, getAbility, canLearnAbility, getLearnedAbilities } from './abilities.js';
 import { DUNGEONS } from './dungeons.js';
 import { MAX_LEVEL } from './progression.js';
+import { getArsenalShopStock } from './arsenal.js';
+import { getConsumableProfile } from './professions.js';
+import { loadoutProblems } from './inventory-system.js';
+import { summarizeWorldEvents } from './world-events.js';
+import { FACTIONS, FACTION_RANKS, ACHIEVEMENTS, COMPANIONS, JOURNEY_RECIPES, JOURNEY_MASTERIES, getFactionProgress, getJourneyUnlocks, getAchievementProgress, canClaimAchievement, canChooseJourneyMastery, getMasteryRank, canSelectCompanion, canCraftJourneyRecipe } from './journey.js';
+import { EQUIPMENT_SLOTS, equipmentSlot, getEquipmentShopStock, scaleEquipmentStats } from './equipment-system.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const icon = (name, classes = '') => `<svg class="${classes}" aria-hidden="true"><use href="#i-${name}" /></svg>`;
@@ -15,14 +21,19 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 
 const statLabels = { damage:'Waffenschaden',spellDamage:'Zauberkraft',maxHp:'Lebenspunkte',mana:'Mana',armor:'Rüstung',crit:'Kritische Treffer',speed:'Bewegungstempo',manaRegen:'Mana / Sekunde',lifeSteal:'Lebensraub',gatherYield:'Sammelbonus',cooldown:'Kürzere Zauberabklingzeit',dodgeCooldown:'Kürzere Ausweichabklingzeit',hpRestore:'Heilung',manaRestore:'Mana auffüllen' };
 const rarityLabels = { common:'Gewöhnlich',uncommon:'Ungewöhnlich',rare:'Selten',epic:'Episch',legendary:'Legendär' };
 const typeLabels = {weapon:'Waffe',armor:'Rüstung',charm:'Amulett',consumable:'Verbrauchsgegenstand'};
-const itemIcon = item => item?.type === 'weapon' ? /bow|string/.test(item.baseId || '') ? 'bow' : /staff|wand|scepter|focus|branch/.test(item.baseId || item.id) ? 'bolt' : 'sword' : item?.type === 'armor' ? 'shield' : item?.type === 'charm' ? 'gem' : item?.id === 'hearty_meal' ? 'leaf' : 'potion';
+const familyLabels={beast:'Bestien',plant:'Verderbte Flora',cultist:'Kultisten',undead:'Untote',spectral:'Geister',demon:'Dämonen',insect:'Kriechtiere',construct:'Konstrukte',abomination:'Scheusale'};
+const traitLabels={swift:'Schnell',venom:'Giftig',bleeding:'Blutend',vicious:'Grausam',frost:'Frost',draining:'Lebensraub',armored:'Gepanzert',arcane:'Arkan',summoner:'Beschwört Diener',burning:'Brennend',regenerating:'Regeneriert'};
+const itemIcon = item => ['helmet','gloves','boots','ring'].includes(item?.slot) ? item.slot : item?.type === 'weapon' ? (/bow|string|crossbow/.test(item.baseId || item.id || '') || item.family==='ranger') ? 'bow' : (/staff|wand|scepter|focus|branch/.test(item.baseId || item.id) || ['flamecaller','frostweaver','druid','shadowbinder'].includes(item.family)) ? 'bolt' : 'sword' : item?.type === 'armor' ? 'shield' : item?.type === 'charm' ? 'gem' : item?.id === 'hearty_meal' ? 'leaf' : 'potion';
 const resourceIcon = id => ['wood','herb','seed','wheat'].includes(id) ? 'leaf' : 'gem';
 const classIcons = { guardian:'shield',paladin:'sun',ranger:'bow',nightblade:'sword',flamecaller:'flame',frostweaver:'snowflake',druid:'leaf',shadowbinder:'gem' };
 const abilityIcon = (ability, classId) => ({ heal:'heart', shield:'shield', drain:'gem', summon:'group', dashstrike:'dash', trap:classId==='frostweaver'?'snowflake':'leaf', aoe:'nova', projectile:classId==='ranger'?'bow':classIcons[classId] || 'bolt', melee:'sword' }[ability?.kind] || 'bolt');
 const learnedIcon = ability => ({'⬡':'shield','⚑':'group','⚔':'sword','✚':'heart','☀':'sun','➤':'bow','⌘':'leaf','❧':'leaf','↝':'dash','◆':'gem','✦':'flame','☄':'flame','❄':'snowflake','✿':'leaf','☾':'gem','◈':'group'}[ability?.icon] || ability?.icon || 'tree');
 const branchIcons = {'Wächter':'shield','Arkanist':'flame','Wildläufer':'leaf'};
 const branchDescriptions = {'Wächter':'Halte stand. Jede Wunde macht dich stärker.','Arkanist':'Entfache die Glut und forme den Äther.','Wildläufer':'Bewege dich frei. Lebe von den Gaben des Hains.'};
-const panels = {map:['Die freien Lande','Neue Horizonte, uralte Tore und Wege bis Stufe 100.'],world:['Die freien Lande','Neue Horizonte, uralte Tore und Wege bis Stufe 100.'],character:['Dein Charakter','Werde zu dem Helden, den diese Welt braucht.'],inventory:['Dein Gepäck','Affixe, Sockel und Sets formen deine Ausrüstung.'],talents:['Dein eigener Weg','Meistere die Pfade deiner Klasse bis Stufe 100.'],craft:['Handwerk','Aus den Gaben der Welt entstehen deine nächsten Abenteuer.'],journal:['Deine Reise','Menschen, denen du hilfst. Orte, die du veränderst.'],party:['Gemeinsam durch die Glut','Bilde eine Gruppe mit bis zu acht Reisenden.'],dungeons:['Tore der Erinnerung','Rätsel, schwere Bosse und immer tiefere Herausforderungen.'],settings:['Ein Moment der Ruhe','Deine Reise wird direkt in diesem Browser gespeichert.']};
+const combatPatterns = { melee:'Nahkampf',ranged:'Fernkampf',charge:'Ansturm',caster:'Zauberwirker',summon:'Beschwörer',swarm:'Schwarm',ambush:'Hinterhalt',artillery:'Artillerie',support:'Unterstützer',guardian:'Wächter',bruiser:'Brecher',skirmisher:'Plänkler',assassin:'Meuchler',siege:'Belagerung',drain:'Lebensraub',nova:'Flächenangriff',burst:'Angriffsserie',hex:'Fluch',ring:'Geschossring',fan:'Geschossfächer',summoner:'Beschwörer' };
+const menuGroups=[{id:'hero',name:'Held',icon:'shield',panels:[['character','Charakter'],['talents','Talente']]},{id:'arsenal',name:'Arsenal',icon:'bag',panels:[['inventory','Gepäck & Lager'],['craft','Schmieden & Brauen']]},{id:'chronicle',name:'Chronik',icon:'book',panels:[['journal','Questen & Aufträge'],['journey','Ruf & Gefährten'],['bestiary','Bestiarium']]},{id:'world',name:'Welt',icon:'map',panels:[['map','Atlas'],['adventures','Ereignisse'],['dungeons','Dungeons'],['interactions','Spuren'],['party','Gruppe']]}];
+const groupFor=panel=>menuGroups.find(group=>group.panels.some(([id])=>id===panel));
+const panels = {map:['Atlas der Asche','Verlorene Siedlungen, alte Tore und gefährliche Wege.'],world:['Atlas der Asche','Verlorene Siedlungen, alte Tore und gefährliche Wege.'],character:['Der Glutträger','Rüstung, Werte und die Macht deiner Klasse.'],inventory:['Dein Arsenal','Vergleiche Beute, verstärke Ausrüstung und bereite dich vor.'],talents:['Pfade der Macht','Aktive Techniken, Talentzweige und folgenschwere Entscheidungen.'],craft:['Die schwarze Werkbank','Schmiede Waffen, braue Elixiere und verarbeite deine Beute.'],journal:['Chronik der Verlorenen','Questen, regionale Aufträge und unerfüllte Eide.'],bestiary:['Bestiarium der Finsternis','Jede Kreatur kann als mächtiger Boss wiederkehren.'],interactions:['Spuren in der Asche','Altäre, Reliquien und Begegnungen auf deinem Weg.'],party:['Ein Bund in der Dunkelheit','Gemeinsam bestehen: bis zu acht Glutträger.'],dungeons:['Tore in die Tiefe','Runenrätsel, schwere Bosse und immer tiefere Herausforderungen.'],journey:['Dein Vermächtnis','Fraktionen, Errungenschaften und Gefährten auf deiner Reise.'],adventures:['Jenseits der Straßen','Regionale Ereignisse und Expeditionen mit eigenen Entscheidungen.'],settings:['Am letzten Feuer','Deine Reise wird direkt in diesem Browser gespeichert.']};
 
 export class GameUI {
   constructor(game) {
@@ -30,6 +41,22 @@ export class GameUI {
     this.activePanel = null;
     this.inventoryTab = 'equipment';
     this.inventoryPage = 0;
+    this.inventorySearch = '';
+    this.inventoryType = 'all';
+    this.inventoryRarity = 'all';
+    this.inventorySort = 'default';
+    this.inventoryUsable = false;
+    this.inventorySelected = null;
+    this.inventoryFlags = 'all';
+    this.characterTab = 'equipment';
+    this.journeyTab = 'factions';
+    this.adventureFilter = 'all';
+    this.loadoutName = '';
+    this.trackerExpanded = false;
+    this.bestiarySearch = '';
+    this.bestiaryFamily = 'all';
+    this.bestiaryPage = 0;
+    this.craftFilter = 'available';
     this.talentTab = 'abilities';
     this.panelPointers = new Set();
     this.questTab = 'active';
@@ -46,7 +73,7 @@ export class GameUI {
     this.lastSeenLevel = game.player?.level || 1;
     this.notices = [];
     this.elements = {};
-    for (const id of ['welcome-overlay','welcome-classes','start-button','continue-button','panel-overlay','game-panel','panel-title','panel-description','panel-content','close-panel','save-button','save-state','save-import','world-hud','quest-tracker','region-name','region-subtitle','player-name','player-class','player-level','hp-fill','hp-text','hp-shield','party-hud','mana-fill','mana-text','xp-fill','xp-text','gold-count','talent-badge','potion-count','interact-prompt','world-time','world-weather','notice-stack','minimap','world']) this.elements[id] = document.getElementById(id);
+    for (const id of ['welcome-overlay','welcome-classes','start-button','continue-button','panel-overlay','game-panel','panel-title','panel-description','panel-content','close-panel','save-button','save-state','save-import','world-hud','quest-tracker','region-name','region-subtitle','player-name','player-class','player-level','hp-fill','hp-text','hp-shield','party-hud','mana-fill','mana-text','xp-fill','xp-text','gold-count','talent-badge','potion-count','interact-prompt','world-time','world-weather','world-effects','waypoint-text','notice-stack','minimap','world']) this.elements[id] = document.getElementById(id);
     this.bind();
     this.syncWelcome();
     this.update(true);
@@ -59,9 +86,12 @@ export class GameUI {
       if (button.dataset.panel) { this.togglePanel(button.dataset.panel === 'world' ? 'map' : button.dataset.panel); return; }
       if (button.dataset.action) { if(this.game.started&&!this.activePanel&&!this.game.paused)this.game.action(button.dataset.action); this.update(true); return; }
       if (button.dataset.abilitySlot !== undefined) { this.useAbilitySlot(Number(button.dataset.abilitySlot)); return; }
-      if (button.dataset.talentTab) { this.talentTab=button.dataset.talentTab;this.renderPanel();return; }
-      if (button.dataset.inventoryTab) { this.inventoryTab = button.dataset.inventoryTab;this.inventoryPage=0; this.renderPanel(); return; }
-      if (button.dataset.questTab) { this.questTab = button.dataset.questTab; this.renderPanel(); return; }
+      if (button.dataset.talentBranch) { this.talentBranch=button.dataset.talentBranch;this.renderPanel();return; }
+      if (button.dataset.talentTab) { this.pendingScrollReset=true;this.talentTab=button.dataset.talentTab;this.renderPanel();return; }
+      if (button.dataset.inventoryTab) { this.pendingScrollReset=true;this.inventoryTab = button.dataset.inventoryTab;this.inventoryType='all';this.inventoryPage=0; this.renderPanel(); return; }
+      if (button.dataset.characterTab) {this.pendingScrollReset=true;this.characterTab=button.dataset.characterTab;this.renderPanel();return;}
+      if (button.dataset.journeyTab) {this.pendingScrollReset=true;this.journeyTab=button.dataset.journeyTab;this.renderPanel();return;}
+      if (button.dataset.questTab) { this.pendingScrollReset=true;this.questTab = button.dataset.questTab; this.renderPanel(); return; }
       if (button.dataset.command) this.command(button.dataset.command, button.dataset.id, button);
     });
     this.elements['start-button'].addEventListener('click', () => {
@@ -81,7 +111,16 @@ export class GameUI {
       } catch (error) { this.showNotice('Dieser Spielstand konnte nicht geladen werden. Bitte wähle eine Emberfall-Datei.', 'error'); }
       event.target.value = '';
     });
+    document.addEventListener('input', event => {
+      const draft=event.target.dataset.uiDraft;if(draft){this[draft]=event.target.value;return;}
+      const key = event.target.dataset.uiSearch;
+      if (!key) return;
+      this[key] = event.target.value; this.inventoryPage = 0; this.bestiaryPage = 0;
+      this.renderPanel();
+    });
     document.addEventListener('change', event => {
+      const filter = event.target.dataset.uiFilter;
+      if (filter) { this[filter]=event.target.type==='checkbox'?event.target.checked:event.target.value;this.inventoryPage=0;this.bestiaryPage=0;this.renderPanel(true);return; }
       if(event.target.dataset.abilityLoadout!==undefined) {this.assignAbility(Number(event.target.dataset.abilityLoadout),event.target.value||null);return;}
       if(event.target.dataset.contractRegion!==undefined) {this.contractRegion=event.target.value;this.renderPanel();return;}
       const key = event.target.dataset.setting;
@@ -127,7 +166,7 @@ export class GameUI {
   syncWelcome() {
     this.elements['welcome-overlay'].hidden = Boolean(this.game.started);
     this.elements['continue-button'].hidden = !this.game.hasSave;
-    this.elements['start-button'].innerHTML = `${this.game.hasSave ? 'Eine neue Reise beginnen' : 'Deine Reise beginnt'}${icon('arrow')}`;
+    this.elements['start-button'].innerHTML = `${this.game.hasSave ? 'Eine neue Reise beginnen' : 'Die Dunkelheit betreten'}${icon('arrow')}`;
     this.elements['save-state'].textContent = this.game.hasSave ? 'Reise gespeichert' : 'Ein neuer Anfang';
     if (this.elements['welcome-classes']) this.elements['welcome-classes'].innerHTML = this.game.hasSave ? `<p class="welcome-saved-class">${escape(getClass(this.game.player.classId).name)} · Stufe ${format(this.game.player.level)} · Deine gespeicherte Reise</p>` : this.classSelection(this.game.player.classId);
     if (!this.game.started) requestAnimationFrame(() => (this.game.hasSave ? this.elements['continue-button'] : this.elements['start-button']).focus({preventScroll:true}));
@@ -173,6 +212,13 @@ export class GameUI {
     this.setText('player-level', player.level || 1);
     this.setWidth('hp-fill', (player.hp || 0) / hpMax * 100);
     this.setWidth('mana-fill', (player.mana || 0) / manaMax * 100);
+    for (const [id, value, max] of [['hp-fill',player.hp,hpMax],['mana-fill',player.mana,manaMax]]) {
+      const bar=this.elements[id]?.parentElement;
+      bar?.style.setProperty('--orb-level',`${clamp(value/max*100,0,100)}%`);
+      bar?.setAttribute('aria-valuenow',String(Math.round(value || 0)));
+      bar?.setAttribute('aria-valuemax',String(Math.round(max)));
+    }
+    document.body.classList.toggle('low-health',game.started&&(player.hp||0)/hpMax<.25&&player.hp>0);
     this.setText('hp-text', `${format(player.hp)} / ${format(hpMax)}`);
     this.setText('hp-shield', player.shield>0?`Schutz ${format(player.shield)}`:player.downed?'Kampfunfähig · E zum Wiederbeleben':'');
     if(this.elements['hp-shield']) this.elements['hp-shield'].hidden = !(player.shield>0 || player.downed);
@@ -180,16 +226,23 @@ export class GameUI {
     this.setWidth('xp-fill', player.level>=MAX_LEVEL?100:(player.xp || 0) / xpMax * 100);
     this.setText('xp-text', player.level>=MAX_LEVEL?'STUFE 100 · MEISTER DER GLUT':`STUFE ${player.level || 1} · ${format(player.xp)} / ${format(xpMax)} EP`);
     this.setText('gold-count', format(player.gold));
-    const healingSupplies = Object.entries(game.inventory || {}).reduce((sum,[id,count]) => sum + (this.item(id)?.stats?.hpRestore ? Number(count) || 0 : 0),0);
+    const healingSupplies=Object.entries(game.inventory || {}).reduce((sum,[id,count])=>{
+      const profile=getConsumableProfile(this.item(id));
+      return sum+(profile?.hpRestore>0&&!profile.outOfCombat&&profile.minLevel<=player.level?Number(count) || 0:0);
+    },0);
     this.setText('potion-count', format(healingSupplies));
     this.setText('talent-badge', player.skillPoints || 0);
     this.elements['talent-badge'].hidden = !(player.skillPoints > 0);
     const nearby = game.started && !game.paused && typeof game.nearby === 'function' ? game.nearby() : null;
     this.elements['interact-prompt'].hidden = !nearby;
     if (nearby) this.elements['interact-prompt'].querySelector('span').textContent = nearby.label || 'Interagieren';
-    const trackerState = JSON.stringify([game.questState || {},game.contracts]);
+    const target=game.waypointTarget?.();
+    this.setText('waypoint-text',target?`${target.label} · ${format(target.distance)} Schritte`:'Jenseits des Feuers wartet die Finsternis');
+    document.getElementById('exploration-pill')?.classList.toggle('waypoint-active',!!target);
+    const eventState=(game.world?.worldEvents || []).filter(event=>event.state==='active'||event.state==='success').map(event=>[event.id,event.state,event.objective?.label,Math.floor(event.objective?.progress || 0)]);
+    const trackerState = JSON.stringify([game.questState || {},game.contracts,game.trackedQuestId,eventState]);
     if (force || trackerState !== this.lastTracker) { this.lastTracker = trackerState; this.renderTracker(); }
-    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,this.dungeonId()]);
+    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.waypoint,game.trackedQuestId,(game.worldEventSummary?.() || []).map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0)]),game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,this.dungeonId()]);
     if (force || state !== this.lastState) { this.lastState = state; if (this.activePanel && !['death','victory','reset','settings','party'].includes(this.activePanel)) this.renderPanel(); }
     this.updateParty();
     const now = performance.now();
@@ -197,7 +250,14 @@ export class GameUI {
     const seconds = Number(game.time ?? game.elapsed ?? game.world?.time ?? 0);
     const minutes = Math.floor((8 * 60 + seconds / 3) % (24 * 60));
     this.setText('world-time', `${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`);
-    this.setText('world-weather', minutes < 600 ? 'Morgenlicht' : minutes < 1020 ? 'Tageslicht' : minutes < 1200 ? 'Abendglut' : 'Sternennacht');
+    this.setText('world-weather', minutes < 600 ? 'Kalte Asche' : minutes < 1020 ? 'Fahles Licht' : minutes < 1200 ? 'Blutdämmerung' : 'Totenstille');
+    const buffs=(game.buffs || []).filter(buff=>buff.expiresAt>game.time);
+    const buffState=JSON.stringify(buffs.map(buff=>[buff.id,Math.ceil(buff.expiresAt-game.time)]));
+    if(this.elements['world-effects']&&buffState!==this.lastBuffState){
+      this.lastBuffState=buffState;
+      this.elements['world-effects'].innerHTML=buffs.map(buff=>`<span title="${escape(this.statsText(buff.effects))}">${icon('flame')}${escape(buff.name)}<b>${Math.ceil(buff.expiresAt-game.time)}s</b></span>`).join('');
+      this.elements['world-effects'].hidden=!buffs.length;
+    }
     this.updateCooldowns(stats);
     const blocked=!game.started||Boolean(this.activePanel)||game.paused;
     document.querySelector('.touch-controls').hidden=blocked;
@@ -247,13 +307,18 @@ export class GameUI {
   }
 
   renderTracker() {
-    const quests = [...QUESTS.filter(quest => ['active','ready'].includes(this.game.questState?.[quest.id]?.status)),...(this.game.contracts?.active||[])];
-    this.elements['quest-tracker'].innerHTML = quests.length ? quests.slice(0,3).map(quest => {
+    const quests = [...QUESTS.filter(quest => ['active','ready'].includes(this.game.questState?.[quest.id]?.status)),...(this.game.contracts?.active||[])].sort((a,b)=>Number(b.id===this.game.trackedQuestId)-Number(a.id===this.game.trackedQuestId));
+    const event=(this.game.world?.worldEvents || []).find(event=>event.state==='active'||event.state==='success');
+    const tracker=this.elements['quest-tracker']?.parentElement;
+    tracker?.classList.toggle('tracker-expanded',!!this.trackerExpanded);
+    const toggle=document.getElementById('tracker-toggle');toggle?.setAttribute('aria-expanded',String(!!this.trackerExpanded));
+    const toggleLabel=document.getElementById('tracker-toggle-label');if(toggleLabel)toggleLabel.textContent=event?`Ereignis · ${event.name}`:quests[0]?.title || 'Chronik der Asche';
+    this.elements['quest-tracker'].innerHTML = `${event?`<div class="tracked-event"><span>${event.state==='success'?'BELOHNUNG BEREIT':'EREIGNIS'}</span><h3>${escape(event.name)}</h3><p>${escape(event.objective?.label)}</p>${event.state==='active'?`<b>${format(event.objective?.progress)}/${format(event.objective?.goal)}</b>`:''}<button class="text-button" data-panel="adventures">Ereignis ansehen ${icon('arrow')}</button></div>`:''}` + (quests.length ? quests.slice(0,event?1:3).map(quest => {
       const state = this.game.questState[quest.id]||quest;
       const isReady = state.status === 'ready' || quest.objectives.every((objective,index) => (state.counts?.[index] || 0) >= objective.count);
       const giver=quest.giver?NPCS.find(npc=>npc.id===quest.giver):this.game.contractGiver?.(quest.region);
       return `<div class="tracked-quest"><h3><span class="quest-diamond"></span>${escape(quest.title)}</h3>${isReady ? `<div class="quest-objective complete">${icon('check')}<span>Kehre zu ${escape(giver?.name||'deinem Auftraggeber')} zurück</span></div>` : quest.objectives.map((objective,index)=> `<div class="quest-objective ${(state.counts?.[index] || 0)>=objective.count?'complete':''}">${(state.counts?.[index] || 0)>=objective.count?icon('check'):'<span class="objective-dot"></span>'}<span>${escape(objective.label)} <b>${Math.min(state.counts?.[index] || 0,objective.count)}/${objective.count}</b></span></div>`).join('')}</div>`;
-    }).join('') : `<div class="tracker-empty">Deine Geschichte beginnt hier.<small>Sprich mit Mira in Glutwacht. Folge den goldenen Zeichen auf deiner Karte.</small></div>`;
+    }).join('') : `<div class="tracker-empty">Deine Geschichte beginnt hier.<small>Sprich mit Mira in Glutwacht. Folge den goldenen Zeichen auf deiner Karte.</small></div>`);
   }
 
   togglePanel(name) {
@@ -264,15 +329,18 @@ export class GameUI {
     if (name === this.activePanel) { this.closePanel(); return; }
     if (!this.activePanel) this.previousFocus = document.activeElement;
     this.activePanel = name;
+    this.pendingScrollReset=true;
+    this.elements['panel-content'].scrollTop=0;
+    for(const notice of this.notices)notice.remove();this.notices=[];
     if(name==='reset') this.pendingClass=this.game.player.classId || 'guardian';
     if (this.game.started) this.game.paused = true;
     this.game.keys?.clear();
     this.onInputReset?.();
     document.querySelector('.touch-controls').hidden=true;
-    document.body.classList.add('gameplay-blocked');
+    document.body.classList.add('gameplay-blocked','panel-open');
     this.elements['panel-overlay'].hidden = false;
     this.elements['world-hud'].classList.add('disabled');
-    document.querySelectorAll('.nav-item').forEach(button=>button.classList.toggle('active',button.dataset.panel===name));
+    document.querySelectorAll('.nav-item').forEach(button=>button.classList.toggle('active',groupFor(button.dataset.panel)?.id===groupFor(name)?.id));
     this.renderPanel();
     if(name==='party') this.refreshRooms();
     requestAnimationFrame(() => (name === 'death' ? this.elements['panel-content'].querySelector('button') : this.elements['close-panel'])?.focus({preventScroll:true}));
@@ -282,6 +350,7 @@ export class GameUI {
     if (this.activePanel === 'death' && this.game.player?.hp <= 0) return;
     const previous = this.activePanel;
     this.activePanel = null;
+    document.body.classList.remove('panel-open');
     this.dialogueNPC = null;
     this.elements['panel-overlay'].hidden = true;
     this.elements['world-hud'].classList.remove('disabled');
@@ -292,21 +361,38 @@ export class GameUI {
     this.previousFocus = null;
   }
 
-  renderPanel() {
+  renderPanel(allowFocusedSelect = false) {
     const name = this.activePanel;
     if (!name) return;
-    if(this.panelPointers.size||document.activeElement?.matches?.('select')&&this.elements['game-panel'].contains(document.activeElement)){this.pendingPanelRender=true;return;}
-    const focusId = document.activeElement?.dataset?.id;
+    if(this.panelPointers.size||!allowFocusedSelect&&document.activeElement?.matches?.('select')&&this.elements['game-panel'].contains(document.activeElement)){this.pendingPanelRender=true;return;}
+    const focused = document.activeElement;
+    const focusSearch = focused?.dataset?.uiSearch,focusDraft=focused?.dataset?.uiDraft;
+    const focusFilter = focused?.dataset?.uiFilter;
+    const selection = focusSearch||focusDraft ? [focused.selectionStart,focused.selectionEnd] : null;
+    const resetScroll=this.pendingScrollReset||this.renderedPanel!==name;
+    const scroll=resetScroll?0:this.elements['panel-content'].scrollTop;
+    const focusId = focused?.dataset?.id;
     const focusCommand = document.activeElement?.dataset?.command;
-    const titles = name === 'dialogue' ? [this.dialogueNPC?.name || 'Eine Begegnung',this.dialogueNPC?.role || ''] : name==='death' ? ['Die Glut lebt weiter','Auch die dunkelste Nacht endet.'] : name==='victory' ? ['Ein neuer Morgen','Du hast der Welt ihre Glut zurückgebracht.'] : name==='reset' ? ['Ein neuer Anfang','Eine neue Reise ersetzt deinen gespeicherten Fortschritt.'] : panels[name] || panels.inventory;
+    const titles = name === 'dialogue' ? [this.dialogueNPC?.name || 'Eine Begegnung',this.dialogueNPC?.role || ''] : name==='death' ? ['Die Glut lebt weiter','Auch die dunkelste Nacht endet.'] : name==='victory' ? ['Das erste Kapitel ist vollendet','Glutwacht hält stand. Jenseits des Feuers beginnt deine nächste Reise.'] : name==='reset' ? ['Ein neuer Anfang','Eine neue Reise ersetzt deinen gespeicherten Fortschritt.'] : panels[name] || panels.inventory;
     this.setText('panel-title', titles[0]);
     this.setText('panel-description', titles[1]);
     this.elements['close-panel'].hidden = name === 'death';
-    const renderers = {inventory:()=>this.inventory(),character:()=>this.character(),talents:()=>this.talents(),craft:()=>this.craft(),journal:()=>this.journal(),map:()=>this.map(),party:()=>this.party(),dungeons:()=>this.dungeons(),settings:()=>this.settings(),dialogue:()=>this.dialogue(),death:()=>this.death(),victory:()=>this.victory(),reset:()=>this.resetConfirmation()};
+    const navigation=document.getElementById('panel-navigation'),group=groupFor(name);
+    if(navigation){
+      navigation.hidden=!group;
+      if(group)navigation.innerHTML=`<div class="menu-group-switcher">${menuGroups.map(entry=>`<button type="button" data-panel="${entry.panels[0][0]}" class="${entry.id===group.id?'active':''}" aria-pressed="${entry.id===group.id}">${icon(entry.icon)}${entry.name}</button>`).join('')}</div><div class="menu-section-switcher" role="group" aria-label="${group.name}">${group.panels.map(([id,label])=>`<button type="button" data-panel="${id}" class="${id===name?'active':''}" aria-pressed="${id===name}">${label}</button>`).join('')}</div>`;
+    }
+    const renderers = {inventory:()=>this.inventory(),character:()=>this.character(),talents:()=>this.talents(),craft:()=>this.craft(),journal:()=>this.journal(),map:()=>this.map(),party:()=>this.party(),dungeons:()=>this.dungeons(),settings:()=>this.settings(),bestiary:()=>this.bestiary(),journey:()=>this.journey(),adventures:()=>this.adventures(),interactions:()=>this.interactions(),dialogue:()=>this.dialogue(),death:()=>this.death(),victory:()=>this.victory(),reset:()=>this.resetConfirmation()};
     this.elements['panel-content'].innerHTML = (renderers[name] || renderers.inventory)();
+    this.elements['game-panel'].dataset.panel=name;
+    this.elements['panel-content'].scrollTop=scroll;
+    this.renderedPanel=name;this.pendingScrollReset=false;
+    if(resetScroll)requestAnimationFrame(()=>{if(this.activePanel===name)this.elements['panel-content'].scrollTop=0;});
+    const restored = focusDraft?this.elements['panel-content'].querySelector(`[data-ui-draft="${focusDraft}"]`):focusSearch ? this.elements['panel-content'].querySelector(`[data-ui-search="${focusSearch}"]`) : focusFilter ? this.elements['panel-content'].querySelector(`[data-ui-filter="${focusFilter}"]`) : null;
+    if(restored&&!resetScroll) { restored.focus({preventScroll:true});if(selection&&restored.setSelectionRange)restored.setSelectionRange(...selection); }
     if (name === 'map') this.drawMap(document.getElementById('full-map'), true);
     if (name === 'party') { this.lastPartyState=''; this.updateParty(); }
-    if (focusId && focusCommand) {
+    if (!resetScroll&&focusId && focusCommand) {
       const target = [...this.elements['panel-content'].querySelectorAll('button')].find(button=>button.dataset.id===focusId&&button.dataset.command===focusCommand);
       if (target && !target.disabled) target.focus({preventScroll:true});
     }
@@ -323,8 +409,8 @@ export class GameUI {
   }
 
   equipmentComparison(item) {
-    if(!['weapon','armor','charm'].includes(item.type)||this.game.equipment?.[item.type]===item.id)return '';
-    const currentId=this.game.equipment?.[item.type],current=this.item(currentId),before=this.game.stats();
+    if(!['weapon','armor','charm'].includes(item.type)||this.game.equipment?.[equipmentSlot(item)]===item.id)return '';
+    const currentId=this.game.equipment?.[equipmentSlot(item)],current=this.item(currentId),before=this.game.stats();
     const candidate=this.itemStats(item.id),old=this.itemStats(currentId);
     const preview=this.game.previewEquipment?.(item.id)||{before,after:Object.fromEntries([...new Set([...Object.keys(before),...Object.keys(candidate),...Object.keys(old)])].map(key=>[key,(before[key]||0)+(candidate[key]||0)-(old[key]||0)]))};
     const changes=Object.keys(preview.after).filter(key=>Math.abs((preview.after[key]||0)-(preview.before[key]||0))>.00001);
@@ -333,91 +419,217 @@ export class GameUI {
 
   itemRow(item, count, action = 'equip', shop = false) {
     if(!item)return '';
-    const equipped = this.game.equipment?.[item.type] === item.id;
-    const comparison = this.itemStats(this.game.equipment?.[item.type]);
+    const slot=equipmentSlot(item),equipped=this.game.equipment?.[slot]===item.id;
+    const comparison = this.itemStats(this.game.equipment?.[equipmentSlot(item)]);
     const canBuy = (this.game.player?.gold || 0) >= item.price;
-    const command = shop ? 'buy' : action === 'sell' ? 'sell' : item.type === 'consumable' ? 'consume' : action;
+    const command = shop ? 'buy' : action==='stash' ? 'withdrawItem' : action === 'sell' ? 'sell' : item.type === 'consumable' ? 'consume' : action;
     const stats = this.game.stats();
-    const consumeDisabled = command === 'consume' && (!item.stats.hpRestore || this.game.player.hp >= stats.maxHp) && (!item.stats.manaRestore || this.game.player.mana >= stats.mana);
+    const protectedItem=this.game.itemFlags?.[item.id]?.locked||this.game.itemFlags?.[item.id]?.favorite;
+    const consumeProfile=getConsumableProfile(item);
+    const consumeLevelLocked=Boolean(consumeProfile&&consumeProfile.minLevel>this.game.player.level);
+    const consumeCombatLocked=Boolean(consumeProfile?.outOfCombat&&this.game.inCombat?.());
+    const consumeCooling=Boolean(consumeProfile&&(this.game.cooldowns?.potion>0||this.game.cooldowns?.[consumeProfile.cooldownGroup]>0));
+    const consumeDisabled=command==='consume'&&(consumeLevelLocked||consumeCombatLocked||consumeCooling||(!item.stats.hpRestore||this.game.player.hp>=stats.maxHp)&&(!item.stats.manaRestore||this.game.player.mana>=stats.mana));
     const requiredLevel=item.level||item.minLevel||1;
     const classIds=item.classIds||ITEM_BASES.find(base=>base.id===item.baseId)?.classIds;
     const classLocked=Array.isArray(classIds)&&!classIds.includes(this.game.player.classId);
     const levelLocked = command==='equip' && requiredLevel>this.game.player.level;
-    const lockReason=classLocked?`Nur ${classIds.map(id=>getClass(id).name).join(', ')}`:levelLocked?`Benötigt Stufe ${requiredLevel}`:'';
+    const lockReason=classLocked?`Nur ${classIds.map(id=>getClass(id).name).join(', ')}`:levelLocked||consumeLevelLocked?`Benötigt Stufe ${requiredLevel}`:consumeCombatLocked?'Nur außerhalb des Kampfes':consumeCooling?'Erholt sich noch …':'';
     const generated = !!item.baseId;
     const itemStats = generated ? this.itemStats(item.id) : item.stats;
     const upgrade = item.upgrade || 0, upgradeCost = 8 + upgrade * 6;
-    const gems = generated && item.sockets.includes(null) ? Object.values(GEM_TYPES).filter(gem=>(this.game.resources?.[gem.id] || 0)>0) : [];
+    const gems = generated && (item.sockets || []).includes(null) ? Object.values(GEM_TYPES).filter(gem=>(this.game.resources?.[gem.id] || 0)>0) : [];
+    const legendaryPower=generated?(item.affixes || []).filter(affix=>affix.legendary).map(affix=>`<div class="legendary-power"><span>LEGENDÄRE MACHT</span><strong>${escape(affix.name)}</strong><p>${Object.entries(affix.stats).map(([key,value])=>escape(describeStat(key,value))).join(' · ')}</p></div>`).join(''):'';
     const modifiers = generated ? `<details class="item-details"><summary>Affixe${item.sockets.length?` · ${item.sockets.length} Sockel`:''}${item.setId?' · Set':''}</summary><p>${escape(item.description)}</p>${item.affixes.map(affix=>`<div class="item-modifier ${affix.legendary?'legendary-modifier':''}"><strong>${escape(affix.name)}</strong><span>${Object.entries(affix.stats).map(([key,value])=>escape(describeStat(key,value))).join(' · ')}</span></div>`).join('')}${item.sockets.length?`<div class="socket-list">${item.sockets.map(gem=>`<span>${icon('gem')}${gem?escape(GEM_TYPES[typeof gem==='string'?gem:gem.id]?.name || 'Edelstein'):'Freier Sockel'}</span>`).join('')}</div>`:''}${item.setId?`<p class="set-description">${escape(SETS[item.setId]?.name)} · 2 Teile: ${this.statsText(SETS[item.setId]?.bonuses[2])} · 3 Teile: ${this.statsText(SETS[item.setId]?.bonuses[3])}</p>`:''}</details>` : '';
-    const improve = generated && !shop && action==='equip' ? `<div class="item-improvement-actions"><button class="small-button" data-command="upgradeItem" data-id="${escape(item.id)}" ${upgrade>=10 || (this.game.resources?.dust || 0)<upgradeCost?'disabled':''}>${upgrade>=10?'Aufwertung +10':`Aufwerten · ${upgradeCost} Staub`}</button>${!equipped?`<button class="small-button subtle-button" data-command="salvage" data-id="${escape(item.id)}">Zerlegen</button>`:''}${gems.map(gem=>`<button class="small-button" data-command="socket" data-id="${escape(item.id)}" data-gem="${gem.id}" title="${escape(this.statsText(gem.stats))}">${escape(gem.name)} sockeln</button>`).join('')}</div>` : '';
-    return `<div class="item-row ${generated?'instanced-item':''} ${equipped?'is-equipped':''}"><div class="item-icon ${escape(item.rarity)}">${icon(itemIcon(item))}</div><div class="item-main"><h3>${escape(item.name)}${upgrade?` <span class="item-upgrade">+${upgrade}</span>`:''}</h3><p>${escape(rarityLabels[item.rarity])} · ${escape(typeLabels[item.type])} · Stufe ${requiredLevel}${generated?`${item.dungeonTier>1?` · Tiefe ${item.dungeonTier}`:''} · Macht ${itemPower(item)}`:''}${classIds?` · ${escape(classIds.map(id=>getClass(id).name).join(' / '))}`:''}</p><p class="item-description">${this.statsText(itemStats)}</p>${!shop&&command==='equip'&&!equipped?this.equipmentComparison(item):''}${lockReason?`<p class="equipment-lock">${icon('shield')}${escape(lockReason)}</p>`:''}${modifiers}${improve}</div><div class="item-actions">${shop ? `<button class="small-button" data-command="buy" data-id="${escape(item.id)}" ${canBuy?'':'disabled'}>${icon('coin')}${format(item.price)}</button>` : `${count>1?`<span class="item-count">×${count}</span>`:''}${equipped?`<span class="equipped-badge">ANGELEGT</span><button class="small-button subtle-button" data-command="unequip" data-id="${escape(item.type)}">Ablegen</button>`:`<button class="small-button" data-command="${command}" data-id="${escape(item.id)}" ${consumeDisabled || command==='equip'&&(levelLocked||classLocked)?'disabled':''}>${command==='consume'?'Nutzen':command==='sell'?`Verkaufen · ${Math.max(1,Math.floor(item.price*.4))}`:'Anlegen'}</button>`}`}</div></div>`;
+    const improve = generated && !shop && action==='equip' ? `<div class="item-improvement-actions"><button class="small-button" data-command="upgradeItem" data-id="${escape(item.id)}" ${upgrade>=10 || (this.game.resources?.dust || 0)<upgradeCost?'disabled':''}>${upgrade>=10?'Aufwertung +10':`Aufwerten · ${upgradeCost} Staub`}</button>${!equipped?`<button class="small-button subtle-button" data-command="salvage" data-id="${escape(item.id)}" ${this.game.itemFlags?.[item.id]?.locked||this.game.itemFlags?.[item.id]?.favorite?'disabled':''}>Zerlegen</button>`:''}${gems.map(gem=>`<button class="small-button" data-command="socket" data-id="${escape(item.id)}" data-gem="${gem.id}" title="${escape(this.statsText(scaleEquipmentStats(gem.stats,item)))}">${escape(gem.name)} sockeln</button>`).join('')}</div>` : '';
+    return `<div class="item-row ${generated?'instanced-item':''} ${equipped?'is-equipped':''}"><div class="item-icon ${escape(item.rarity)}">${icon(itemIcon(item))}</div><div class="item-main"><h3>${escape(item.name)}${upgrade?` <span class="item-upgrade">+${upgrade}</span>`:''}</h3><p>${escape(rarityLabels[item.rarity] || item.rarity || 'Gewöhnlich')} · ${escape(EQUIPMENT_SLOTS.find(entry=>entry.id===slot)?.name || typeLabels[item.type])} · Stufe ${requiredLevel}${generated?`${item.dungeonTier>1?` · Tiefe ${item.dungeonTier}`:''} · Macht ${itemPower(item)}`:''}${classIds?` · ${escape(classIds.map(id=>getClass(id).name).join(' / '))}`:''}</p><p class="item-description">${this.statsText(itemStats)}</p>${legendaryPower}${!shop&&command==='equip'&&!equipped?this.equipmentComparison(item):''}${consumeProfile?`<p class="consumable-profile">${consumeProfile.outOfCombat?'Mahlzeit · außerhalb des Kampfes':'Trank'} · ${seconds(consumeProfile.cooldown)} Sek. Erholung</p>`:''}${lockReason?`<p class="equipment-lock">${icon('shield')}${escape(lockReason)}</p>`:''}${modifiers}${improve}</div><div class="item-actions">${shop ? `<button class="small-button" data-command="buy" data-id="${escape(item.id)}" ${canBuy?'':'disabled'}>${icon('coin')}${format(item.price)}</button>` : `${count>1?`<span class="item-count">×${count}</span>`:''}${equipped?`<span class="equipped-badge">ANGELEGT</span><button class="small-button subtle-button" data-command="unequip" data-id="${escape(equipmentSlot(item))}">Ablegen</button>`:`<button class="small-button" data-command="${command}" data-id="${escape(item.id)}" ${consumeDisabled||command==='sell'&&protectedItem||command==='withdrawItem'&&(!this.game.inSettlement?.()||this.game.inCombat?.())||command==='equip'&&(levelLocked||classLocked)?'disabled':''}>${command==='withdrawItem'?'Ins Gepäck':command==='consume'?'Nutzen':command==='sell'?`Verkaufen · ${Math.max(1,Math.floor(item.price*.4))}`:'Anlegen'}</button>`}`}</div></div>`;
   }
 
   inventory() {
-    const tab = this.inventoryTab;
-    const entries = Object.entries(this.game.inventory || {}).filter(([id,count])=>count>0 && this.item(id));
-    const tabs = `<div class="panel-tabs"><button class="${tab==='equipment'?'active':''}" data-inventory-tab="equipment">Ausrüstung</button><button class="${tab==='consumables'?'active':''}" data-inventory-tab="consumables">Vorräte</button><button class="${tab==='resources'?'active':''}" data-inventory-tab="resources">Ressourcen</button></div>`;
-    const filtered = entries.filter(([id]) => tab === 'consumables' ? this.item(id).type === 'consumable' : this.item(id).type !== 'consumable');
-    const pageSize=12,pages=Math.max(1,Math.ceil(filtered.length/pageSize));this.inventoryPage=Math.min(this.inventoryPage,pages-1);
+    const tab=this.inventoryTab,stored=tab==='stash',source=stored?this.game.stash || {}:this.game.inventory || {},search=(this.inventorySearch || '').trim().toLocaleLowerCase('de-DE');
+    const entries=Object.entries(source).filter(([id,count])=>count>0&&this.item(id));
+    const tabs=`<div class="panel-tabs" role="group" aria-label="Inventarbereiche">${[['equipment','Ausrüstung'],['consumables','Vorräte'],['resources','Materialien'],['stash','Lager']].map(([id,label])=>`<button class="${tab===id?'active':''}" aria-pressed="${tab===id}" data-inventory-tab="${id}">${label}${id==='stash'?` · ${Object.keys(this.game.stash || {}).length}/120`:''}</button>`).join('')}</div>`;
+    const filtered=entries.filter(([id])=>{
+      const item=this.item(id),classes=item.classIds || ITEM_BASES.find(base=>base.id===item.baseId)?.classIds,flags=this.game.itemFlags?.[id] || {};
+      return (stored||tab==='consumables'?stored||item.type==='consumable':item.type!=='consumable')
+        &&(!search||`${item.name} ${item.description || ''} ${this.statsText(this.itemStats(id))}`.toLocaleLowerCase('de-DE').includes(search))
+        &&(!this.inventoryType||this.inventoryType==='all'||equipmentSlot(item)===this.inventoryType||this.inventoryType==='consumable'&&item.type==='consumable')
+        &&(!this.inventoryRarity||this.inventoryRarity==='all'||item.rarity===this.inventoryRarity)
+        &&(!this.inventoryFlags||this.inventoryFlags==='all'||flags[this.inventoryFlags])
+        &&(!this.inventoryUsable||((item.level || item.minLevel || 1)<=this.game.player.level&&(!classes||classes.includes(this.game.player.classId))));
+    });
+    const rarityOrder={common:0,uncommon:1,rare:2,epic:3,legendary:4};
+    if(this.inventorySort==='power')filtered.sort((a,b)=>itemPower(this.item(b[0]))-itemPower(this.item(a[0])));
+    if(this.inventorySort==='rarity')filtered.sort((a,b)=>(rarityOrder[this.item(b[0]).rarity] || 0)-(rarityOrder[this.item(a[0]).rarity] || 0));
+    if(this.inventorySort==='name')filtered.sort((a,b)=>this.item(a[0]).name.localeCompare(this.item(b[0]).name,'de'));
+    const pageSize=12,pages=Math.max(1,Math.ceil(filtered.length/pageSize));this.inventoryPage=Math.min(this.inventoryPage || 0,pages-1);
     const page=filtered.slice(this.inventoryPage*pageSize,(this.inventoryPage+1)*pageSize);
-    const resourceRows = Object.entries(RESOURCES).map(([id,resource])=>`<div class="item-row"><div class="item-icon">${icon(resourceIcon(id))}</div><div class="item-main"><h3>${escape(resource.name)}</h3><p>${escape(resource.description)}</p></div><span class="item-count">${format(this.game.resources?.[id])}</span></div>`).join('');
-    const body = tab === 'resources' ? resourceRows : filtered.length ? page.map(([id,count])=>this.itemRow(this.item(id),count)).join('') : '<p class="empty-inventory">Dein Rucksack hat noch Platz für neue Geschichten.<br><span class="panel-note">Finde Truhen, besiege Gegner oder stelle etwas an der Werkbank her.</span></p>';
+    if(!page.some(([id])=>id===this.inventorySelected))this.inventorySelected=page[0]?.[0] || null;
+    const resources=Object.entries(RESOURCES).filter(([id,r])=>!search||`${r.name} ${r.description}`.toLocaleLowerCase('de-DE').includes(search)).map(([id,resource])=>`<div class="item-row resource-row"><div class="item-icon">${icon(resourceIcon(id))}</div><div class="item-main"><h3>${escape(resource.name)}</h3><p>${escape(resource.description)}</p></div><span class="item-count">${format(this.game.resources?.[id])}</span></div>`).join('');
+    const activeFilters=[this.inventoryType&&this.inventoryType!=='all',this.inventoryRarity&&this.inventoryRarity!=='all',this.inventoryFlags&&this.inventoryFlags!=='all',this.inventoryUsable,this.inventorySort&&this.inventorySort!=='default'].filter(Boolean).length;
+    const controls=`<div class="inventory-search-row"><label class="search-field"><span>${stored?'Lager':'Gepäck'} durchsuchen</span><input class="game-input" type="search" data-ui-search="inventorySearch" value="${escape(this.inventorySearch || '')}" placeholder="Name oder Eigenschaft …" autocomplete="off" /></label>${tab!=='resources'?`<button class="small-button inventory-filter-toggle" data-command="inventory-filters" aria-expanded="${!!this.inventoryFiltersOpen}" aria-controls="inventory-filters">${icon('settings')}Filter & Sortierung${activeFilters?` · ${activeFilters} aktiv`:''}</button>`:''}</div>${tab!=='resources'?`<div id="inventory-filters" class="inventory-filter-content inventory-toolbar compact-toolbar ${this.inventoryFiltersOpen?'expanded':''}"><label><span>Seltenheit</span><select class="game-input" data-ui-filter="inventoryRarity"><option value="all">Alle Seltenheiten</option>${Object.entries(rarityLabels).map(([id,label])=>`<option value="${id}" ${this.inventoryRarity===id?'selected':''}>${label}</option>`).join('')}</select></label><label><span>Sortieren</span><select class="game-input" data-ui-filter="inventorySort">${[['default','Fundreihenfolge'],['power','Höchste Macht'],['rarity','Seltenheit'],['name','Name A–Z']].map(([id,label])=>`<option value="${id}" ${this.inventorySort===id?'selected':''}>${label}</option>`).join('')}</select></label>${tab!=='consumables'?`<label><span>Ausrüstungsplatz</span><select class="game-input" data-ui-filter="inventoryType"><option value="all">Alle Plätze</option>${EQUIPMENT_SLOTS.map(slot=>`<option value="${slot.id}" ${this.inventoryType===slot.id?'selected':''}>${escape(slot.name)}</option>`).join('')}${stored?'<option value="consumable">Vorräte</option>':''}</select></label>`:''}<label><span>Markierungen</span><select class="game-input" data-ui-filter="inventoryFlags">${[['all','Alle Gegenstände'],['favorite','Favoriten'],['locked','Gesperrte Beute']].map(([id,label])=>`<option value="${id}" ${this.inventoryFlags===id?'selected':''}>${label}</option>`).join('')}</select></label><label class="usable-filter"><input type="checkbox" data-ui-filter="inventoryUsable" ${this.inventoryUsable?'checked':''} /> Für mich nutzbar</label></div>`:''}`;
+    const cards=page.map(([id,count])=>{
+      const item=this.item(id),slot=equipmentSlot(item),equipped=Object.values(this.game.equipment || {}).includes(id),flags=this.game.itemFlags?.[id] || {},level=item.level || item.minLevel || 1;
+      return `<button type="button" class="item-grid-card ${escape(item.rarity || 'common')} ${this.inventorySelected===id?'selected':''} ${equipped?'equipped':''}" data-command="inspect-item" data-id="${escape(id)}" aria-pressed="${this.inventorySelected===id}" aria-label="${escape(item.name)}, ${escape(rarityLabels[item.rarity])}, Stufe ${level}${equipped?', angelegt':''}"><span class="grid-card-flags">${flags.favorite?icon('star'):''}${flags.locked?icon('lock'):''}</span><span class="grid-card-icon">${icon(itemIcon(item))}</span><strong>${escape(item.name)}</strong><span class="grid-card-meta">${escape(EQUIPMENT_SLOTS.find(s=>s.id===slot)?.name || 'Vorrat')} · ${level}</span><span class="grid-card-rarity">${escape(rarityLabels[item.rarity] || 'Gewöhnlich')}</span>${count>1?`<b class="grid-card-count">×${count}</b>`:''}${equipped?'<span class="grid-card-equipped">ANGELEGT</span>':''}</button>`;
+    }).join('');
     const pagination=tab!=='resources'&&pages>1?`<div class="inventory-pagination"><button class="small-button" data-command="inventory-page" data-id="${this.inventoryPage-1}" ${this.inventoryPage===0?'disabled':''}>Zurück</button><span>${this.inventoryPage+1} / ${pages} · ${filtered.length} Gegenstände</span><button class="small-button" data-command="inventory-page" data-id="${this.inventoryPage+1}" ${this.inventoryPage===pages-1?'disabled':''}>Weiter</button></div>`:'';
-    return `${tabs}<div class="inventory-layout"><div class="item-list">${body}${pagination}</div><aside class="inventory-summary"><h3 class="section-title">Deine Ausrüstungsplätze</h3>${this.equipmentSlots()}<h3 class="section-title">Dein Vermögen</h3><div class="summary-stat"><span>Goldstücke</span><strong>${format(this.game.player?.gold)}</strong></div><p class="panel-note">Der Vergleich zeigt deine gesamten Charakterwerte vor und nach dem Anlegen, einschließlich Setboni.</p><button class="small-button" data-panel="craft">${icon('craft')}Handwerk öffnen</button></aside></div>`;
+    const ready=this.game.inSettlement?.()&&!this.game.inCombat?.();
+    return `${tabs}${tab==='resources'?'':`<div class="equipment-belt" aria-label="Sieben Ausrüstungsplätze">${this.equipmentBelt()}</div>`}${controls}${stored?`<p class="storage-note ${ready?'ready':''}">${icon('bag')}${ready?'Lager geöffnet. Gegenstände können kostenlos eingelagert und entnommen werden.':'Lagertransfers benötigen eine sichere Siedlung außerhalb des Kampfes. Deine gelagerten Gegenstände bleiben hier sichtbar.'}</p>`:''}<div class="inventory-workbench"><div class="inventory-bag"><div class="bag-heading"><p class="results-count">${tab==='resources'?'Materialien':`${filtered.length} von ${entries.filter(([id])=>stored||tab==='consumables'?stored||this.item(id).type==='consumable':this.item(id).type!=='consumable').length} Gegenständen`}</p><span>${icon('coin')}${format(this.game.player.gold)}</span></div>${tab==='resources'?resources:`<div class="item-grid" id="inventory-grid">${cards || '<p class="empty-inventory">Keine passenden Gegenstände.<br><small>Ändere die Filter oder entdecke neue Beute in der Welt.</small></p>'}</div>${pagination}<p class="panel-note bag-hint">Wähle einen Gegenstand zum Vergleichen. Favoriten und gesperrte Beute sind vor Verkauf und Zerlegen geschützt.</p>`}</div>${tab==='resources'?`<aside class="material-guide"><h3 class="section-title">Verarbeite deine Beute</h3><p class="panel-note">Materialien fließen in Schmiederezepte, Tränke, Runen und Aufwertungen. Zerlegte Ausrüstung liefert Arkanstaub.</p><button class="small-button" data-panel="craft">${icon('craft')}Zur Werkbank</button></aside>`:`<aside class="inventory-inspector" id="inventory-inspector" aria-label="Gegenstandsdetails">${this.itemInspector(this.inventorySelected,stored)}</aside>`}</div>`;
   }
 
+  itemInspector(id,stored=false) {
+    const item=this.item(id);if(!item)return `<div class="inspector-empty">${icon('bag')}<h3>Dein nächster Fund wartet.</h3><p>Wähle Beute im Raster. Hier siehst du Werte, Voraussetzungen und den Vergleich mit deiner Ausrüstung.</p></div>`;
+    const flags=this.game.itemFlags?.[id] || {},equipped=Object.values(this.game.equipment || {}).includes(id),ready=this.game.inSettlement?.()&&!this.game.inCombat?.();
+    return `<div class="inspector-heading"><span class="eyebrow">${stored?'AUS DEINEM LAGER':'GEGENSTAND PRÜFEN'}</span><button class="text-button inspector-back" data-command="inspect-back">Zur Beute ↑</button></div>${this.itemRow(item,(stored?this.game.stash:this.game.inventory)?.[id] || 0,stored?'stash':'equip')}${stored?this.equipmentComparison(item):''}<div class="item-flag-actions"><button class="small-button ${flags.favorite?'selected':''}" data-command="item-flag" data-id="${escape(id)}" data-flag="favorite" aria-pressed="${!!flags.favorite}">${icon('star')}${flags.favorite?'Favorit':'Favorisieren'}</button><button class="small-button ${flags.locked?'selected':''}" data-command="item-flag" data-id="${escape(id)}" data-flag="locked" aria-pressed="${!!flags.locked}">${icon('lock')}${flags.locked?'Gesperrt':'Sperren'}</button></div>${!stored?`<button class="small-button stash-transfer" data-command="depositItem" data-id="${escape(id)}" ${ready&&!equipped?'':'disabled'}>${icon('bag')}Ins Lager legen</button>`:''}<p class="panel-note inspector-note">${equipped?'Diese Ausrüstung ist angelegt. Lege sie ab, bevor du sie einlagerst.':!ready?'Lagertransfers sind in einer sicheren Siedlung möglich.':'Lagern kostet kein Gold.'}${flags.locked||flags.favorite?' Dieser Gegenstand ist vor Verkauf und Zerlegen geschützt.':''}</p>`;
+  }
+
+  equipmentBelt() {
+    return EQUIPMENT_SLOTS.map(slot=>{const item=this.item(this.game.equipment?.[slot.id]);return `<button class="gear-belt-slot ${item?escape(item.rarity):'empty'}" data-command="${item?'inspect-item':'open-equipment'}" data-id="${escape(item?.id || slot.id)}" title="${escape(slot.name)}: ${escape(item?.name || 'Noch unbesetzt')}">${icon(item?itemIcon(item):this.slotIcon(slot.id))}<span>${escape(slot.name)}</span></button>`;}).join('');
+  }
+
+  slotIcon(slot) {return {weapon:'sword',armor:'shield',charm:'gem',helmet:'helmet',gloves:'gloves',boots:'boots',ring:'ring'}[slot] || 'shield';}
+
   equipmentSlots() {
-    return [['weapon','Waffe'],['armor','Rüstung'],['charm','Amulett']].map(([slot,label])=> {
-      const item = this.item(this.game.equipment?.[slot]);
-      return `<div class="equipment-slot ${item?'filled':'empty'}"><div class="item-icon ${escape(item?.rarity || '')}">${icon(item ? itemIcon(item) : slot === 'weapon' ? 'sword' : slot === 'armor' ? 'shield' : 'gem')}</div><div class="item-main"><span class="slot-label">${label.toUpperCase()}</span><h3>${escape(item?.name || 'Noch unbesetzt')}</h3>${item?`<p>${this.statsText(this.itemStats(item.id))}</p>`:'<p>Finde passende Ausrüstung auf deinen Wegen.</p>'}</div>${item?`<button class="small-button subtle-button" data-command="unequip" data-id="${slot}" aria-label="${label} ablegen">Ablegen</button>`:`<button class="small-button" data-command="open-equipment">Anlegen</button>`}</div>`;
+    return EQUIPMENT_SLOTS.map(({id:slot,name:label})=>{
+      const item=this.item(this.game.equipment?.[slot]);
+      return `<div class="equipment-slot ${item?'filled':'empty'}"><div class="item-icon ${escape(item?.rarity || '')}">${icon(item?itemIcon(item):this.slotIcon(slot))}</div><div class="item-main"><span class="slot-label">${label.toUpperCase()}</span><h3>${escape(item?.name || 'Noch unbesetzt')}</h3>${item?`<p>${this.statsText(this.itemStats(item.id))}</p>`:'<p>Finde passende Ausrüstung auf deinen Wegen.</p>'}</div>${item?`<button class="small-button subtle-button" data-command="unequip" data-id="${slot}" aria-label="${label} ablegen">Ablegen</button>`:`<button class="small-button" data-command="open-equipment" data-id="${slot}">Anlegen</button>`}</div>`;
     }).join('');
   }
 
+  paperdoll() {
+    const cls=getClass(this.game.player.classId);
+    return `<div class="paperdoll" style="--hero-color:${cls.color}"><div class="paperdoll-figure" aria-hidden="true"><div class="hero-atlas-sprite" style="--sprite-y:${-192*Math.max(0,['guardian','paladin','ranger','nightblade','flamecaller','frostweaver','druid','shadowbinder'].indexOf(cls.id))}px"></div><span>${escape(cls.name)}</span></div>${EQUIPMENT_SLOTS.map(slot=>{const item=this.item(this.game.equipment?.[slot.id]);return `<div class="paper-slot paper-slot-${slot.id}"><span class="slot-label">${escape(slot.name)}</span><button class="${item?escape(item.rarity):'empty'}" type="button" data-command="${item?'inspect-item':'open-equipment'}" data-id="${escape(item?.id || slot.id)}" aria-label="${escape(slot.name)}: ${escape(item?.name || 'Noch unbesetzt')}">${icon(item?itemIcon(item):this.slotIcon(slot.id))}${item?'<i class="paper-equipped" aria-hidden="true"></i>':''}</button><strong>${escape(item?.name || 'Noch unbesetzt')}</strong></div>`;}).join('')}</div>`;
+  }
+
   character() {
-    const player = this.game.player || {};
-    const stats = this.game.stats();
-    const xpNeeded = typeof this.game.xpNeeded === 'function' ? this.game.xpNeeded() : this.game.xpNeeded || 100;
-    const completed = Object.values(this.game.questState || {}).filter(state=>state.status==='done').length;
-    const currentClass = getClass(player.classId);
-    const values = ['damage','spellDamage','maxHp','mana','armor','crit','speed','manaRegen','lifeSteal','gatherYield','cooldown','dodgeCooldown'];
-    return `<div class="character-banner"><div class="character-seal" style="color:${currentClass.color}">${icon(classIcons[currentClass.id])}</div><div><h3>${escape(player.name || 'Aren')}</h3><p>${escape(currentClass.name)} · ${escape(currentClass.role)} · Stufe ${player.level || 1} / ${MAX_LEVEL}<br>${player.level>=MAX_LEVEL?'Höchste Stufe erreicht':`${format(player.xp)} / ${format(xpNeeded)} Erfahrung`} · ${format(player.skillPoints)} freie Talentpunkte</p></div></div><p class="panel-note">${escape(currentClass.description)}</p><div class="class-abilities">${Object.entries(currentClass.abilities).map(([key,ability])=>`<div>${icon(abilityIcon(ability,currentClass.id))}<strong>${escape(ability.name)}</strong><span>${key==='attack'?'J / Klick':key==='bolt'?'Q / 1':'F / 2'}${ability.cost?` · ${ability.cost} Mana`:''} · ${seconds(ability.cooldown*(key==="attack"?1:1-stats.cooldown))} Sek.</span></div>`).join('')}</div><div class="stats-grid">${values.map(key=>`<div class="summary-stat"><span>${escape(statLabels[key])}</span><strong>${['crit','lifeSteal','cooldown','dodgeCooldown'].includes(key)?percent(stats[key]):Number(stats[key] || 0).toLocaleString('de-DE',{maximumFractionDigits:1})}</strong></div>`).join('')}</div><p class="panel-note"><button class="small-button" data-panel="talents">${icon('tree')}Neue Fähigkeiten lernen · ${getLearnedAbilities(this.game).length} / 3 erlernt</button></p><h3 class="section-title">Was du mit dir trägst</h3><div class="character-equipment">${this.equipmentSlots()}</div><p class="panel-note">${completed} von ${QUESTS.length} Questen abgeschlossen · ${(this.game.discovered || []).length} von ${REGIONS.length} Regionen entdeckt.<br>Mit jeder neuen Stufe erhältst du Talentpunkte. Neue Klassenpfade öffnen sich auf Stufe 12, 25, 40, 60 und 80.</p>`;
+    const player=this.game.player || {},stats=this.game.stats(),cls=getClass(player.classId),xpNeeded=typeof this.game.xpNeeded==='function'?this.game.xpNeeded():this.game.xpNeeded || 100;
+    const tabs=`<div class="panel-tabs" role="group" aria-label="Charakteransicht"><button class="${this.characterTab!=='build'?'active':''}" data-character-tab="equipment" aria-pressed="${this.characterTab!=='build'}">Ausrüstung & Werte</button><button class="${this.characterTab==='build'?'active':''}" data-character-tab="build" aria-pressed="${this.characterTab==='build'}">Kampfaufbau & Presets</button></div>`;
+    const banner=`<div class="hero-heading"><div class="hero-class-seal" style="--hero-color:${cls.color}">${icon(classIcons[cls.id])}</div><div><span class="eyebrow">${escape(cls.role)} · STUFE ${player.level || 1} / ${MAX_LEVEL}</span><h3>${escape(player.name || 'Aren')} <small>${escape(cls.name)}</small></h3><p>${player.level>=MAX_LEVEL?'Höchste Stufe erreicht':`${format(player.xp)} / ${format(xpNeeded)} Erfahrung`} · ${format(player.skillPoints)} freie Talentpunkte</p></div><button class="small-button" data-panel="talents">${icon('tree')}Talente verteilen</button></div>`;
+    if(this.characterTab==='build')return `${tabs}${banner}${this.buildOverview()}`;
+    const groups=[['Offensive','sword',['damage','spellDamage','crit','lifeSteal']],['Überleben','shield',['maxHp','armor','mana','manaRegen']],['Bewegung & Nutzen','dash',['speed','cooldown','dodgeCooldown','gatherYield']]];
+    return `${tabs}${banner}<div class="hero-equipment-layout"><section class="paperdoll-card"><p class="eyebrow">SIEBEN PLÄTZE · DEIN EIGENER WEG</p>${this.paperdoll()}<p class="panel-note">Wähle einen Platz, um seine Beute zu prüfen oder passende Ausrüstung zu suchen.</p></section><aside class="hero-stats">${groups.map(([name,glyph,values])=>`<section class="stat-group"><h3>${icon(glyph)}${name}</h3>${values.map(key=>`<div class="summary-stat"><span>${escape(statLabels[key])}</span><strong>${statValue(key,stats[key])}</strong></div>`).join('')}</section>`).join('')}<p class="panel-note">Die Gesamtwerte enthalten Ausrüstung, Setboni, Talente und aktive Gaben.</p></aside></div><div class="hero-progress-strip"><span>${icon('book')}${Object.values(this.game.questState || {}).filter(state=>state.status==='done').length} Questen erfüllt</span><span>${icon('map')}${(this.game.discovered || []).length} / ${REGIONS.length} Regionen erkundet</span><span>${icon('tree')}${getLearnedAbilities(this.game).length} / ${ABILITIES.filter(a=>a.classId===player.classId).length} Techniken erlernt</span><button class="text-button" data-panel="journey">Dein Vermächtnis ansehen ${icon('arrow')}</button></div>`;
+  }
+
+  buildOverview() {
+    const cls=getClass(this.game.player.classId),stats=this.game.stats(),learned=getLearnedAbilities(this.game),safe=this.game.inSettlement?.()&&!this.game.inCombat?.();
+    const slots=[...Object.entries(cls.abilities).map(([key,ability])=>({name:ability.name,key:key==='attack'?'J':key==='bolt'?'Q / 1':'F / 2',cost:ability.cost || 0,cooldown:ability.cooldown*(key==='attack'?1:1-(stats.cooldown || 0)),glyph:abilityIcon(ability,cls.id)})),...[0,1].map(slot=>{const ability=getAbility(this.game.abilityLoadout?.[slot]);return {name:ability?.name || 'Kein Skill belegt',key:String(slot+3),cost:ability?.cost || 0,cooldown:ability?.cooldown*(1-(stats.cooldown || 0)) || 0,glyph:ability?learnedIcon(ability):'tree',empty:!ability};})];
+    const cost=20+this.game.player.level*5,invested=Object.values(this.game.skills || {}).some(rank=>rank>0);
+    return `<h3 class="section-title">Dein Kampfstil</h3><div class="build-action-grid">${slots.map(slot=>`<article class="build-action ${slot.empty?'empty':''}"><kbd>${slot.key}</kbd>${icon(slot.glyph)}<h4>${escape(slot.name)}</h4><span>${slot.empty?'In Talenten einen Zusatzskill wählen':`${slot.cost} Mana · ${seconds(slot.cooldown)} Sek.`}</span></article>`).join('')}</div><div class="build-summary"><span>${learned.length} aktive Techniken erlernt</span><span>${Object.values(this.game.skills || {}).reduce((sum,rank)=>sum+Number(rank || 0),0)} Talentränge verteilt</span><button class="small-button" data-panel="talents">Fähigkeiten & Talente bearbeiten</button></div><h3 class="section-title">Gespeicherte Kampfaufbauten <small>${(this.game.loadouts || []).length} / 3</small></h3><p class="panel-note">Presets wechseln deine sieben Ausrüstungsplätze und die Zusatzskills 3 und 4. Deine verteilten Talentränge bleiben dabei bestehen.</p><div class="loadout-save"><label><span>Name des Aufbaus</span><input class="game-input" data-ui-draft="loadoutName" value="${escape(this.loadoutName || '')}" maxlength="28" placeholder="z. B. Bossjäger oder Seelenschutz" autocomplete="off" /></label><button class="small-button" data-command="save-loadout" ${(this.game.loadouts || []).length>=3?'disabled':''}>${icon('save')}Aktuellen Aufbau speichern</button></div><div class="loadout-list">${(this.game.loadouts || []).map(loadout=>{
+      const missing=Object.values(loadout.equipment || {}).filter(id=>id&&!(this.game.inventory?.[id]>0));
+      const problems=loadoutProblems(this.game,loadout);
+      const unknown=(loadout.abilityLoadout || []).filter(id=>id&&!this.game.learnedAbilities?.[id]);
+      return `<article class="saved-loadout ${problems.length?'incomplete':''}"><div><h4>${escape(loadout.name)}</h4><p>${Object.values(loadout.equipment || {}).filter(Boolean).length} Ausrüstungsteile · ${(loadout.abilityLoadout || []).map(id=>getAbility(id)?.name || 'Leerer Zusatzplatz').map(escape).join(' / ')}</p>${missing.length?`<p class="equipment-lock">Fehlt im Gepäck: ${missing.map(id=>escape(this.item(id)?.name || 'Verlorener Gegenstand')).join(', ')}</p>`:''}${unknown.length?`<p class="equipment-lock">Zusatzskills erneut lernen: ${unknown.map(id=>escape(getAbility(id)?.name || id)).join(', ')}</p>`:''}${!missing.length&&!unknown.length&&problems.length?`<p class="equipment-lock">${problems.map(escape).join(' · ')}</p>`:''}${this.game.inCombat?.()?'<p class="equipment-lock">Aufbauten außerhalb des Kampfes wechseln.</p>':''}</div><div><button class="small-button" data-command="applyLoadout" data-id="${escape(loadout.id)}" ${problems.length||this.game.inCombat?.()?'disabled':''}>Aufbau anlegen</button><button class="text-button" data-command="deleteLoadout" data-id="${escape(loadout.id)}">Löschen</button></div></article>`;
+    }).join('') || '<p class="panel-note">Speichere einen Aufbau, um später zwischen Jagd, Bosskämpfen und Unterstützung zu wechseln.</p>'}</div><div class="respec-card"><div><h3>Deinen Weg neu wählen</h3><p>Passive Talentränge zurücksetzen und ihre investierten Punkte neu verteilen. Möglich in einer sicheren Siedlung außerhalb des Kampfes.</p></div><button class="small-button" data-command="respecTalents" ${safe&&invested&&this.game.player.gold>=cost?'':'disabled'}>${icon('coin')}${format(cost)} Gold · Neu verteilen</button></div>`;
   }
 
   talents() {
-    const skills = this.game.availableSkills();
-    const currentClass=getClass(this.game.player.classId);
-    const branches = [...new Set(skills.map(skill=>skill.branch))];
-    const points = this.game.player?.skillPoints || 0;
-    const tabs=`<div class="panel-tabs"><button data-talent-tab="abilities" class="${this.talentTab==='abilities'?'active':''}">Aktive Fähigkeiten</button><button data-talent-tab="passives" class="${this.talentTab==='passives'?'active':''}">Talentpfade</button></div>`;
+    const skills=this.game.availableSkills(),currentClass=getClass(this.game.player.classId);
+    const branches=[...new Set(skills.map(skill=>skill.branch))],points=this.game.player?.skillPoints || 0;
+    const tabs=`<div class="panel-tabs" role="group" aria-label="Fähigkeitsart"><button data-talent-tab="abilities" aria-pressed="${this.talentTab==='abilities'}" class="${this.talentTab==='abilities'?'active':''}">Aktive Fähigkeiten</button><button data-talent-tab="passives" aria-pressed="${this.talentTab==='passives'}" class="${this.talentTab==='passives'?'active':''}">Talentpfade</button></div>`;
     const header=`<div class="talent-header"><span>${escape(currentClass.name)} · Stufe ${this.game.player.level}</span><strong>${points} Talentpunkt${points===1?'':'e'} verfügbar</strong></div>`;
     if(this.talentTab==='abilities')return `${tabs}${header}${this.activeAbilities()}`;
-    return `${tabs}${header}<div class="talent-trees" style="--tree-columns:${Math.min(3,branches.length)}">${branches.map(branch=>`<section class="talent-tree"><h3>${escape(branch)}</h3><p>${escape(branchDescriptions[branch] || `Ein Weg der Klasse ${currentClass.name}.`)}</p>${skills.filter(skill=>skill.branch===branch).map(skill=> {
-      const rank = Number(this.game.skills?.[skill.id]) || 0;
-      const requires=skill.requires;
+    const selected=this.talentBranch && branches.includes(this.talentBranch)?this.talentBranch:'all';
+    const navigation=`<div class="branch-tabs" role="group" aria-label="Talentzweige">${['all',...branches].map(branch=>`<button class="small-button ${selected===branch?'selected':''}" aria-pressed="${selected===branch}" data-talent-branch="${escape(branch)}">${branch==='all'?'Alle Pfade':escape(branch)}</button>`).join('')}</div>`;
+    const visible=selected==='all'?branches:[selected];
+    return `${tabs}${header}<p class="panel-note">Jeder Rang verstärkt deine Werte. Folge den verbundenen Talenten; Schlüsseltalente geben große Macht und verlangen einen Preis.</p>${navigation}<div class="talent-trees" style="--tree-columns:${Math.min(3,visible.length)}">${visible.map(branch=>`<section class="talent-tree"><div class="talent-branch-heading">${icon(branchIcons[branch] || classIcons[currentClass.id])}<h3>${escape(branch)}</h3></div><p>${escape(branchDescriptions[branch] || `Ein Pfad der Klasse ${currentClass.name}.`)}</p>${skills.filter(skill=>skill.branch===branch).map(skill=>{
+      const rank=Number(this.game.skills?.[skill.id]) || 0,requires=skill.requires;
       const requirements=!requires?[]:Array.isArray(requires)?requires:[requires];
-      const requirementMet = requirements.every(requirement=>(this.game.skills?.[typeof requirement==='string'?requirement:requirement.id] || 0)>=(typeof requirement==='string'?1:requirement.rank || 1));
-      const levelMet=this.game.player.level>=(skill.minLevel || 1);
-      const canLearn = requirementMet && levelMet && points>=skill.cost && rank<skill.maxRank;
-      const prerequisiteNames=requirements.map(requirement=>skills.find(entry=>entry.id===(typeof requirement==='string'?requirement:requirement.id))?.name || '').filter(Boolean);
-      return `<div class="talent-node ${!requirementMet || !levelMet?'unavailable':''} ${rank?'learned':''}"><div class="talent-node-top"><div class="item-icon">${icon(branchIcons[branch] || classIcons[currentClass.id])}</div><div><h4>${escape(skill.name)}</h4><span class="talent-node-rank">RANG ${rank} / ${skill.maxRank} · STUFE ${skill.minLevel || 1}</span></div></div><p>${escape(skill.description)}</p><button class="small-button" data-command="learn" data-id="${escape(skill.id)}" ${canLearn?'':'disabled'}>${rank>=skill.maxRank?'Meisterhaft':`Lernen · ${skill.cost} Punkt${skill.cost===1?'':'e'}`}</button>${!levelMet?`<span class="talent-requirement">Benötigt Stufe ${skill.minLevel}</span>`:''}${!requirementMet?`<span class="talent-requirement">Benötigt ${escape(prerequisiteNames.join(', '))}</span>`:''}</div>`;
+      const needed=requirement=>typeof requirement==='string'?skill.requiresRank || 1:requirement.rank || 1;
+      const requirementMet=requirements.every(r=>(this.game.skills?.[typeof r==='string'?r:r.id] || 0)>=needed(r));
+      const levelMet=this.game.player.level>=(skill.minLevel || 1),canLearn=requirementMet&&levelMet&&points>=skill.cost&&rank<skill.maxRank;
+      const prerequisiteNames=requirements.map(r=>`${skills.find(entry=>entry.id===(typeof r==='string'?r:r.id))?.name || 'Vorgängertalent'} Rang ${needed(r)}`);
+      const effects=[skill.effect,...(skill.secondaryEffects || [])].filter(Boolean);
+      const modifiers=effects.map(effect=>`<span class="${effect.value<0?'stat-worse':'stat-better'}">${escape(statLabels[effect.stat] || effect.stat)} ${effect.value>0?'+':''}${statValue(effect.stat,effect.value)} pro Rang</span>`).join('');
+      return `<article class="talent-node ${!requirementMet||!levelMet?'unavailable':''} ${rank?'learned':''} ${skill.keystone?'keystone':''}" data-talent-id="${escape(skill.id)}">${requirements.length?`<div class="talent-link" aria-hidden="true"></div>`:''}<div class="talent-node-top"><div class="item-icon">${icon(skill.keystone?'gem':branchIcons[branch] || classIcons[currentClass.id])}</div><div>${skill.keystone?'<span class="keystone-label">SCHLÜSSELTALENT</span>':''}<h4>${escape(skill.name)}</h4><span class="talent-node-rank">RANG ${rank} / ${skill.maxRank} · STUFE ${skill.minLevel || 1}</span></div></div><div class="rank-pips" aria-label="${rank} von ${skill.maxRank} Rängen">${Array.from({length:skill.maxRank},(_,i)=>`<i class="${i<rank?'filled':''}"></i>`).join('')}</div><p>${escape(skill.description)}</p>${modifiers?`<div class="talent-effects">${modifiers}</div>`:''}<button class="small-button" data-command="learn" data-id="${escape(skill.id)}" ${canLearn?'':'disabled'}>${rank>=skill.maxRank?'Meisterhaft':`Lernen · ${skill.cost} Punkt${skill.cost===1?'':'e'}`}</button>${!levelMet?`<span class="talent-requirement">Benötigt Stufe ${skill.minLevel}</span>`:''}${!requirementMet?`<span class="talent-requirement">Benötigt ${escape(prerequisiteNames.join(', '))}</span>`:''}${levelMet&&requirementMet&&rank<skill.maxRank&&points<skill.cost?`<span class="talent-requirement">Benötigt ${skill.cost} Talentpunkt${skill.cost===1?'':'e'}</span>`:''}</article>`;
     }).join('')}</section>`).join('')}</div>`;
   }
 
   activeAbilities() {
     const stats=this.game.stats(),learned=getLearnedAbilities(this.game),abilities=ABILITIES.filter(ability=>ability.classId===this.game.player.classId);
-    return `<p class="panel-note">Deine Basisfähigkeiten bleiben auf Q und F. Lerne neue Techniken ab Stufe 4, 12 und 25 und belege zwei Zusatzplätze. Lernen verbraucht Talentpunkte; Belegen ist kostenlos.</p><div class="ability-loadout">${[0,1].map(slot=>`<label class="loadout-slot"><span>PLATZ ${slot+3} · ${this.game.abilityLoadout?.[slot]?'BELEGT':'FREI'}</span><select class="game-input" data-ability-loadout="${slot}" aria-label="Fähigkeit auf Platz ${slot+3}"><option value="">Keine Fähigkeit</option>${learned.map(ability=>`<option value="${ability.id}" ${this.game.abilityLoadout?.[slot]===ability.id?'selected':''}>${escape(ability.name)}</option>`).join('')}</select></label>`).join('')}</div><div class="learnable-abilities">${abilities.map(ability=>{
+    const branches=[...new Set(abilities.map(a=>a.branch || 'Klassentechniken'))];
+    return `<p class="panel-note">Deine Basisfähigkeiten bleiben auf Q und F. Wähle zwei erlernte Techniken für die Plätze 3 und 4. Lernen verbraucht Talentpunkte; Belegen ist kostenlos.</p><div class="ability-loadout">${[0,1].map(slot=>`<label class="loadout-slot"><span><kbd>${slot+3}</kbd> PLATZ ${slot+3} · ${this.game.abilityLoadout?.[slot]?'BELEGT':'FREI'}</span><select class="game-input" data-ability-loadout="${slot}" aria-label="Fähigkeit auf Platz ${slot+3}"><option value="">Keine Fähigkeit</option>${learned.map(ability=>`<option value="${ability.id}" ${this.game.abilityLoadout?.[slot]===ability.id?'selected':''}>${escape(ability.name)}</option>`).join('')}</select></label>`).join('')}</div>${branches.map(branch=>`<section class="active-branch"><h3 class="section-title">${escape(branch)}<small>${abilities.filter(a=>(a.branch || 'Klassentechniken')===branch).filter(a=>this.game.learnedAbilities?.[a.id]).length} / ${abilities.filter(a=>(a.branch || 'Klassentechniken')===branch).length} erlernt</small></h3><div class="learnable-abilities">${abilities.filter(a=>(a.branch || 'Klassentechniken')===branch).sort((a,b)=>a.level-b.level).map(ability=>{
       const known=Boolean(this.game.learnedAbilities?.[ability.id]),check=canLearnAbility(this.game,ability.id),required=ability.requires?getAbility(ability.requires):null;
-      const occupied=(this.game.abilityLoadout||[]).findIndex(id=>id===ability.id);
+      const occupied=(this.game.abilityLoadout || []).findIndex(id=>id===ability.id);
       return `<article class="learnable-ability ${known?'learned':check.ok?'learnable':'locked'}"><div class="learnable-heading"><div class="item-icon">${icon(learnedIcon(ability))}</div><div><h3>${escape(ability.name)}</h3><span class="ability-state">${known?occupied>=0?`ERLERNT · AUF PLATZ ${occupied+3}`:'ERLERNT':check.ok?'LERNBAR':this.game.player.level<ability.level?`AB STUFE ${ability.level}`:'VORAUSSETZUNG FEHLT'}</span></div></div><p>${escape(ability.description)}</p><div class="ability-facts"><span>Stufe ${ability.level}</span><span>${ability.cost} Mana</span><span>${seconds(ability.cooldown*(1-stats.cooldown))} Sek. Abklingzeit</span>${required?`<span>Benötigt ${escape(required.name)}</span>`:''}</div>${known?`<div class="ability-equip-actions">${[0,1].map(slot=>`<button class="small-button ${occupied===slot?'subtle-button':''}" data-command="assign-ability" data-id="${ability.id}" data-slot="${slot}" ${occupied===slot?'disabled':''}>${occupied===slot?`Auf ${slot+3} belegt`:`Auf ${slot+3} belegen`}</button>`).join('')}</div>`:`<button class="small-button" data-command="learnAbility" data-id="${ability.id}" ${check.ok?'':'disabled'}>Lernen · ${ability.talentCost} Talentpunkt${ability.talentCost===1?'':'e'}</button>${!check.ok?`<p class="talent-requirement">${escape(check.reason)}</p>`:''}`}</article>`;
-    }).join('')}</div>`;
+    }).join('')}</div></section>`).join('')}`;
   }
 
   craft() {
-    return `<div class="craft-layout">${RECIPES.map(recipe=> {
-      const output = ITEMS[recipe.output];
-      const enough = Object.entries(recipe.ingredients).every(([id,amount])=>(this.game.resources?.[id] || 0)>=amount);
-      return `<article class="recipe"><div class="recipe-top"><div class="item-icon ${escape(output?.rarity)}">${icon(itemIcon(output))}</div><div><h3>${escape(recipe.name)}</h3><p>${escape(recipe.description)}</p></div></div><div class="ingredients">${Object.entries(recipe.ingredients).map(([id,amount])=>`<span class="ingredient ${(this.game.resources?.[id] || 0)<amount?'missing':''}">${escape(RESOURCES[id]?.name || id)} ${format(this.game.resources?.[id])}/${amount}</span>`).join('')}</div><div class="recipe-actions"><span class="recipe-level">${recipe.amount || 1} × ${escape(output?.name)}</span><button class="small-button" data-command="craft" data-id="${escape(recipe.id)}" ${enough?'':'disabled'}>Herstellen ${icon('craft')}</button></div></article>`;
-    }).join('')}</div><p class="panel-note">Sammle Holz an Bäumen, Erz an Felsen und Mondkraut auf den Lichtungen. Glutkristalle findest du in den Fernlanden. Für Hainbrot pflanzt du Saatgut auf dem Acker in Glutwacht.</p>`;
+    const classId=this.game.player.classId,level=this.game.player.level;
+    const relevant=RECIPES.filter(recipe=>!recipe.classIds||recipe.classIds.includes(classId));
+    const recipes=this.craftFilter==='all'?relevant:this.craftFilter==='ready'?relevant.filter(r=>(r.minLevel || 1)<=level&&canCraftJourneyRecipe(this.game,r).ok&&Object.entries(r.ingredients).every(([id,n])=>(this.game.resources?.[id] || 0)>=n)):relevant.filter(recipe=>(recipe.minLevel || 1)<=level+10);
+    return `<div class="craft-toolbar"><p class="panel-note">Deine Klasse: ${escape(getClass(classId).name)} · Stufe ${level}. Materialien und Stufenvoraussetzungen gelten für jedes Rezept.</p><label><span>Rezepte anzeigen</span><select class="game-input" data-ui-filter="craftFilter">${[['available','Verfügbar & nächste Stufen'],['ready','Jetzt herstellbar'],['all','Alle Rezepte meiner Klasse']].map(([id,label])=>`<option value="${id}" ${this.craftFilter===id?'selected':''}>${label}</option>`).join('')}</select></label></div><div class="craft-layout">${recipes.map(recipe=>{
+      const output=ITEMS[recipe.output],requiredLevel=recipe.minLevel || 1;
+      const enough=Object.entries(recipe.ingredients).every(([id,amount])=>(this.game.resources?.[id] || 0)>=amount),levelMet=level>=requiredLevel,journeyGate=canCraftJourneyRecipe(this.game,recipe);
+      return `<article class="recipe ${!levelMet?'recipe-locked':''}"><div class="recipe-top"><div class="item-icon ${escape(output?.rarity)}">${icon(itemIcon(output))}</div><div><h3>${escape(recipe.name)}</h3><p>${escape(recipe.description)}</p></div></div><p class="recipe-output-stats">${this.statsText(output?.stats)}</p><div class="ingredients">${Object.entries(recipe.ingredients).map(([id,amount])=>`<span class="ingredient ${(this.game.resources?.[id] || 0)<amount?'missing':''}">${escape(RESOURCES[id]?.name || id)} ${format(this.game.resources?.[id])}/${amount}</span>`).join('')}</div><div class="recipe-actions"><span class="recipe-level">${recipe.amount || 1} × ${escape(output?.name)}<small>Ab Stufe ${requiredLevel}${recipe.profession?` · ${escape(recipe.profession)}`:''}</small></span><button class="small-button" data-command="craft" data-id="${escape(recipe.id)}" ${enough&&levelMet&&journeyGate.ok?'':'disabled'}>${levelMet?'Herstellen':`Stufe ${requiredLevel} benötigt`} ${icon('craft')}</button></div>${!journeyGate.ok?`<p class="talent-requirement">${escape(journeyGate.reason)}</p>`:''}</article>`;
+    }).join('') || '<p class="panel-note">Für diesen Filter sind keine Rezepte verfügbar. Sammle weitere Materialien oder zeige alle Rezepte an.</p>'}</div><p class="panel-note">Sammle Holz an Bäumen, Erz an Felsen und Mondkraut auf den Lichtungen. Glutkristalle findest du in den Fernlanden. Zerlege Ausrüstung für Arkanstaub.</p>`;
+  }
+
+  bestiary() {
+    const species=Object.entries(ENEMY_TYPES).filter(([,enemy])=>enemy.species===true);
+    const search=(this.bestiarySearch || '').trim().toLocaleLowerCase('de-DE');
+    const families=[...new Set(species.map(([,enemy])=>enemy.family || 'Weitere Kreaturen'))].sort((a,b)=>a.localeCompare(b,'de'));
+    const filtered=species.filter(([id,enemy])=>(!search||`${enemy.name} ${familyLabels[enemy.family] || enemy.family || ''} ${enemy.description || ''} ${enemy.archetype || ''}`.toLocaleLowerCase('de-DE').includes(search))&&(!this.bestiaryFamily||this.bestiaryFamily==='all'||(enemy.family || 'Weitere Kreaturen')===this.bestiaryFamily));
+    const pageSize=12,pages=Math.max(1,Math.ceil(filtered.length/pageSize));this.bestiaryPage=Math.min(this.bestiaryPage || 0,pages-1);
+    const seen=species.filter(([id])=>(this.game.ledger?.[`kill:${id}`] || 0)>0).length;
+    const controls=`<div class="bestiary-banner"><div>${icon('skull')}<span>BEOBACHTETE KREATUREN</span><strong>${seen} / ${species.length}</strong></div><p>Jede Art trägt eine eigene Kampftaktik. Bossformen verstärken ihre Macht und belohnen dich mit wertvollerer Beute.</p></div><div class="inventory-toolbar bestiary-toolbar"><label class="search-field"><span>Bestiarium durchsuchen</span><input class="game-input" type="search" data-ui-search="bestiarySearch" value="${escape(this.bestiarySearch || '')}" placeholder="Kreatur, Familie oder Taktik …" autocomplete="off" /></label><label><span>Kreaturenfamilie</span><select class="game-input" data-ui-filter="bestiaryFamily"><option value="all">Alle Familien</option>${families.map(family=>`<option ${this.bestiaryFamily===family?'selected':''} value="${escape(family)}">${escape(familyLabels[family] || family)}</option>`).join('')}</select></label></div><p class="results-count">${filtered.length} Arten · ${species.filter(([,e])=>e.bossType).length} Bossformen</p>`;
+    const cards=filtered.slice(this.bestiaryPage*pageSize,(this.bestiaryPage+1)*pageSize).map(([id,enemy])=>{
+      const kills=this.game.ledger?.[`kill:${id}`] || 0,boss=enemy.bossType?ENEMY_TYPES[enemy.bossType]:null;
+      const pattern=enemy.combat?.pattern || enemy.archetype || (enemy.ranged?'ranged':'melee');
+      const regions=(enemy.regions || []).map(r=>REGIONS.find(entry=>entry.id===r)).filter(Boolean);
+      const color=/^#[\da-f]{3,8}$/i.test(enemy.color || '')?enemy.color:'#bd8570';
+      return `<article class="bestiary-card ${kills?'encountered':''}"><div class="bestiary-card-heading"><div class="creature-seal" style="--creature-color:${color}">${icon(enemy.ranged?'bolt':/ghost|spirit|shade|wraith/.test(id)?'gem':'skull')}</div><div><span class="eyebrow">${escape(familyLabels[enemy.family] || enemy.family || 'Kreatur der Asche')}</span><h3>${escape(enemy.name)}</h3><small>${escape(combatPatterns[pattern] || pattern)}</small></div></div><p>${escape(enemy.description || 'Eine Kreatur der verwüsteten Lande. Beobachte ihre Angriffe und nutze die Lücken zwischen ihren Schlägen.')}</p><div class="creature-traits">${(enemy.traits || []).map(trait=>`<span>${escape(traitLabels[trait] || trait)}</span>`).join('')}${regions.map(region=>`<span>${escape(region.name)} · ${region.level}+</span>`).join('')}</div><div class="bestiary-kills"><span>${kills?`${format(kills)} besiegt`:'Noch nicht besiegt'}</span>${boss?`<details><summary>${icon('crown')}Bossform</summary><strong>${escape(boss.name)}</strong><p>Ein mächtiger Widersacher mit verstärkter Kampftaktik.${(this.game.ledger?.[`kill:${enemy.bossType}`] || 0)>0?` ${format(this.game.ledger[`kill:${enemy.bossType}`])} besiegt.`:''}</p></details>`:''}</div></article>`;
+    }).join('');
+    return `${controls}<div class="bestiary-grid">${cards || '<p class="panel-note">Keine Kreaturen für diesen Filter.</p>'}</div>${pages>1?`<div class="inventory-pagination"><button class="small-button" data-command="bestiary-page" data-id="${this.bestiaryPage-1}" ${this.bestiaryPage===0?'disabled':''}>Zurück</button><span>${this.bestiaryPage+1} / ${pages} · ${filtered.length} Arten</span><button class="small-button" data-command="bestiary-page" data-id="${this.bestiaryPage+1}" ${this.bestiaryPage===pages-1?'disabled':''}>Weiter</button></div>`:''}`;
+  }
+
+  interactions() {
+    const summary=this.game.interactionSummary?.() || [],nearby=this.game.nearby?.();
+    const objects=this.game.world?.interactions || [],nearest=objects.filter(object=>!object.used).map(object=>({object,distance:Math.hypot(object.x-this.game.player.x,object.y-this.game.player.y)})).sort((a,b)=>a.distance-b.distance).slice(0,4);
+    const buffs=(this.game.buffs || []).filter(buff=>buff.expiresAt>this.game.time);
+    return `<div class="interaction-intro">${icon('relic')}<p>Untersuche die Spuren einer zerbrochenen Welt. Manche Orte schenken Macht, andere fordern einen Kampf. Stelle dich neben ein Objekt und drücke <kbd>E</kbd> oder nutze „Entdecken“ auf dem Touchscreen.</p></div>${nearby?.kind==='worldObject'?`<div class="nearby-object"><span class="eyebrow">IN DEINER NÄHE</span><h3>${escape(nearby.label)}</h3><button class="small-button" data-command="world-object" data-id="${escape(nearby.object?.id)}">${icon('relic')}Interagieren</button></div>`:''}${buffs.length?`<h3 class="section-title">Aktive Gaben</h3><div class="boon-list">${buffs.map(buff=>`<div><strong>${escape(buff.name)}</strong><span>${Math.ceil(buff.expiresAt-this.game.time)} Sek.</span><p>${this.statsText(buff.effects)}</p></div>`).join('')}</div>`:''}<div class="interaction-grid">${summary.map(entry=>`<article class="interaction-card"><div class="interaction-card-heading">${icon(/altar|shrine|well/.test(entry.kind)?'flame':/chest|cache/.test(entry.kind)?'bag':/trap/.test(entry.kind)?'sword':'relic')}<h3>${escape(entry.name)}</h3></div><p>${escape(entry.description)}</p><div class="summary-stat"><span>Erkundet</span><strong>${format(entry.completed)} / ${format(entry.total)}</strong></div><div class="discovery-progress" aria-hidden="true"><i style="width:${entry.total?clamp(entry.completed/entry.total*100,0,100):0}%"></i></div></article>`).join('') || '<p class="panel-note">Die Spuren der Asche erwarten dich in der offenen Welt.</p>'}</div>${nearest.length?`<h3 class="section-title">Spuren in deiner Nähe</h3><div class="nearby-list">${nearest.map(({object,distance})=>`<div><span>${escape(object.name || summary.find(entry=>entry.kind===object.kind)?.name || 'Unerkundete Spur')}</span><strong>${format(distance)} Schritte</strong></div>`).join('')}</div>`:''}`;
+  }
+
+  journeyRequirement(requirement) {
+    const labels={events:'Weltabenteuer abgeschlossen',explored:'Regionen erkundet',rescued:'Reisende befreit',lore:'Chroniken gelesen',bosses:'Bossarten besiegt',dungeons:'Dungeons beendet',puzzles:'Dungeonrätsel gelöst',crafted:'Verschiedene Rezepte gefertigt',contracts:'Regionale Verträge erfüllt',revives:'Gefährten wiederbelebt',coopDungeons:'Gemeinsame Dungeons',encounters:'Verfluchte Vorräte geborgen'};
+    if(requirement.kind==='faction')return `${requirement.any?'Ruf bei einem Bund':FACTIONS.find(f=>f.id===requirement.factionId)?.name || 'Fraktionsruf'}`;
+    const targets=(requirement.targets || []).map(id=>REGIONS.find(r=>r.id===id)?.name || DUNGEONS.find(d=>d.id===id)?.name || ENEMY_TYPES[id]?.name || id);
+    return `${labels[requirement.kind] || requirement.kind}${targets.length?` · ${targets.join(', ')}`:''}`;
+  }
+
+  journeyReward(reward) {
+    return [reward.gold?`${format(reward.gold)} Gold`:null,reward.xp?`${format(reward.xp)} EP`:null,reward.skillPoints?`${reward.skillPoints} Talentpunkt${reward.skillPoints===1?'':'e'}`:null,...Object.entries(reward.resources || {}).map(([id,n])=>`${n} ${RESOURCES[id]?.name || id}`)].filter(Boolean).map(escape).join(' · ');
+  }
+
+  journey() {
+    const state=this.game.journey || {},tab=this.journeyTab || 'factions',unlocks=getJourneyUnlocks(this.game);
+    const tabs=`<div class="panel-tabs" role="group" aria-label="Reisefortschritt">${[['factions','Drei Bündnisse'],['achievements',`Errungenschaften · ${(state.claimed || []).length}/${ACHIEVEMENTS.length}`],['companions',`Gefährten · ${(state.ownedCompanions || []).length}/${COMPANIONS.length}`]].map(([id,label])=>`<button class="${tab===id?'active':''}" aria-pressed="${tab===id}" data-journey-tab="${id}">${label}</button>`).join('')}</div>`;
+    if(tab==='achievements')return `${tabs}<p class="panel-note">Deine Taten hinterlassen Spuren. Jede Errungenschaft vergibt ihre Belohnung einmal; verschiedene Entdeckungen zählen, wiederholte Kämpfe am selben Ort nicht.</p><div class="achievement-grid">${ACHIEVEMENTS.map(achievement=>{
+      const progress=getAchievementProgress(this.game,achievement.id),check=canClaimAchievement(this.game,achievement.id);
+      return `<article class="achievement-card ${progress.claimed?'claimed':progress.complete?'ready':''}"><div class="achievement-heading">${icon(progress.claimed?'check':'crown')}<div><span class="eyebrow">${progress.claimed?'ERFÜLLT':progress.complete?'BELOHNUNG BEREIT':`STUFE ${achievement.minLevel}+`}</span><h3>${escape(achievement.name)}</h3></div></div><p>${escape(achievement.description)}</p><div class="journey-objectives">${progress.requirements.map(r=>`<div class="${r.complete?'complete':''}"><span>${r.complete?icon('check'):icon('marker')}${escape(this.journeyRequirement(r))}</span><b>${r.current}/${r.count}</b></div>`).join('')}</div><p class="journey-reward">${this.journeyReward(achievement.reward)}</p><button class="small-button" data-command="claimAchievement" data-id="${achievement.id}" ${check.ok?'':'disabled'}>${progress.claimed?'Belohnung erhalten':'Belohnung abholen'}</button></article>`;
+    }).join('')}</div>`;
+    if(tab==='companions')return `${tabs}<div class="companion-intro"><p>Ein Gefährte folgt dir sichtbar in der Welt. Seine Gaben stärken deinen Aufbau; bestimmte Begleiter unterstützen dich im Kampf. Wechseln ist außerhalb des Kampfes möglich.</p>${state.activeCompanion?`<button class="small-button" data-command="select-companion" data-id="" ${this.game.inCombat?.()?'disabled':''}>Gefährten rasten lassen</button>`:''}</div><div class="companion-grid">${COMPANIONS.map(companion=>{
+      const active=state.activeCompanion===companion.id,owned=(state.ownedCompanions || []).includes(companion.id),check=canSelectCompanion(this.game,companion.id);
+      return `<article class="companion-card ${active?'active':owned?'owned':'locked'}"><div class="companion-heading"><div class="companion-seal" style="--companion-color:${companion.color}">${icon(companion.combat?'group':/moth|wisp|lantern/.test(companion.silhouette)?'flame':'leaf')}</div><div><span class="eyebrow">${escape(companion.role)} · STUFE ${companion.minLevel}</span><h3>${escape(companion.name)}</h3><span class="companion-status">${active?'AN DEINER SEITE':owned?'GEWONNEN':'NOCH NICHT GEWONNEN'}</span></div></div><p>${escape(companion.description)}</p><div class="companion-stats">${this.statsText(companion.stats)}</div><details><summary>${owned?'Seine Geschichte':'So gewinnst du ihn'}</summary><div class="journey-objectives">${companion.requirements.map(r=>`<div><span>${escape(this.journeyRequirement(r))}</span><b>${r.count}</b></div>`).join('')}</div></details><button class="small-button" data-command="select-companion" data-id="${companion.id}" ${check.ok&&!active?'':'disabled'}>${active?'Gefährte aktiv':owned?'Gemeinsam aufbrechen':'Voraussetzungen erfüllen'}</button>${owned&&!check.ok&&!active?`<p class="talent-requirement">${escape(check.reason)}</p>`:''}</article>`;
+    }).join('')}</div>`;
+    return `${tabs}<p class="panel-note">Drei Bündnisse beobachten deine Taten. Ruf wächst durch neue Erkundungen, Rettungen und Siege. Ihre Rezepte und Eide öffnen dauerhafte Möglichkeiten für deinen Aufbau.</p><div class="faction-grid">${FACTIONS.map(faction=>{
+      const progress=getFactionProgress(this.game,faction.id),target=progress.nextRankAt || 400;
+      return `<article class="faction-card" style="--faction-color:${faction.color}"><div class="faction-heading">${icon(faction.id==='wardens'?'shield':faction.id==='archivists'?'book':'map')}<span class="eyebrow">${escape(progress.rankName)}</span><h3>${escape(faction.name)}</h3></div><p>${escape(faction.description)}</p><div class="faction-progress-label"><span>Ruf</span><strong>${progress.reputation} / ${target}</strong></div><div class="discovery-progress"><i style="width:${clamp(progress.reputation/target*100,0,100)}%"></i></div><div class="faction-rank-road">${FACTION_RANKS.slice(1).map(rank=>`<span class="${progress.rank>=rank.rank?'reached':''}">${progress.rank>=rank.rank?icon('check'):icon('lock')}${escape(rank.name)}<b>${rank.reputation}</b></span>`).join('')}</div><h4>Rezepte deines Bundes</h4>${JOURNEY_RECIPES.filter(recipe=>recipe.factionId===faction.id).map(recipe=>`<p class="faction-unlock ${unlocks.recipeIds.includes(recipe.id)?'available':''}">${icon(unlocks.recipeIds.includes(recipe.id)?'check':'lock')}${escape(recipe.name)} · ${escape(FACTION_RANKS[recipe.factionRank].name)} · Stufe ${recipe.minLevel}</p>`).join('')}<button class="small-button" data-panel="craft">Rezepte an der Werkbank ansehen</button></article>`;
+    }).join('')}</div><h3 class="section-title">Dein Eid <small>Ein Meisterpfad · drei Meisterränge</small></h3><p class="panel-note">Ab Stufe 40 und verbündetem Ruf kannst du einen Eid wählen. Höhere Stufen und weitere Taten stärken ihn. Ein Wechsel zeigt seine Kosten, bevor du ihn wählst.</p><div class="mastery-grid">${JOURNEY_MASTERIES.map(mastery=>{
+      const check=canChooseJourneyMastery(this.game,mastery.id),active=state.mastery===mastery.id;
+      return `<article class="mastery-card ${active?'active':''}"><span class="eyebrow">${escape(FACTIONS.find(f=>f.id===mastery.factionId)?.name)}</span><h3>${escape(mastery.name)}</h3>${active?`<span class="mastery-rank">DEIN EID · RANG ${getMasteryRank(this.game)} / 3</span>`:''}<p>${escape(mastery.description)}</p><button class="small-button" data-command="chooseMastery" data-id="${mastery.id}" ${check.ok&&!active?'':'disabled'}>${active?'Eid gewählt':`Eid wählen · ${check.cost || mastery.talentCost} ${check.currency==='gold'?'Gold':'Talentpunkte'}`}</button>${!check.ok&&!active?`<p class="talent-requirement">${escape(check.reason)}</p>`:''}</article>`;
+    }).join('')}</div>`;
+  }
+
+  adventures() {
+    const world=this.game.overworld || this.game.world,events=this.game.worldEventSummary?.() || summarizeWorldEvents(world),filter=this.adventureFilter || 'all';
+    const states={idle:'Noch nicht begonnen',active:'Ereignis läuft',success:'Belohnung bereit',failure:'Gescheitert',rewarded:'Abgeschlossen'};
+    const visible=events.filter(event=>filter==='all'||filter==='active'&&['active','success'].includes(event.state)||filter==='nearby'&&event.region===this.game.regionAt?.()?.id);
+    return `<div class="adventure-intro"><div>${icon('portal')}<h3>Die Welt wartet nicht nur auf deine Klinge.</h3><p>Hilf Reisenden, verteidige letzte Feuer und entscheide, was hinter den Siegeln liegt. Begib dich zum markierten Ort und interagiere dort mit E.</p></div><label><span>Ereignisse anzeigen</span><select class="game-input" data-ui-filter="adventureFilter">${[['all','Alle Ereignisse'],['nearby','In meiner Region'],['active','Laufend & Belohnung bereit']].map(([id,label])=>`<option value="${id}" ${filter===id?'selected':''}>${label}</option>`).join('')}</select></label></div><div class="adventure-grid">${visible.map(event=>{
+      const region=REGIONS.find(r=>r.id===event.region),discovered=(this.game.discovered || []).includes(event.region),objects=world.eventObjects || [],point=objects.find(object=>object.eventId===event.id&&object.role===(event.state==='success'?'reward':'start')) || event;
+      const distance=Math.hypot(point.x-this.game.player.x,point.y-this.game.player.y);
+      return `<article class="adventure-card ${event.state}"><div class="adventure-heading"><span class="eyebrow">${escape(region?.name || 'Unbekannte Wege')} · STUFE ${region?.level || 1}+</span><span class="event-state">${event.mode==='expedition'?`EXPEDITION ${event.stageIndex+1}/${event.stages} · `:''}${states[event.state] || 'Entdecken'}</span><h3>${escape(event.name)}</h3></div><p>${escape(event.description)}</p>${event.objective?`<div class="event-objective">${icon(event.state==='success'?'check':'marker')}<span>${escape(event.objective.label)}</span>${event.state!=='idle'?`<b>${format(event.objective.progress)}/${format(event.objective.goal)}</b>`:''}</div>${event.state==='active'?`<div class="discovery-progress"><i style="width:${clamp(event.objective.progress/Math.max(1,event.objective.goal)*100,0,100)}%"></i></div>`:''}`:''}${event.warning?`<p class="event-warning">${escape(event.warning)}</p>`:''}<div class="adventure-actions"><span>${discovered?`${format(distance)} Schritte`:'Region noch nicht entdeckt'}</span><button class="small-button" data-command="waypoint" data-kind="event" data-id="${escape(event.id)}" ${discovered&&!this.dungeonId()?'':'disabled'}>${icon('marker')}Weg markieren</button></div>${distance<=85&&!this.dungeonId()?`<button class="small-button" data-command="${event.state==='success'?'claimWorldEvent':'world-event'}" data-id="${escape(event.state==='success'?event.id:point.id)}" ${event.state==='idle'&&this.game.player.level>=event.minLevel||event.state==='success'?'':'disabled'}>${event.state==='success'?'Belohnung bergen':`Beginnen · Stufe ${event.minLevel}`}</button>`:''}${event.state==='active'?`<div class="event-choices">${objects.filter(object=>object.eventId===event.id&&object.role==='choice'&&!object.active).map(object=>`<article><h4>${escape(object.name)}</h4><p>${escape(object.description)}</p><button class="small-button" data-command="world-event" data-id="${escape(object.id)}" ${Math.hypot(object.x-this.game.player.x,object.y-this.game.player.y)<=85&&!this.dungeonId()?'':'disabled'}>Diesen Weg wählen</button></article>`).join('')}</div>`:''}</article>`;
+    }).join('') || '<p class="panel-note">Für diesen Filter gibt es keine Ereignisse. Erkunde weitere Regionen.</p>'}</div><p class="panel-note">Ereignisziele erscheinen während der Begegnung in der Welt. Deine Taten können andere Reisende, neue Beute und dauerhafte Fortschritte freischalten.</p>`;
   }
 
   reward(quest) {
@@ -426,26 +638,28 @@ export class GameUI {
   }
 
   journal() {
+    const guidance=this.game.adventureGuidance?.();
+    const guide=guidance?`<div class="journey-next-step"><div><span class="eyebrow">DEIN NÄCHSTER SCHRITT</span><h3>${escape(guidance.title)}</h3><p>${escape(guidance.description)}</p></div>${guidance.panel?`<button class="small-button" data-panel="${escape(guidance.panel)}">Weiter ${icon('arrow')}</button>`:`<button class="small-button" data-command="waypoint" data-kind="${escape(guidance.kind)}" data-id="${escape(guidance.id)}">${icon('marker')}Ort markieren</button>`}</div>`:'';
     const active = QUESTS.filter(quest=>['active','ready'].includes(this.game.questState?.[quest.id]?.status));
     const done = QUESTS.filter(quest=>this.game.questState?.[quest.id]?.status==='done');
     const available = QUESTS.filter(quest=>this.game.canAccept(quest));
     const quests = this.questTab==='done' ? done : this.questTab==='available' ? available : active;
     const tabs = `<div class="panel-tabs"><button data-quest-tab="active" class="${this.questTab==='active'?'active':''}">Deine Questen · ${active.length}</button><button data-quest-tab="available" class="${this.questTab==='available'?'active':''}">Entdecken · ${available.length}</button><button data-quest-tab="done" class="${this.questTab==='done'?'active':''}">Abgeschlossen · ${done.length}</button><button data-quest-tab="contracts" class="${this.questTab==='contracts'?'active':''}">Aufträge · ${this.game.contracts?.active?.length||0}/3</button></div>`;
     if(this.questTab==='contracts')return `${tabs}${this.contractBoard()}`;
-    return `${tabs}${quests.length ? quests.map(quest=> {
+    return `${tabs}${guide}${quests.length ? quests.map(quest=> {
       const state = this.game.questState?.[quest.id];
       const giver = NPCS.find(npc=>npc.id===quest.giver);
       const total = quest.objectives.reduce((sum,objective)=>sum+objective.count,0);
       const complete = quest.objectives.reduce((sum,objective,index)=>sum+Math.min(state?.counts?.[index] || 0,objective.count),0);
       const giverRegion=REGIONS.find(region=>giver&&giver.x>=region.x&&giver.x<region.x+region.w&&giver.y>=region.y&&giver.y<region.y+region.h);
-      return `<article class="quest-log-item"><div class="quest-log-heading"><h3>${escape(quest.title)}</h3><span class="quest-status">${state?.status==='done'?'ABGESCHLOSSEN':state?.status==='ready'?'BELOHNUNG ABHOLEN':state?.status==='active'?'AUF DEINEM WEG':`BEI ${escape(giver?.name || '').toUpperCase()}`}</span></div><p>${escape(quest.description)}</p>${state && state.status!=='done'?`<div class="quest-progress"><div style="width:${complete/total*100}%"></div></div>`:''}<div class="quest-log-objectives">${quest.objectives.map((objective,index)=>`<span>${state?.status==='done'||(state?.counts?.[index]||0)>=objective.count?icon('check'):icon('marker')}${escape(objective.label)}${state&&state.status!=='done'?` ${Math.min(state.counts?.[index]||0,objective.count)}/${objective.count}`:''}</span>`).join('')}</div><div class="quest-reward">Belohnung: ${this.reward(quest)} · ${escape(giver?.name || 'Ein Reisender')}${giverRegion?` in ${escape(giverRegion.name)}`:''}${quest.minLevel?` · Stufe ${quest.minLevel}`:''}</div></article>`;
+      return `<article class="quest-log-item"><div class="quest-log-heading"><h3>${escape(quest.title)}</h3><span class="quest-status">${state?.status==='done'?'ABGESCHLOSSEN':state?.status==='ready'?'BELOHNUNG ABHOLEN':state?.status==='active'?'AUF DEINEM WEG':`BEI ${escape(giver?.name || '').toUpperCase()}`}</span></div><p>${escape(quest.description)}</p>${state && state.status!=='done'?`<div class="quest-progress"><div style="width:${complete/total*100}%"></div></div>`:''}<div class="quest-log-objectives">${quest.objectives.map((objective,index)=>`<span>${state?.status==='done'||(state?.counts?.[index]||0)>=objective.count?icon('check'):icon('marker')}${escape(objective.label)}${state&&state.status!=='done'?` ${Math.min(state.counts?.[index]||0,objective.count)}/${objective.count}`:''}</span>`).join('')}</div><div class="quest-reward">Belohnung: ${this.reward(quest)} · ${escape(giver?.name || 'Ein Reisender')}${giverRegion?` in ${escape(giverRegion.name)}`:''}${quest.minLevel?` · Stufe ${quest.minLevel}`:''}</div>${state&&state.status!=='done'?`<button class="small-button" data-command="trackQuest" data-id="${this.game.trackedQuestId===quest.id?'':escape(quest.id)}">${icon('marker')}${this.game.trackedQuestId===quest.id?'Ziel lösen':'Diese Quest verfolgen'}</button>`:''}</article>`;
     }).join('') : `<p class="empty-inventory">${this.questTab==='done'?'Die ersten Geschichten warten noch darauf, erzählt zu werden.':this.questTab==='available'?'Deine nächste Aufgabe wartet am Ende deines jetzigen Weges.':'Mach den ersten Schritt.'}<br><span class="panel-note">${this.questTab==='active'?'Sprich mit den Bewohnern von Glutwacht. Mira, Sera und Toma brauchen deine Hilfe.':'Setze deine Reise fort und sprich regelmäßig mit deinen Weggefährten.'}</span></p>`}`;
   }
 
   map() {
     const dungeon=DUNGEONS.find(entry=>entry.id===this.dungeonId());
     if(dungeon)return `<div class="map-layout"><div><canvas id="full-map" class="world-map" width="900" height="580" aria-label="Dungeonkarte mit Rätselkammern, Toren und deiner Position"></canvas><p class="panel-note">Erkunde die Kammern und lies die Inschriften mit E.</p></div><aside><h3 class="section-title">${escape(dungeon.name)}</h3><p class="panel-note">${escape(dungeon.subtitle)}<br>Stufe ${dungeon.minLevel} · ${dungeon.partyRequired} Reisende</p><details class="dungeon-journal"><summary>Inschrift lesen</summary><p>${escape(dungeon.hint)}</p></details><button class="small-button" data-panel="dungeons">Expedition ansehen</button></aside></div>`;
-    return `<div class="map-layout"><div><canvas id="full-map" class="world-map" width="900" height="580" aria-label="Weltkarte mit deiner Position, Glutwacht und entdeckten Schreinen"></canvas><div class="map-legend"><span><i class="legend-dot"></i>Du & Glutwacht</span><span><i class="legend-dot blue"></i>Glutschrein</span><span><i class="legend-dot red"></i>Gefahr</span></div><p class="panel-note">Die Welt steht dir offen. Entdeckte Glutschreine sind deine Ankerpunkte: Reise zwischen ihnen, erhole dich und setze deinen Weg fort.</p></div><aside class="map-regions"><h3 class="section-title">Deine Horizonte</h3>${REGIONS.map(region=> {
+    return `<div class="map-layout"><div><canvas id="full-map" class="world-map" width="900" height="580" aria-label="Weltkarte mit deiner Position, Schreinen, Gegnern und Interaktionsobjekten"></canvas><div class="map-legend"><span><i class="legend-dot"></i>Du & Glutwacht</span><span><i class="legend-dot blue"></i>Glutschrein</span><span><i class="legend-dot red"></i>Gefahr</span><span><i class="legend-dot relic"></i>Spuren & Reliquien</span></div><p class="panel-note">Die Welt steht dir offen. Entdeckte Glutschreine sind deine Ankerpunkte: Reise zwischen ihnen, erhole dich und setze deinen Weg fort.</p></div><aside class="map-regions"><h3 class="section-title">Deine Horizonte</h3>${REGIONS.map(region=> {
       const discovered = (this.game.discovered || []).includes(region.id);
       const shrine = (this.game.world?.shrines || []).find(entry=>entry.region===region.id || entry.regionId===region.id || entry.x>=region.x&&entry.x<region.x+region.w&&entry.y>=region.y&&entry.y<region.y+region.h);
       const shrineDiscovered = shrine && (shrine.discovered || shrine.unlocked || shrine.active || (this.game.unlockedShrines || []).includes(shrine.id));
@@ -528,7 +742,7 @@ export class GameUI {
 
   settings() {
     const abilities=getClass(this.game.player.classId).abilities;
-    const mobileMenu=`<div class="mobile-menu-shortcuts">${[["map","map","Weltkarte"],["character","shield","Charakter"],["inventory","bag","Inventar"],["talents","tree","Talente"],["craft","craft","Handwerk"],["journal","book","Questen"],["dungeons","portal","Dungeons"],["party","group","Gruppe"]].map(([panel,glyph,label])=>`<button class="small-button" data-panel="${panel}">${icon(glyph)}${label}</button>`).join("")}</div>`;
+    const mobileMenu=`<div class="mobile-menu-shortcuts">${[["map","map","Weltkarte"],["character","shield","Charakter"],["inventory","bag","Inventar"],["talents","tree","Talente"],["craft","craft","Handwerk"],["journal","book","Questen"],["dungeons","portal","Dungeons"],["party","group","Gruppe"],["bestiary","skull","Bestiarium"],["interactions","relic","Spuren"]].map(([panel,glyph,label])=>`<button class="small-button" data-panel="${panel}">${icon(glyph)}${label}</button>`).join("")}</div>`;
     return `${mobileMenu}<div class="settings-row"><div><h3>Klänge der Welt</h3><p>Musik und Klang geben deiner Reise eine Stimme. Der Ton beginnt nach deiner ersten Eingabe.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="sound" ${this.game.settings?.sound!==false?'checked':''}/>Ton an</label></div><div class="settings-row"><div><h3>Weniger Bewegung</h3><p>Reduziert Kamerabewegungen und Animationen in der Oberfläche.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="reducedMotion" ${this.game.settings?.reducedMotion?'checked':''}/>Aktiv</label></div><h3 class="section-title">Dein Spielstand</h3><p class="panel-note">Emberfall speichert deine Einzelspieler-Reise in diesem Browser und deine Gruppenreise auf dem Spielserver. Exportiere deinen Einzelspieler-Spielstand, um ihn zu sichern oder auf einem anderen Gerät weiterzuspielen.</p><div class="settings-actions"><button class="small-button" data-command="save">${icon('save')}Jetzt speichern</button><button class="small-button" data-command="export">Spielstand exportieren</button><button class="small-button" data-command="import">Spielstand laden</button><button class="small-button danger-button" data-panel="reset">Neue Reise</button></div><h3 class="section-title">Deine Hände, deine Fähigkeiten</h3><p class="panel-note">Auf dem Handy: Joystick für acht Richtungen ziehen, Angriff für automatische Wiederholung halten. Bewegung, Angriff und eine weitere Aktion funktionieren gleichzeitig. Angriffe zielen auf den nächsten sichtbaren Gegner.</p><div class="settings-controls"><div class="summary-stat"><span>Bewegen</span><strong>WASD / Pfeiltasten</strong></div><div class="summary-stat"><span>${escape(abilities.attack.name)} / Ausweichen</span><strong>J oder Klick / Leertaste</strong></div><div class="summary-stat"><span>${escape(abilities.nova.name)} / ${escape(abilities.bolt.name)} / Heiltrank</span><strong>F / Q / R</strong></div><div class="summary-stat"><span>Erlernte Zusatzfähigkeiten</span><strong>3 / 4 · Im Talentfenster belegen</strong></div><div class="summary-stat"><span>Sprechen, sammeln, pflanzen & ernten</span><strong>E</strong></div><div class="summary-stat"><span>Inventar / Talente / Handwerk / Questen</span><strong>I / T / B / L</strong></div><div class="summary-stat"><span>Weltkarte / Charakter / Gruppe</span><strong>M / C / P</strong></div></div>`;
   }
 
@@ -562,10 +776,11 @@ export class GameUI {
     let extra = '';
     if(locked) extra=`<article class="dialogue-quest"><h3>${escape(locked.title)}</h3><p>${escape(locked.description)}</p><p class="panel-note">Diese Aufgabe beginnt ab Stufe ${locked.minLevel}. Stärke dich auf den Wegen und bei regionalen Aufträgen.</p></article>`;
     if (['oren','elin','sera'].includes(npc.id)) {
-      const shopIds = npc.id==='elin'?['forest_blade','sentinel_mail']:npc.id==='sera'?['heal_potion','mana_potion']:['heal_potion','mana_potion','leather_armor','forest_blade'];
-      extra = `<h3 class="section-title">${npc.id==='elin'?'Elins Ausrüstung':npc.id==='sera'?'Tränke für den Weg':'Vorräte & Ausrüstung'}</h3><div class="item-list">${shopIds.map(id=>this.itemRow(ITEMS[id],0,'buy',true)).join('')}</div>`;
+      const baseShopIds = npc.id==='elin'?['forest_blade','sentinel_mail']:npc.id==='sera'?['heal_potion','mana_potion']:['heal_potion','mana_potion','leather_armor','forest_blade'];
+      const shopItems=[...baseShopIds.map(id=>ITEMS[id]),...getArsenalShopStock({level:this.game.player.level,classId:this.game.player.classId,merchant:npc.id}),...getEquipmentShopStock({level:this.game.player.level,classId:this.game.player.classId,merchant:npc.id})].filter(Boolean);
+      extra = `<h3 class="section-title">${npc.id==='elin'?'Elins Ausrüstung':npc.id==='sera'?'Tränke für den Weg':'Vorräte & Ausrüstung'}</h3><div class="item-list">${shopItems.map(item=>this.itemRow(item,0,'buy',true)).join('')}</div>`;
       if (npc.id==='oren') {
-        const sellable = Object.entries(this.game.inventory||{}).filter(([id,count])=>count>0 && this.item(id) && this.game.equipment?.[this.item(id).type]!==id);
+        const sellable = Object.entries(this.game.inventory||{}).filter(([id,count])=>count>0 && this.item(id) && !Object.values(this.game.equipment || {}).includes(id));
         extra += `<div class="item-row"><div class="item-icon">${icon('leaf')}</div><div class="item-main"><h3>Saatgut</h3><p>Drei Samen für deinen Dorfacker.</p></div><button class="small-button" data-command="buy" data-id="seed" ${(this.game.player?.gold||0)>=4?'':'disabled'}>${icon('coin')}4</button></div>${sellable.length?`<h3 class="section-title">Aus deinem Gepäck verkaufen</h3>${sellable.map(([id,count])=>this.itemRow(this.item(id),count,'sell')).join('')}`:''}`;
       }
     }
@@ -580,14 +795,30 @@ export class GameUI {
   }
 
   death() { return `<div class="large-state">${icon('flame')}<h3>Dein Funke ist nicht erloschen.</h3><p>Die Glut trägt dich zurück nach Glutwacht. Sammle Kraft, verbessere deine Ausrüstung und versuche einen neuen Weg.</p><button class="primary-button" data-command="respawn">Zurück ins Licht ${icon('arrow')}</button></div>`; }
-  victory() { return `<div class="large-state">${icon('sun')}<h3>Die Welt atmet wieder.</h3><p>Veyr ist gefallen. Die letzte Glut wurde zu einem neuen Anfang. Doch die freien Lande haben noch immer Geschichten für dich.</p><button class="primary-button" data-command="resume">Deine Reise fortsetzen ${icon('arrow')}</button><p class="panel-note">Sprich mit Mira, um die Belohnung für deine letzte Quest zu erhalten.</p></div>`; }
+  victory() { return `<div class="large-state">${icon('flame')}<h3>Glutwacht hat wieder ein Feuer.</h3><p>Veyr ist gefallen und dein erstes Kapitel ist vollendet. In den ${REGIONS.length} Regionen der freien Lande warten neue Bündnisse, Ereignisse und mächtige Gegner. Wähle am letzten Feuer deinen nächsten Weg.</p><button class="primary-button" data-command="resume">Deine Reise fortsetzen ${icon('arrow')}</button><div class="victory-next-paths"><button class="small-button" data-panel="adventures">${icon('portal')}Ereignisse & Expeditionen</button><button class="small-button" data-panel="journey">${icon('book')}Dein Vermächtnis</button></div><p class="panel-note">Sprich mit Mira, um die Belohnung für dieses Kapitel zu erhalten.</p></div>`; }
   resetConfirmation() { return `<div class="large-state">${icon('leaf')}<h3>Jede Geschichte beginnt mit einem Schritt.</h3><p>Deine aktuelle Reise wird ersetzt. Exportiere deinen Spielstand in den Einstellungen, wenn du sie für später behalten möchtest.</p>${this.classSelection(this.pendingClass,true)}<button class="primary-button" data-command="confirm-reset">Als ${escape(getClass(this.pendingClass).name)} beginnen ${icon('arrow')}</button><button class="text-button" data-command="resume">Zur aktuellen Reise zurück</button></div>`; }
   showDeath() { if (this.activePanel==='death') return; this.togglePanel('death'); }
   showVictory() { if (this.activePanel==='victory') return; this.togglePanel('victory'); }
 
   async command(name, id, button) {
+    if(name==='inventory-filters'){this.inventoryFiltersOpen=!this.inventoryFiltersOpen;this.renderPanel();return;}
+    if(name==='toggle-tracker'){this.trackerExpanded=!this.trackerExpanded;this.renderTracker();return;}
+    if(name==='inspect-item'){
+      const fromOther=this.activePanel!=='inventory'||button?.classList?.contains('gear-belt-slot');this.inventorySelected=id;
+      if(fromOther){this.inventoryTab='equipment';this.inventoryType='all';this.inventoryRarity='all';this.inventoryFlags='all';this.inventorySearch='';this.inventoryUsable=false;const entries=Object.keys(this.game.inventory || {}).filter(key=>this.item(key)?.type!=='consumable');this.inventoryPage=Math.floor(Math.max(0,entries.indexOf(id))/12);this.togglePanel('inventory');}else this.renderPanel();
+      if(typeof matchMedia==='function'&&matchMedia('(max-width:600px)').matches)requestAnimationFrame(()=>document.getElementById('inventory-inspector')?.scrollIntoView({block:'start',behavior:this.game.settings?.reducedMotion?'auto':'smooth'}));return;
+    }
+    if(name==='inspect-back'){document.getElementById('inventory-grid')?.scrollIntoView({block:'start',behavior:'smooth'});return;}
+    if(name==='item-flag'){await this.game.setItemFlag?.(id,button.dataset.flag);this.update(true);return;}
+    if(name==='save-loadout'){await this.game.saveLoadout?.((this.loadoutName || '').trim() || `Aufbau ${(this.game.loadouts || []).length+1}`);this.loadoutName='';this.update(true);return;}
+    if(name==='world-event'){const result=await this.game.interactWorldEvent?.(id);if(result!==false)this.closePanel();this.update(true);return;}
+    if(name==='claimWorldEvent'){const result=await this.game.claimWorldEvent?.(id);this.update(true);return;}
+    if(name==='select-companion'){await this.game.selectCompanion?.(id || null);this.update(true);return;}
+    if(name==='waypoint'){await this.game.setWaypoint?.(button.dataset.kind,id);this.update(true);return;}
+    if(name==='bestiary-page'){this.bestiaryPage=Math.max(0,Number(id)||0);this.renderPanel();return;}
+    if(name==='world-object'){const result=await this.game.interactWorldObject?.(id);this.update(true);if(result!==false)this.closePanel();return;}
     if(name==='inventory-page'){this.inventoryPage=Math.max(0,Number(id)||0);this.renderPanel();return;}
-    if(name==='open-equipment'){this.inventoryTab='equipment';this.inventoryPage=0;if(this.activePanel!=='inventory')this.togglePanel('inventory');else this.renderPanel();return;}
+    if(name==='open-equipment'){this.inventoryTab='equipment';this.inventoryType=EQUIPMENT_SLOTS.some(slot=>slot.id===id)?id:'all';this.inventoryPage=0;this.inventorySelected=null;if(this.activePanel!=='inventory')this.togglePanel('inventory');else this.renderPanel();return;}
     if(name==='assign-ability'){await this.assignAbility(Number(button.dataset.slot),id);return;}
     if(name==='open-contracts') {this.questTab='contracts';this.contractRegion=id;this.togglePanel('journal');return;}
     if (name==='resume') { this.closePanel(); return; }
@@ -653,7 +884,7 @@ export class GameUI {
   trapFocus(event) {
     const overlay = this.activePanel ? this.elements['game-panel'] : !this.game.started ? this.elements['welcome-overlay'] : null;
     if (!overlay) return;
-    const controls = [...overlay.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex="0"]')].filter(element=>!element.hidden && element.getClientRects().length);
+    const controls = [...overlay.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],summary,[tabindex="0"]')].filter(element=>!element.hidden && element.getClientRects().length);
     if (!controls.length) return;
     const first = controls[0], last = controls[controls.length-1];
     if (event.shiftKey && (document.activeElement===first || !overlay.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
@@ -719,10 +950,18 @@ export class GameUI {
       if (!inDungeon && !(this.game.discovered || []).includes(region?.id)) continue;
       ctx.fillStyle=boss?'#ec9069':'#bd7254';const size=boss?4:2;ctx.fillRect(mapX(enemy.x)-size/2,mapY(enemy.y)-size/2,size,size);
     }
+    for(const object of world.interactions || []) {
+      if(object.used||!(this.game.discovered || []).includes(object.region))continue;
+      const x=mapX(object.x),y=mapY(object.y),size=full?2.5:1.8;
+      if(x<0||x>width||y<0||y>height)continue;
+      ctx.strokeStyle=['cursed_chest','sarcophagus','altar'].includes(object.kind)?'#d08a82':'#dfb785';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(x,y-size);ctx.lineTo(x+size,y);ctx.lineTo(x,y+size);ctx.lineTo(x-size,y);ctx.closePath();ctx.stroke();
+    }
     for (const npc of this.game.npcs || []) {ctx.fillStyle='#d9c484';ctx.beginPath();ctx.arc(mapX(npc.x),mapY(npc.y),full?2.2:1.4,0,Math.PI*2);ctx.fill();}
     for(const entrance of world.dungeonEntrances || []) {ctx.strokeStyle='#d4b6d5';ctx.lineWidth=full?1.5:1;ctx.strokeRect(mapX(entrance.x)-3,mapY(entrance.y)-3,6,6);}
     for(const ally of this.game.partyPlayers || this.game.otherPlayers || []) {ctx.fillStyle=ally.dead?'#ba8065':'#a1d0a5';ctx.beginPath();ctx.arc(mapX(ally.x),mapY(ally.y),full?3:2,0,Math.PI*2);ctx.fill();}
     if (full && !inDungeon) {ctx.fillStyle='#e0d2a6';ctx.font='9px sans-serif';ctx.textAlign='center';ctx.fillText('GLUTWACHT',mapX(565),mapY(1460));}
+    const waypoint=this.game.waypointTarget?.();if(waypoint){const x=mapX(waypoint.x),y=mapY(waypoint.y);ctx.strokeStyle='#e4bd79';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(x,y,full?7:4,0,Math.PI*2);ctx.stroke();ctx.beginPath();ctx.moveTo(x-5,y);ctx.lineTo(x+5,y);ctx.moveTo(x,y-5);ctx.lineTo(x,y+5);ctx.stroke();}
     const px=mapX(player.x ?? 560),py=mapY(player.y ?? 1230);
     ctx.fillStyle='#eeda9b';ctx.strokeStyle='#12251a';ctx.lineWidth=full?2:1;
     ctx.beginPath();ctx.moveTo(px,py-5);ctx.lineTo(px+4,py+4);ctx.lineTo(px,py+2);ctx.lineTo(px-4,py+4);ctx.closePath();ctx.fill();ctx.stroke();

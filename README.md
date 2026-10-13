@@ -2,14 +2,36 @@
 
 Ein eigenständiges, deutschsprachiges 2D-Action-RPG mit direkter Bewegung, gerichteten Angriffen, Ausweichrollen, Quests, Farming und instanzierter Beute. Die Erweiterung verbindet eine große offene Welt mit acht Klassen, Fortschritt bis Stufe 100 und kooperativen Dungeons auf einem lokalen Spielserver.
 
-**Aktueller Stand – Version 2.2:** spielbare Entwicklungsversion mit 16 Regionen, 72 Quests, acht Dungeons, mobiler Mehrfingersteuerung und 24 zusätzlich erlernbaren aktiven Fähigkeiten. Die Ausrüstung wurde verstärkt und mit einem vollständigen Wertevergleich versehen. Mindestens 200 Stunden abwechslungsreiche Spielzeit und eine Qualität von 5/5 Sternen sind weiterhin Entwicklungsziele. Eine vollständige 200-Stunden-Kampagne wurde nicht durchgespielt und vermessen; eine externe Sternebewertung liegt nicht vor.
+**Aktueller Stand – Version 4.0:** düsteres, deutschsprachiges Action-RPG mit 16 Regionen, 72 Quests, acht Dungeons, 80 regionalen Gegnerarten samt Bossformen, 64 erlernbaren aktiven Fähigkeiten und 164 Klassentalenten. Dazu kommen 16 regionale Ereignisse, vier verzweigte Solo-Expeditionen, drei Fraktionen, 16 Errungenschaften und zehn originale Reisegefährten. Sieben Ausrüstungsplätze, Gepäckraster mit Inspect, Schutzmarkierungen, ein Lager und drei benannte Ausrüstungsvorlagen verbinden Beute und Charakterentwicklung. Alte Reisen bleiben lesbar. Die dokumentierten automatischen Prüfungen sind keine unabhängige Sternebewertung und kein vollständiger Kampagnenspieltest.
+
+## Vom Vorbild zum eigenständigen Spiel
+
+Die Erweiterung entstand aus gelesenen Herstelleranleitungen und einer visuellen Untersuchung von Inventaren, Charaktermenüs und Spielsystemen. Der [Vergleich zu Diablo, World of Warcraft und Guild Wars](docs/reference-rpg-systems.md) sowie die [Analyse von Zelda, Pokémon und historischen Silkroad-Systemen](docs/reference-adventure-systems.md) trennen belegte Referenzen, eigene Entwürfe und Quellengrenzen. Die Spielfiguren, Gegenstände und Grafikdateien bleiben originale Emberfall-Inhalte.
+
+- **Charakter und Vorbereitung:** Helm, Handschuhe, Stiefel und Ring ergänzen Waffe, Körperrüstung und Amulett. Die Charakteransicht zeigt den tatsächlichen Klassensprite und trennt Offensive, Überleben und Versorgung. Der Beutel zeigt ein Raster, ausgewählte Details und den exakten gesamten Vorher-/Nachhervergleich. Favoriten und gesperrte Gegenstände lassen sich nicht versehentlich verkaufen oder zerlegen. Das Lager hält 120 verschiedene Gegenstände und öffnet in Siedlungen außerhalb des Kampfes. Drei benannte Vorlagen speichern Ausrüstung und zwei aktive Zusatzplätze; fehlende Stücke werden erklärt. Sie wechseln außerhalb des Kampfes, erhalten Abklingzeiten und erzeugen keine Heilung. Passive Talente können in Siedlungen für `20 + 5 × Stufe` Gold zurückgesetzt werden; investierte Punkte kehren zurück.
+- **Lebendige Regionen:** jedes der 16 Ereignisse verwendet eine konkrete Regel: Verteidigung, Eskorte, Ritual, Hinterhalt, Spurensuche oder Entscheidung. Vier Expeditionen verbinden vier Abschnitte mit unterschiedlichen Rätseln, einer sicheren oder riskanten Wahl und einem benannten Boss. Warnungen gehen jedem neuen Gegner voraus. Beteiligung durch Aktionen oder zeitliches Verteidigen ist Voraussetzung für persönliche Abschlussbeute. Wiederholungsbelohnungen sinken, überlevelte Figuren erhalten weniger oder keine Kampf-EP. Aktive Ereignisse werden beim Laden kontrolliert abgebrochen und nach 60 Sekunden erneut verfügbar; abgeschlossene und abgeholte Belohnungen bleiben erhalten.
+- **Dauerhafte Ziele:** drei Bünde geben Ruf für unterschiedliche Entdeckungen, Rettungen, Bosse, Verträge und Abenteuer. Sechs Rufrezepte und drei wählbare Meistereide ändern tatsächliche Herstellungs- und Charakterwerte. 16 Errungenschaften belohnen Meilensteine einmal. Zehn Gefährten werden durch unterschiedliche Ziele gewonnen; einer begleitet dich sichtbar, mit kleinen Boni oder begrenzten Angriffen. Die anderen ruhen in deiner Sammlung.
+- **Orientierung:** ein angepinnter Questschritt bestimmt das aktuelle Ziel; Reiseziel und Richtung ändern sich mit Fortschritt. Journal, Karte, Dungeons und Ereignisse können Wegmarken setzen. Vier Hauptbereiche – Held, Arsenal, Chronik und Welt – halten verwandte Funktionen zusammen. Auf Touch bleibt die Zielchronik standardmäßig klein.
+
+Die 48 neuen kleinen Ausrüstungsteile und 24 Rezepte nutzen reduzierte Wertebudgets, damit die zusätzlichen Plätze einen bestehenden Charakter verstärken, ohne die drei großen Plätze zu ersetzen. Insgesamt stehen 191 feste Gegenstände, 198 Beutebasen und 104 Rezepte zur Verfügung. Der [Qualitätsbericht](docs/research-expansion-quality.md) dokumentiert die Überprüfungen und Grenzen; der [automatische Spielbericht](docs/playthrough-review.md) beschreibt echte Bewegungs-/Kampfreplays samt klar benannten Fixtures.
+
+## Version 3.0: Die Erweiterung der schwarzen Wacht – historischer Stand
+
+Die folgenden Zahlen und Beutegewichte dokumentieren die Erweiterung vor den zusätzlichen Ausrüstungsplätzen und Reisesystemen. Der aktuelle Stand 4.0 mit 191 festen Gegenständen, 198 Beutebasen und 104 Rezepten steht oben; seine Prüfungen und Budgetvergleiche stehen im [Qualitätsbericht zu Version 4.0](docs/research-expansion-quality.md).
+
+- **Begegnungen:** fünf eigene Arten je Region, acht Angriffsmuster und neun Monsterfamilien. Bossformen stehen in optionalen Nestern abseits der Hauptwege. Anstürme, Salven, Fächer, Positionsflüche und Novas kündigen sich an; Beschwörer rufen begrenzte, kurzlebige Diener, die keine Beute oder Erfahrung zum Farmen liefern. Rüstung, Frost, Wunden, Gift, Feuer, Regeneration und Lebensentzug wirken im Kampf.
+- **Ausrüstung:** 64 neue Klassenwaffen, 24 Rüstungen, 24 Talismane, zwölf Vorräte und 68 zusätzliche Rezepte. Insgesamt existieren 150 Beutebasen, 143 feste Gegenstände und 74 Rezepte. Händlersortimente, Handwerk und Ausrüstung berücksichtigen Stufe und Klasse. Neue Beute bevorzugt passende Waffen und stufennahe Basen; die Slotverteilung beträgt 40 % Waffen, 35 % Rüstung und 25 % Schmuck.
+- **Entscheidungen:** jede Klasse erhält drei weitere passive Spezialisierungen mit Rangvoraussetzungen. Meistertalente auf Stufe 75 haben wirksame Nachteile. Acht erlernbare Fähigkeiten je Klasse konkurrieren um zwei Zusatzplätze; Lernen, Rangpunkte und Abklingzeiten bleiben serverseitig geprüft.
+- **Weltinteraktionen:** 192 Objekte in zwölf Kategorien: Fässer, Urnen, Gräber, Blutaltäre, Seelenquellen, Gefangene, verfluchte Truhen, Glutherde, Gruftketten, Chroniken, Obelisken und versiegelte Vorräte. Gräber und verfluchte Truhen belohnen erst den gewonnenen Kampf. Eine volle Tasche lässt ihre Belohnung verfügbar; ein neuer Spielstand lädt den Zustand ohne doppelte Beute. Gefangene müssen erst von Feinden befreit werden, Gruftketten öffnen nahe Vorräte und Rituale kosten Ressourcen. Mahlzeiten brauchen Ruhe und haben eine zusätzliche Rastpause.
+
+Der [Balancebericht zu Version 3.0](docs/darkness-balance-report.md) dokumentiert die damalige Artenmatrix und ihren analytischen Ausrüstungsvergleich. Den aktuellen Vergleich von drei zu sieben Ausrüstungsplätzen und die Modellgrenzen beschreibt der [Qualitätsbericht zu Version 4.0](docs/research-expansion-quality.md). Browserprüfungen decken Desktop und Handy ab; lange menschliche Spieltests bleiben für Feinabstimmung nötig.
 
 ## Lokal spielen
 
 Voraussetzung: Node.js 20 oder neuer. Es werden keine zusätzlichen npm-Pakete benötigt.
 
 ```sh
-cd /Users/muhlack/Desktop/Gaming
+cd /workspace/Emberfall
 npm start
 ```
 
@@ -60,6 +82,8 @@ Gruppencharaktere werden in `.emberfall-server/rooms.json` gespeichert. Der Brow
 | Inventar / Talente / Charakter | I / T / C |
 | Weltkarte / Questbuch / Handwerk | M / L / B |
 | Gruppe / Multiplayer | P |
+| Reisechronik / Ereignisse und Expeditionen | N / O |
+| Bestiarium / Weltinteraktionen | V / H |
 | Dungeonübersicht | Dungeons-Schaltfläche im Menü |
 | Fenster schließen / Einstellungen | Escape |
 
@@ -88,7 +112,7 @@ Die Klasse wird für die jeweilige Reise gewählt. Eigene Talentpfade öffnen si
 
 ## Neue aktive Fähigkeiten lernen
 
-Öffne **Talente → Aktive Fähigkeiten** mit T oder über das Menü. Jede Klasse erhält drei zusätzliche Techniken ab **Stufe 4, 12 und 25**, für **1, 2 und 3 Talentpunkte**. Die zweite Technik setzt die erste voraus, die dritte die zweite. Die Anzeige erklärt Stufe, Lernvoraussetzung, Mana, Abklingzeit und verfügbare Punkte. Die bisherigen Grundfähigkeiten auf Q/F und die passiven Talentpfade bleiben verfügbar.
+Öffne **Talente → Aktive Fähigkeiten** mit T oder über das Menü. Jede Klasse erhält acht zusätzliche Techniken, darunter die ursprüngliche Lernkette ab **Stufe 4, 12 und 25**. Weitere Spezialisierungen öffnen sich zwischen Stufe 8 und 70. Die Anzeige erklärt Zweig, Stufe, Lernvoraussetzung, Mana, Abklingzeit und verfügbare Punkte. Die bisherigen Grundfähigkeiten auf Q/F und die passiven Talentpfade bleiben verfügbar. Die folgende Tabelle zeigt die ursprünglichen drei Techniken; alle acht stehen im Spielmenü.
 
 Die Prozentangaben berücksichtigen die Klassenbalance. Die angezeigten Abklingzeiten beziehen Ausrüstung und Talente ein; passende Ausrüstung verkürzt auch die Abklingzeitanzeige der Aktionsbuttons.
 
@@ -108,20 +132,20 @@ Erlernte Techniken können auf **zwei Zusatzplätze, 3 und 4**, gelegt, verschob
 ## Welt, Beute und Abenteuer
 
 - **16 Regionen** in einer Welt von 19.200 × 14.400 Spielkoordinaten: Dämmerhain, Frostgrat, Aschenmoor, Glutöde, Sonnensteppe, Jadeauen, Sturmküste, Dornwildnis, Obsidianpass, Mondbruch, Permafrost, Sandsenke, Traumsenke, Blutmark, Sternensund und Nexusriss.
-- **72 Quests**, 18 Bewohner und Reiseführer sowie 27 Gegnertypen einschließlich der Bossdefinitionen.
+- **72 Quests**, 18 Bewohner und Reiseführer sowie 80 regionale Gegnerarten mit Bossvarianten und zusätzlichen Story-, Dungeon- und Expeditionsbossen.
 - Regionale, wiederholbare Aufträge mit drei wechselnden Angeboten je passendem Gebiet und bis zu drei gleichzeitig aktiven Aufgaben.
-- **38 generierbare Ausrüstungsbasen** neben den bisherigen Gegenständen; fünf Seltenheiten, zwölf normale Affixe, acht klassenspezifische legendäre Effekte und vier Sets mit Boni für zwei und drei verschiedene Ausrüstungsslots.
+- **198 generierbare Ausrüstungsbasen** und 191 feste Gegenstandsdefinitionen; fünf Seltenheiten, zwölf normale Affixe, acht klassenspezifische legendäre Effekte und vier Sets mit Boni für zwei und drei verschiedene Ausrüstungsslots.
 - **Stärkere, passende Ausrüstung:** Waffenrollen verwenden den offensiven Primärwert der Klasse; magische Waffen bevorzugen Zauberkraft, physische Klassen Waffenschaden. Neue Rüstungen gewähren Leben und Rüstung sowie materialabhängige Zusatzwerte. Seltene und epische Funde verbessern den Charakter deutlich gegenüber seiner Starterausrüstung.
 - **Sockel und Aufwertungen:** Rubin, Saphir und Smaragd ergänzen Gegenstandswerte. Zerlegen liefert Materialien und Arkanstaub; damit lässt sich generierte Ausrüstung bis **+10** aufwerten. Werte werden aus Basis, Affixen, Aufwertung, Sockeln und Sets neu berechnet.
 - **Seltene Beute:** Die Basiswahrscheinlichkeit für einen legendären Gegenstand beträgt 0,2 % je normalem Ausrüstungsroll und 3 % je Bossroll. Gespeicherte Pity-Zähler garantieren bei fortgesetzten Gegner-Beuterolls spätestens den 500. normalen beziehungsweise den 34. Bossroll. Das sind Wahrscheinlichkeiten pro Beuteroll, nicht pro normalem Gegner.
-- **Farming und Handwerk:** Holz, Erz, Kräuter und Kristalle sammeln; Saatgut pflanzen und Weizen ernten; sechs Rezepte für Nahrung, Tränke und Ausrüstung.
+- **Farming und Handwerk:** Holz, Erz, Kräuter und Kristalle sammeln; Saatgut pflanzen und Weizen ernten; 104 Rezepte für Nahrung, Tränke und Ausrüstung, darunter sechs durch Fraktionsruf freigeschaltete Rezepte.
 - Weltkarte, Minikarte, entdeckbare Glutschreine, Schnellreise, Questbuch, Klassenwerte und gespeicherter Fortschritt.
 
 Sprich für den Einstieg mit Mira am Brunnen, Sera und Toma. Die Dorfquests führen in Kämpfe, Alchemie und Landwirtschaft ein. Entzünde Glutschreine mit E, um dort zu rasten und die Schnellreise freizuschalten. Bossangriffe werden durch Flächen angekündigt: Verlasse die markierte Zone und nutze das anschließende Zeitfenster. Der Acker wächst während aktiver Simulation; Einzelspielermenüs pausieren diese, Gruppenmenüs dagegen nicht.
 
 ## Ausrüstung vergleichen und wechseln
 
-Inventar und Charakteransicht zeigen die drei Plätze **Waffe, Rüstung und Amulett**, ihre aktuellen Gegenstände und eine **Ablegen**-Aktion. Wähle im Inventar **Anlegen**, um einen passenden Fund auszurüsten. Leere Plätze führen zur Ausrüstungsauswahl. Benötigte Stufe und zulässige Klassen stehen direkt am Gegenstand; gesperrte Ausrüstung lässt sich nicht anlegen. Ein voller Rucksack wird mit zwölf Gegenständen pro Seite angezeigt.
+Inventar und Charakteransicht zeigen die sieben Plätze **Waffe, Körperrüstung, Amulett, Helm, Handschuhe, Stiefel und Ring**, ihre aktuellen Gegenstände und eine **Ablegen**-Aktion. Wähle im Inventar **Anlegen**, um einen passenden Fund auszurüsten. Leere Plätze führen zur Ausrüstungsauswahl. Benötigte Stufe und zulässige Klassen stehen direkt am Gegenstand; gesperrte Ausrüstung lässt sich nicht anlegen. Der Rucksack verwendet ein Raster mit ausgewählter Detailansicht, Suche und Filtern; Favoriten und Sperren schützen geplante Ausstattung.
 
 Der Vergleich nennt den ersetzten Gegenstand und zeigt die **gesamten Charakterwerte vorher → nachher**, mit positiven und negativen Änderungen. Basiswerte, Affixe, Sockel, Aufwertungen, verlorene oder hinzukommende Setboni und globale Wertgrenzen sind enthalten. So ist etwa der Verlust eines Zweiteiler-Sets beim Waffenwechsel bereits vor dem Anlegen sichtbar.
 
@@ -133,7 +157,7 @@ Der Wächter verbindet Taunts und Schutz mit geringerer direkter Schadensleistun
 
 Rüstung ist jetzt ein Rating gegen die Stufe des Angreifers und reduziert Schaden höchstens um 75 %. Der automatische Rüstungsanstieg allein macht hohe Stufen nicht nahezu unverwundbar. Globale Grenzen für kritische Treffer, Lebensraub und Abklingzeitverkürzung begrenzen extreme Kombinationen. Normale Gegner der offenen Welt ab Stufe 12 verwenden neue Kampfbudgets; deutlich niedrigstufige Gegner geben weniger Kampf-EP. Dungeon- und Bosswerte werden separat festgelegt, und ihre Pflichtmechaniken bleiben wirksam.
 
-Die reproduzierbaren Ausrüstungsvergleiche verlangen unter ihren Modellannahmen mindestens **35 % mehr effektiven Schaden und 20 % mehr Überleben** gegenüber dem Starter-Loadout. Der [Balancebericht](docs/balance-report.md) legt diese Annahmen offen. Seine stationären Gegner, feste Angriffszeit und gemittelten Mana-Rotationen enthalten keine zusätzlichen erlernten Fähigkeiten, Talente, Sockel, Sets oder maximalen Aufwertungen. Diese analytischen Werte belegen weder faire Schwierigkeit aller Builds noch menschliche Gruppenkoordination oder 200 Stunden Spielzeit. Dafür sind weitere echte Spielrouten und längere Gruppenläufe erforderlich.
+Der ursprüngliche Vergleich der drei großen Ausrüstungsplätze verlangt unter seinen Modellannahmen mindestens **35 % mehr effektiven Schaden und 20 % mehr Überleben** gegenüber der Starterausrüstung. Der [frühere Balancebericht](docs/balance-report.md) legt diese Annahmen offen. Der [aktuelle Systemvergleich](docs/research-expansion-quality.md) misst zusätzlich die vier kleineren Plätze in 40 Klassen-/Stufenprofilen. Diese Modelle verwenden stationäre Gegner, feste Angriffszeit und gemittelte Mana-Rotationen und enthalten keine zusätzlichen erlernten Fähigkeiten, Talente, Sockel, Sets oder maximalen Aufwertungen. Sie belegen weder faire Schwierigkeit aller Builds noch menschliche Gruppenkoordination oder 200 Stunden Spielzeit. Dafür sind weitere echte Spielrouten und längere Gruppenläufe erforderlich.
 
 ## Regionale Aufträge
 
@@ -166,7 +190,7 @@ Nach einem Sieg wird die nächste Tiefe freigeschaltet, bis **Tiefe 30**. Bereit
 
 Spieler und NPCs verwenden originale **Pixelart** mit einer gemeinsamen begrenzten Farbpalette, transparentem Hintergrund und klaren Konturen. Die acht Klassen besitzen je vier Blickrichtungen mit acht Posen: Leerlauf, vier Laufphasen, zwei Angriffsphasen und eine Bodenpose. Eine Zelle enthält 32 × 48 echte Bildpixel mit Fußanker `[16, 40]`. Die Figuren werden zweifach ohne Glättung gezeichnet, auch für andere Gruppenmitglieder.
 
-Die Welt nutzt eine feste Pixelauflösung mit scharfer zweifacher Vergrößerung. Eigene Pixel-Sprites stellen Bäume, Felsen und Gegner dar. Namen und Questtexte bleiben in voller Bildschirmauflösung lesbar. Die Oberfläche behält ihre ruhigen Moos-, Messing- und Elfenbeinfarben.
+Die Welt nutzt eine feste Pixelauflösung mit scharfer zweifacher Vergrößerung. Eigene Pixel-Sprites stellen Bäume, Felsen und Gegner dar. Namen und Questtexte bleiben in voller Bildschirmauflösung lesbar. Die Oberfläche verwendet dunkle Kohle- und Eisenbrauntöne mit Messingakzenten und hellen Texten.
 
 - `assets/pixel-characters.png` und `.json`: acht Klassen, insgesamt 256 Animationszellen.
 - `assets/pixel-npcs.png` und `.json`: NPCs im gleichen Stil mit eigenen Identitäten und Ausstattungen.
@@ -196,7 +220,14 @@ npm run build
 | `src/catalog.js` | Zusammengeführte Inhaltsdaten |
 | `src/expansion.js` | Zusätzliche Regionen, Gegner, Reiseführer und Questketten |
 | `src/classes.js` / `src/progression.js` | Klassen, Talentpfade und Fortschritt bis Stufe 100 |
-| `src/abilities.js` | 24 erlernbare aktive Fähigkeiten, Voraussetzungen und gespeicherte Belegung |
+| `src/abilities.js` | 64 erlernbare aktive Fähigkeiten, Voraussetzungen und gespeicherte Belegung |
+| `src/bestiary.js`, `src/enemy-ai.js` | 80 regionale Arten, Bossvarianten, Kampfbudgets und tatsächliche Angriffsmuster |
+| `src/arsenal.js` | Neue Waffen, Rüstung, Talismane, Vorräte, Rezepte und Händlersortimente |
+| `src/interactions.js` | Zwölf Weltinteraktionsarten, Chroniken und gespeicherter Zustand |
+| `src/equipment-system.js`, `src/inventory-system.js` | Sieben Plätze, begrenzte Ausrüstungswerte, Lager, Schutzmarkierungen und Vorlagen |
+| `src/journey.js` | Fraktionen, Errungenschaften, Meistereide und Reisegefährten |
+| `src/world-events.js` | Regionale Ereignisse, verzweigte Expeditionen und Beteiligungsbelohnungen |
+| `src/navigation.js` | Questverfolgung, konkrete Reiseziele und Einstiegshilfe |
 | `src/balance.js` | Rollenfaktoren, Rüstungsrating, Kampfwertgrenzen und analytische Vergleiche |
 | `src/loot.js` | Seltenheiten, Basisgegenstände, Affixe, Sets, Sockel und Aufwertungen |
 | `src/mobile-input.js` / `src/main.js` | Mehrfinger-Joystick, Eingabezustand, Touch-Autoziel und Spielschleife |

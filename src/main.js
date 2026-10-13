@@ -41,7 +41,7 @@ function performAction(action,autoAim=false) {
   }else game.action(action);
 }
 const actionKeys={j:'attack',' ':'dash',q:'bolt','1':'bolt','2':'nova','3':'skill0','4':'skill1',f:'nova',r:'potion',e:'interact'};
-const panelKeys={i:'inventory',t:'skills',c:'character',m:'map',l:'journal',b:'crafting',p:'party',u:'dungeons'};
+const panelKeys={i:'inventory',t:'skills',c:'character',m:'map',l:'journal',b:'crafting',p:'party',u:'dungeons',v:'bestiary',h:'interactions',n:'journey',o:'adventures'};
 document.addEventListener('keydown',event=>{
   if(event.target.matches('input,textarea,select,[contenteditable="true"]')) return;
   if(event.target.closest('button')&&(ui.currentPanel||!game.started)&&[' ','Enter'].includes(event.key))return;

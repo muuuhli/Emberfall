@@ -3,6 +3,7 @@ import { EXPANSION_REGIONS } from './expansion.js';
 import { getClass } from './classes.js';
 import { MAX_LEVEL } from './progression.js';
 import { ITEM_BASES, GEM_TYPES, generateLoot } from './loot.js';
+import { equipmentSlot } from './equipment-system.js';
 
 export const BASE_RECIPE_PROFESSIONS = {
   brew_heal: 'alchemy', brew_mana: 'alchemy', bake_bread: 'alchemy',
@@ -202,7 +203,7 @@ export function makeCraftedEquipment(recipeId, { classId = 'guardian', playerLev
   const definition = PROFESSION_RECIPES.find(entry => entry.id === recipeId), profile = definition?.outputProfile;
   if (!profile || !Number.isInteger(playerLevel) || playerLevel < definition.minLevel || playerLevel > 100) return null;
   const characterClass = getClass(classId);
-  let candidates = ITEM_BASES.filter(base => base.type === profile.slot && base.minLevel <= profile.level && (!base.classIds || base.classIds.includes(characterClass.id)));
+  let candidates = ITEM_BASES.filter(base => equipmentSlot(base) === profile.slot && base.minLevel <= profile.level && (!base.classIds || base.classIds.includes(characterClass.id)));
   if (profile.slot === 'armor') {
     const preferred = candidates.filter(base => ['guardian', 'paladin'].includes(characterClass.id) ? base.stats.armor > 0 && base.stats.maxHp > 0 : ['ranger', 'nightblade'].includes(characterClass.id) ? base.stats.speed > 0 || base.stats.dodgeCooldown > 0 : base.stats.mana > 0 || base.stats.manaRegen > 0);
     if (preferred.length) candidates = preferred;

@@ -4,18 +4,21 @@ import path from 'node:path';
 import { Game } from '../src/game.js';
 import * as Catalog from '../src/catalog.js';
 import { CLASSES } from '../src/classes.js';
+import { getArsenalShopStock } from '../src/arsenal.js';
+import { EQUIPMENT_SLOT_IDS, getEquipmentShopStock } from '../src/equipment-system.js';
+import { captureWorldEvents, restoreWorldEvents } from '../src/world-events.js';
 
 const KEYS = new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
 const ACTIONS = new Set(['attack','dash','bolt','nova','potion','interact','primary','secondary','ultimate']);
-const METHODS = new Set(['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract']);
+const METHODS = new Set(['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent']);
 const SHOP_STOCK = {
   elin:new Set(['forest_blade','sentinel_mail']),
   sera:new Set(['heal_potion','mana_potion']),
   oren:new Set(['heal_potion','mana_potion','leather_armor','forest_blade','seed']),
 };
-const PERSONAL_FIELDS = ['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp'];
+const PERSONAL_FIELDS = ['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey'];
 const SHARED_FIELDS = ['effects','projectiles','drops','hazards','summons','dungeonInstance','overworld','activeDungeon','worldMode'];
-const MUTABLE_WORLD = ['enemies','nodes','plots','shrines','chests','puzzles','puzzleObjects','gates','portals','dungeonPortals','dungeonState','dungeonExit'];
+const MUTABLE_WORLD = ['enemies','nodes','plots','shrines','chests','puzzles','puzzleObjects','gates','portals','dungeonPortals','dungeonState','dungeonExit','interactions','worldEvents','eventObjects'];
 const LAYOUT_FIELDS = ['seed','width','height','regions','paths','river','bridges','structures','trees','rocks','landmarks','dungeons','walls','floors','entrance','exit','rooms','isDungeon','dungeonId','tier'];
 const STORE_KEY = 'emberfall.multiplayer.v1';
 const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
@@ -140,6 +143,8 @@ export class MultiplayerHub {
     const game=member.game,p=game.player,world=game.world;
     const near=value=>!Number.isFinite(value?.x)||!Number.isFinite(value?.y)||distance(value,p)<1400;
     const data={protocol:1,roomCode:member.room.code,roomName:member.room.name,playerId:member.id,sequence:this.frames,time:member.room.time,player:{...p},world:{},npcs:game.npcs,effects:game.effects.filter(near),projectiles:game.projectiles.filter(near),drops:game.drops.filter(near),hazards:(game.hazards||[]).filter(near),summons:(game.summons||[]).filter(near),worldMode:game.dungeonInstance?'dungeon':'overworld',activeDungeon:game.dungeonInstance?{id:game.dungeonInstance.id,tier:game.dungeonInstance.tier,name:game.dungeonInstance.definition.name}:null,party:[...member.room.members.values()].filter(m=>m.active).map(m=>({id:m.id,name:m.game.player.name,classId:m.game.classId,level:m.game.player.level,hp:m.game.player.hp,maxHp:m.game.stats().maxHp,x:m.game.player.x,y:m.game.player.y,face:m.game.player.face,walking:m.game.player.walking,dead:m.game.dead,attackUntil:m.game.player.attackUntil,dashUntil:m.game.player.dashUntil,hitUntil:m.game.player.hitUntil,connected:m.streams.size>0})),events:member.events};
+    data.authoritativeInteractionSummary=game.interactionSummary();
+    data.authoritativeWorldEventSummary=game.worldEventSummary?.()||[];
     data.dungeonInstance=game.dungeonInstance?Object.fromEntries(['id','definition','tier','seed','partySize','spawn','exit','puzzles','elapsed','bossDefeated','gateOpened','shieldHold','vulnerabilityUntil'].map(key=>[key,game.dungeonInstance[key]])):null;
     for(const key of PERSONAL_FIELDS)if(game[key]!==undefined)data[key]=game[key];
     for(const key of MUTABLE_WORLD)if(world[key]!==undefined)data.world[key]=Array.isArray(world[key])?world[key].filter(near):world[key];
@@ -207,6 +212,9 @@ export class MultiplayerHub {
       // keep their remaining duration after a server restart.
       room.time=Number.isFinite(saved.time)?Math.max(0,saved.time):leader.time;
       for(const member of room.members.values())member.game.time=room.time;
+      // Canonical event restoration also applies after the shared-world overlay:
+      // an interrupted run fails safely and its combat actors cannot revive.
+      if(Array.isArray(leader.world.worldEvents))restoreWorldEvents(leader.world,captureWorldEvents(leader.world),room.time);
       this._syncRoom(room,leader);
     }
   }
@@ -289,9 +297,13 @@ export class MultiplayerHub {
       return !!game.action(command.name);
     }
     if(command.type==='method') {
-      if(Object.keys(command).some(k=>!['type','name','args'].includes(k))||!METHODS.has(command.name)||!Array.isArray(command.args)||command.args.length>2||command.args.some((v,i)=>typeof v!=='string'&&!Number.isFinite(v)&&!(command.name==='setAbilityLoadout'&&i===1&&v===null))||command.args.some(v=>typeof v==='string'&&v.length>120))throw new HttpError(400,'Ungültiger Spielbefehl.');
+      if(Object.keys(command).some(k=>!['type','name','args'].includes(k))||!METHODS.has(command.name)||!Array.isArray(command.args)||command.args.length>2||command.args.some((v,i)=>typeof v!=='string'&&!Number.isFinite(v)&&!(v===null&&(command.name==='setAbilityLoadout'&&i===1||command.name==='selectCompanion'&&i===0)))||command.args.some(v=>typeof v==='string'&&v.length>120))throw new HttpError(400,'Ungültiger Spielbefehl.');
       if(typeof game[command.name]!=='function')throw new HttpError(400,'Diese Aktion ist noch nicht verfügbar.');
-      if(command.name==='learnAbility'&&(command.args.length!==1||typeof command.args[0]!=='string')||command.name==='useLearnedAbility'&&(command.args.length!==1||!Number.isInteger(command.args[0])||command.args[0]<0||command.args[0]>1)||command.name==='setAbilityLoadout'&&(command.args.length!==2||!Number.isInteger(command.args[0])||command.args[0]<0||command.args[0]>1||command.args[1]!==null&&typeof command.args[1]!=='string')||command.name==='unequip'&&(command.args.length!==1||!['weapon','armor','charm'].includes(command.args[0])))throw new HttpError(400,'Ungültige Fähigkeiten- oder Ausrüstungsparameter.');
+      if(['learn','interactWorldObject'].includes(command.name)&&(command.args.length!==1||typeof command.args[0]!=='string'))throw new HttpError(400,'Diese Aktion benötigt eine bekannte Kennung.');
+      if(['depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','trackQuest','claimAchievement','chooseMastery','claimWorldEvent'].includes(command.name)&&(command.args.length!==1||typeof command.args[0]!=='string'))throw new HttpError(400,'Diese Aktion benötigt eine bekannte Kennung.');
+      if(command.name==='selectCompanion'&&(command.args.length!==1||command.args[0]!==null&&typeof command.args[0]!=='string')||command.name==='respecTalents'&&command.args.length!==0||['setItemFlag','setWaypoint'].includes(command.name)&&(command.args.length!==2||command.args.some(value=>typeof value!=='string'))||command.name==='interactWorldEvent'&&(command.args.length<1||command.args.some(value=>typeof value!=='string')))throw new HttpError(400,'Ungültige Parameter für diese Reiseaktion.');
+      if(command.name==='setItemFlag'&&!['favorite','locked'].includes(command.args[1])||command.name==='setWaypoint'&&!['npc','shrine','quest','event','interaction','dungeon','region','clear'].includes(command.args[0]))throw new HttpError(400,'Unbekannte Markierung.');
+      if(command.name==='learnAbility'&&(command.args.length!==1||typeof command.args[0]!=='string')||command.name==='useLearnedAbility'&&(command.args.length!==1||!Number.isInteger(command.args[0])||command.args[0]<0||command.args[0]>1)||command.name==='setAbilityLoadout'&&(command.args.length!==2||!Number.isInteger(command.args[0])||command.args[0]<0||command.args[0]>1||command.args[1]!==null&&typeof command.args[1]!=='string')||command.name==='unequip'&&(command.args.length!==1||!EQUIPMENT_SLOT_IDS.includes(command.args[0])))throw new HttpError(400,'Ungültige Fähigkeiten- oder Ausrüstungsparameter.');
       if(['questAccept','questTurnIn'].includes(command.name)) {
         const quest=Catalog.QUESTS.find(q=>q.id===command.args[0]),npc=game.npcs.find(n=>n.id===quest?.giver);
         if(!npc||distance(game.player,npc)>110)throw new HttpError(409,'Sprich zuerst mit dem Questgeber in deiner Nähe.');
@@ -299,7 +311,11 @@ export class MultiplayerHub {
       if(command.name==='buy') {
         const nearby=game.npcs.filter(n=>SHOP_STOCK[n.id]&&distance(game.player,n)<120);
         if(!nearby.length)throw new HttpError(409,'Ein Händler muss in deiner Nähe sein.');
-        if(!nearby.some(n=>SHOP_STOCK[n.id].has(command.args[0])))throw new HttpError(409,'Diese Ware wird hier nicht angeboten.');
+        if(!command.args.length||typeof command.args[0]!=='string')throw new HttpError(400,'Wähle eine Ware aus dem Angebot.');
+        const offered=nearby.some(n=>SHOP_STOCK[n.id].has(command.args[0])||[...getArsenalShopStock({level:game.player.level,classId:game.player.classId,merchant:n.id}),...getEquipmentShopStock({level:game.player.level,classId:game.player.classId,merchant:n.id})].some(item=>item.id===command.args[0]));
+        if(!offered)throw new HttpError(409,'Diese Ware wird hier nicht angeboten.');
+        const item=Catalog.ITEMS[command.args[0]];
+        if(item&&(game.player.level<(item.minLevel||item.level||1)||item.classIds&&!item.classIds.includes(game.player.classId)))return false;
       }
       if(command.name==='sell') {
         if(!game.npcs.some(n=>(n.id==='oren'||n.role?.includes('Händler'))&&distance(game.player,n)<120))throw new HttpError(409,'Ein Händler muss in deiner Nähe sein.');

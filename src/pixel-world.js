@@ -13,14 +13,16 @@
  * with fillRect alone. getPixelSprite() exposes pixels for QA and contact sheets.
  */
 
+import { ENEMY_TYPES } from './catalog.js';
+
 export const PIXEL_WORLD_PALETTE = Object.freeze([
-  null, '#202a2b', '#33423d', '#4f5946', '#76775a', '#a8a078', '#ded1a1',
-  '#34372b', '#4b5131', '#626c38', '#83934d', '#b1bd68', '#d6d88f',
-  '#3e302b', '#614837', '#886443', '#b88d59', '#e1b57a',
-  '#413942', '#665767', '#94839a', '#c1aec5', '#ede0e1',
+  null, '#161b21', '#283632', '#445046', '#707263', '#a69a7c', '#e0d3b3',
+  '#202a25', '#35432b', '#516044', '#7b895c', '#aab778', '#d2cf9b',
+  '#30262a', '#513a32', '#79543c', '#b08458', '#dbaf7b',
+  '#2c2d39', '#525262', '#8a8794', '#beb5c6', '#ebe0df',
   '#29454d', '#3e6973', '#66939e', '#9bc6cf', '#d6edf0',
-  '#553737', '#8b4b3d', '#c06b47', '#ed9b59', '#ffe0a0',
-  '#433451', '#685079', '#9772ac', '#c19dcd', '#edc5e4', '#17292a80',
+  '#40272c', '#813c38', '#bc5a40', '#ec9351', '#ffe0a0',
+  '#28233d', '#504063', '#846598', '#b994c6', '#edbfd6', '#080e17a8',
 ]);
 
 const C = Object.freeze({
@@ -39,7 +41,7 @@ export const PIXEL_WORLD_STYLE = Object.freeze({
   cacheLimit: 192, normal: [32, 40], wolf: [48, 28], boss: [64, 72], tree: [56, 68], rock: [32, 24],
 });
 
-export const PIXEL_ENEMY_TYPES = Object.freeze([
+const ORIGINAL_ENEMY_TYPES = Object.freeze([
   'wolf', 'slime', 'frostwolf', 'skeleton', 'wraith', 'imp',
   'thorn_guardian', 'frost_sentinel', 'emberlord', 'steppe_raider',
   'jade_stalker', 'tide_reaver', 'thorn_hunter', 'obsidian_knight',
@@ -47,6 +49,8 @@ export const PIXEL_ENEMY_TYPES = Object.freeze([
   'echo_guard', 'root_matron', 'drowned_archon', 'thorn_abbess', 'chronar',
   'skadi', 'storm_king', 'night_devourer', 'world_heart',
 ]);
+
+export const PIXEL_ENEMY_TYPES = Object.freeze(Object.keys(ENEMY_TYPES));
 
 const BOSSES = new Set(['thorn_guardian', 'frost_sentinel', 'emberlord', 'root_matron',
   'drowned_archon', 'thorn_abbess', 'chronar', 'skadi', 'storm_king', 'night_devourer', 'world_heart']);
@@ -426,7 +430,131 @@ function objective(b, name, frame) {
   }
 }
 
+// New bestiary art is authored from anatomy, equipment and species details.
+// IDs select a stable body plan; attack poses change the actual native pixels.
+const speciesSeed = id => [...id].reduce((n,c)=>(Math.imul(n,31)+c.charCodeAt(0))>>>0,7);
+const familyColours = {
+  beast:[C.woodDark,C.bark,C.sand,C.fire], undead:[C.ironDark,C.grey,C.ivory,C.fire],
+  cultist:[C.voidDark,C.void,C.lilac,C.pink], demon:[C.ash,C.emberDark,C.ember,C.flame],
+  insect:[C.forest,C.leafDark,C.lime,C.pollen], abomination:[C.ash,C.emberDark,C.sand,C.pink],
+  construct:[C.ironDark,C.iron,C.silver,C.fire], spectral:[C.voidDark,C.violet,C.lilac,C.pink],
+  plant:[C.woodDark,C.leafDark,C.leafLight,C.pollen],
+};
+function newCreature(type, def, frame, mirror) {
+  const id=def.baseType||type,seed=speciesSeed(type===`${id}_boss`?id:type),family=def.family||'abomination';
+  const boss=!!def.boss,body=new Brush(52,58,[26,54]),b=body;
+  let [dark,mid,light,eye]=familyColours[family]||familyColours.abomination;
+  // Material families keep deliberate clusters while each species has its own
+  // contour, asymmetric equipment and identifying marks.
+  const silhouette=def.silhouette||'',a=def.archetype||'brute';
+  if(/frost|ice|winter|snow/.test(id)){dark=C.iceDark;mid=C.ice;light=C.snow;eye=C.iceLight;}
+  else if(/void|night|shade|soul/.test(id)){dark=C.voidDark;mid=C.violet;light=C.lilac;eye=C.pink;}
+  const wide=a==='brute'||a==='guardian'?3:0,lean=frame===2?2:frame===3?-2:0,step=frame===1?2:0;
+  b.shadow(19+wide);
+  if(/serpent|worm|leech/.test(silhouette)) {
+    b.oval(-3,-10,20,10,C.ink);b.oval(-3,-11,17,7,mid);b.oval(-3,-11,11,4,dark);b.oval(-3,-11,7,2,C.ink);
+    b.poly([[7,-12],[3,-21],[3,-35],[8,-43],[17,-41],[20,-34],[16,-26],[18,-16],[13,-7]],C.ink);
+    b.poly([[9,-13],[6,-22],[6,-34],[10,-40],[15,-38],[17,-33],[13,-25],[15,-16],[12,-10]],mid);
+    b.line(8,-32,11,-15,light,3);b.rect(10,-35,6,3,light);b.dot(14,-36,eye);b.rect(16,-32,4,3,dark);
+    for(let i=0;i<6;i++)b.line(-18+i*5,-12+(i%2)*3,-17+i*5,-7+(i%2)*2,light);
+    if(frame===2){b.line(18,-31,24,-32,eye);b.line(23,-32,24,-34,eye);}
+    if(family==='construct')for(let i=0;i<5;i++)b.diamond(-13+i*6,-13,3,4,C.silver);
+  } else if(/beholder|eye|portal/.test(silhouette)) {
+    for(const side of [-1,1])for(let i=0;i<3;i++){b.line(side*9,-21-i*6,side*20,-37+i*9-lean,dark,4);b.line(side*20,-37+i*9-lean,side*24,-22+i*5,mid,2);}
+    b.oval(0,-26,17,22,C.ink);b.oval(0,-27,14,19,mid);b.oval(-3,-30,10,13,light);
+    if(silhouette==='portal'){b.oval(0,-25,10,17,dark);b.oval(0,-25,7,14,C.ink);for(const x of [-6,-2,2,6]){b.poly([[x-1,-40],[x+2,-40],[x,-32]],C.ivory);b.poly([[x-1,-10],[x+2,-10],[x,-18]],light);}b.rect(-1,-25,3,6,frame===2?eye:mid);}
+    else {b.oval(0,-29,11,7,C.ivory);b.oval(3,-29,5,7,eye);b.oval(4,-29,2,6,C.ink);b.rect(2,-33,2,3,C.white);b.line(-5,-16,6,-16,dark,2);}
+  } else if(silhouette==='bell') {
+    b.rect(-4,-47,8,8,C.ink);b.rect(-3,-46,6,6,light);b.poly([[-21,-7],[-15,-14],[-12,-34],[-6,-40],[6,-40],[12,-34],[15,-14],[21,-7]],C.ink);b.poly([[-18,-9],[-12,-15],[-9,-33],[-4,-37],[5,-37],[9,-31],[12,-14],[18,-9]],mid);b.poly([[-10,-15],[-7,-32],[-3,-35],[-1,-13]],light);b.rect(-20,-9,40,5,dark);b.rect(-17,-8,34,2,light);b.oval(0,-3,5,4,eye);b.line(-2,-20,6,-26,dark,2);
+  } else if(silhouette==='scarecrow') {
+    boots(b,frame,C.woodDark,8);b.line(-21,-31,21,-31,C.ink,5);b.line(-20,-32,20,-32,C.barkLight,3);b.poly([[-9,-4],[-11,-30],[-5,-36],[8,-34],[11,-7],[5,-11],[0,-3],[-5,-8]],mid);b.line(-6,-27,-4,-8,light,3);b.line(7,-28,5,-13,dark,2);b.rect(-7,-45,14,12,C.sand);eyes(b,-40,eye,3);b.line(-3,-35,4,-35,C.woodDark);b.poly([[-14,-46],[-6,-47],[-3,-52],[6,-52],[8,-46],[15,-45]],C.ink);b.line(-11,-46,12,-45,light);b.line(19,-4,19,-43,C.wood,2);b.poly([[19,-43],[10,-48],[2,-42],[11,-44],[19,-39]],C.ivory);
+  } else if(family==='plant'&&silhouette==='fungus') {
+    b.poly([[-8,1],[-7,-17],[-11,-31],[9,-31],[7,-16],[9,1]],C.ink);b.poly([[-5,0],[-4,-16],[-7,-28],[6,-28],[4,-16],[6,0]],mid);b.line(-2,-24,-2,-2,light,2);
+    b.poly([[-23,-28],[-20,-38],[-10,-45],[0,-48],[11,-44],[20,-36],[23,-28],[9,-25],[-11,-25]],C.ink);b.poly([[-20,-29],[-17,-37],[-9,-42],[0,-45],[10,-41],[17,-35],[20,-29]],mid);b.line(-13,-37,-3,-41,light,3);for(const x of [-12,0,10])b.oval(x,-33,3,2,light);eyes(b,-21,eye,3);b.rect(-3,-13,7,3,dark);
+  } else if(family==='insect'&&silhouette==='swarm') {
+    for(let i=0;i<5;i++){const x=(i%3-1)*14,y=-11-Math.floor(i/3)*17;for(const side of [-1,1]){b.line(x+side*3,y-2,x+side*7,y-6-step,C.ink,2);b.line(x+side*3,y+2,x+side*7,y+6+step,dark,2);}b.oval(x,y,5,8,C.ink);b.oval(x,y-1,4,6,mid);b.line(x,y-5,x,y+3,light);b.dot(x+2,y+4,eye);}
+  } else if(family==='beast'||/hound|mammoth/.test(silhouette)) {
+    if(/bat|bird|raven|crow|gull|vulture/.test(silhouette)) {
+      for(const side of [-1,1]){b.poly([[side*4,-30],[side*19,-43-lean],[side*24,-17],[side*17,-22],[side*12,-12],[side*5,-20]],C.ink);b.poly([[side*6,-29],[side*18,-39-lean],[side*21,-21],[side*14,-23],[side*10,-16]],mid);b.line(side*6,-27,side*17,-28,light);}
+      b.oval(0,-25,7,15,C.ink);b.oval(0,-26,5,12,dark);b.rect(-5,-40,10,9,mid);eyes(b,-36,eye,2);b.poly([[-2,-32],[0,-27],[3,-32]],light);
+    } else {
+      const tall=/bear|boar|hound|werewolf|mammoth/.test(silhouette),h=tall?8:0;
+      b.poly([[-18,-15],[-23,-24-h],[-17,-21],[-12,-28-h],[7,-26-h],[18,-18-h],[18,-7],[9,-4],[-13,-4]],C.ink);
+      b.poly([[-16,-14],[-18,-20-h],[-10,-25-h],[6,-23-h],[15,-16-h],[14,-8],[7,-6],[-11,-6]],mid);
+      b.poly([[-12,-22-h],[0,-24-h],[8,-19-h],[1,-14],[-10,-15]],light);
+      for(const x of [-12,9]){b.rect(x-2,-9,5,10,C.ink);b.rect(x-1+step*(x<0?1:-1),-8,3,8,dark);b.rect(x-2,-1,5,2,light);}
+      const headY=-29-h+lean;
+      b.poly([[7,headY+10],[5,headY-3],[10,headY-12],[14,headY-6],[20,headY-10],[22,headY+1],[24,headY+6],[18,headY+11]],C.ink);
+      b.poly([[9,headY+7],[8,headY-2],[11,headY-8],[15,headY-2],[19,headY-6],[20,headY+2],[22,headY+6],[16,headY+8]],mid);
+      b.rect(16,headY+1,5,2,light);b.dot(16,headY-2,eye);b.rect(22,headY+5,2,2,C.ink);
+      if(/boar|rat|hound|mammoth/.test(silhouette)){b.line(19,headY+9,21,headY+4,C.ivory,2);b.line(-17,-10,-24,-6,dark,2);}
+      if(/ram|stag/.test(silhouette)){b.line(9,headY-6,4,headY-17,C.ivory,2);b.line(4,headY-17,-1,headY-14,C.ivory,2);b.line(17,headY-7,22,headY-15,C.ivory,2);}
+      if(silhouette==='mammoth'){b.line(22,headY+4,23,headY+19,mid,4);b.line(19,headY+7,16,headY+17,C.ivory,2);}
+      if(frame===2)b.rect(17,headY+8,5,3,C.ivory);
+    }
+  } else if(family==='insect') {
+    if(silhouette==='mosquito')for(const side of [-1,1]){b.poly([[side*4,-30],[side*18,-42],[side*23,-34],[side*8,-22]],C.ink);b.poly([[side*6,-29],[side*18,-38],[side*20,-34],[side*9,-25]],C.silver);}
+    for(const side of [-1,1])for(let i=0;i<3;i++){const rise=frame===2?-3:0;b.line(side*8,-11-i*6,side*(18+i),-25+i*5+rise,C.ink,3);b.line(side*(18+i),-25+i*5+rise,side*23,-6+i*2+step,mid,2);}
+    b.oval(0,-24,12+wide,17,C.ink);b.oval(0,-25,10+wide,14,dark);b.poly([[-9,-29],[-6,-39],[1,-41],[8,-32],[7,-20],[0,-12],[-6,-19]],mid);
+    b.line(0,-40,0,-12,light,2);for(let i=0;i<3;i++)b.line(-7,-33+i*6,7,-33+i*6,light);
+    b.oval(0,-8,7,6,C.ink);b.oval(0,-9,5,4,mid);eyes(b,-10,eye,2);
+    b.poly([[-4,-5],[-9,0],[-9,-7]],light);b.poly([[4,-5],[9,0],[9,-7]],light);
+    if(/scorpion|mantis/.test(silhouette)){b.line(6,-35,17,-44,mid,4);b.line(17,-44,21,-38,light,3);b.diamond(20,-35,3,5,eye);}
+  } else if(family==='spectral') {
+    if(silhouette==='seraph')for(const side of [-1,1]){b.poly([[side*7,-28],[side*23,-45],[side*19,-24],[side*24,-18],[side*13,-15]],C.ink);b.line(side*10,-25,side*21,-40,light,3);b.line(side*12,-19,side*21,-26,mid,3);}
+    b.poly([[-13,-5],[-15,-28],[-10,-43],[0,-50],[10,-43],[15,-28],[13,-5],[6,-10],[1,-1],[-4,-7],[-10,-1]],C.ink);
+    b.poly([[-10,-8],[-12,-27],[-8,-41],[0,-47],[8,-41],[12,-27],[10,-9],[5,-14],[0,-6],[-5,-11]],dark);
+    b.poly([[-7,-37],[-2,-42],[4,-36],[1,-17],[-4,-11]],mid);b.line(-6,-38,-8,-16,light);
+    b.oval(0,-36,7,7,C.ink);eyes(b,-38,eye,3);b.rect(-1,-32,3,5,light);
+    for(const side of [-1,1]){b.line(side*10,-31,side*19,-22-lean,mid,4);b.line(side*19,-22-lean,side*22,-34-lean,light,2);}
+    if(a==='reaper'){b.line(20,-4,20,-45,C.wood,2);b.poly([[20,-44],[9,-49],[-1,-44],[11,-46],[20,-39]],light);}
+  } else if(family==='plant') {
+    for(const side of [-1,1]){b.poly([[side*4,-13],[side*13,-5],[side*22,0],[side*17,1],[side*7,-3],[side*2,1]],dark);b.line(side*8,-24,side*18,-37-lean,mid,5);b.poly([[side*16,-32-lean],[side*22,-39-lean],[side*19,-28-lean]],light);}
+    b.poly([[-10,-5],[-12,-32],[-6,-44],[0,-49],[8,-40],[12,-24],[10,-5]],C.ink);b.poly([[-8,-7],[-9,-31],[-4,-42],[1,-45],[6,-38],[9,-23],[7,-7]],mid);
+    b.line(-4,-34,-2,-8,dark,3);b.line(3,-33,5,-9,light,2);b.rect(-7,-36,14,9,dark);eyes(b,-34,eye,3);
+    for(let i=0;i<4;i++){const x=(i-2)*5;b.poly([[x,-40],[x-4,-48-(seed%3)],[x+3,-43]],light);}
+    if(frame===2)b.diamond(0,-25,4,6,eye);
+  } else if(family==='abomination') {
+    const hump=seed%5;b.oval(-2,-25,16+wide,19,C.ink);b.oval(-2,-25,13+wide,16,mid);b.oval(-8,-31,7,9,light);
+    b.oval(5,-39,10,10,C.ink);b.oval(5,-39,8,8,mid);b.rect(0,-40,12,3,C.ink);b.dot(1,-40,eye);b.dot(10,-40,eye);
+    b.rect(1,-34,10,4,C.ink);for(let x=2;x<11;x+=3)b.rect(x,-34,1,2,C.ivory);
+    for(const side of [-1,1]){b.line(side*10,-26,side*(20+wide),-18-lean,mid,6);b.line(side*(20+wide),-18-lean,side*19,-4,light,3);b.rect(side*6-2,-9,6,10,dark);}
+    for(let i=0;i<3;i++)b.line(-11+i*7,-32,-15+i*6,-45-hump,C.ivory,2);
+    b.line(-10,-18,9,-16,dark);b.line(-8,-14,8,-12,dark);if(frame===2)b.oval(1,-21,4,6,eye);
+  } else {
+    // Armed humanoids: armour, bones, ritual robes and infernal anatomy.
+    const skeletal=family==='undead',robe=family==='cultist',demonic=family==='demon',iron=family==='construct';
+    const torsoW=9+wide,headY=-40-(seed%3),armY=frame===2?-35:frame===3?-17:-26;
+    boots(b,frame,dark,6+Math.floor(wide/2));
+    b.poly([[-torsoW,-8],[-torsoW-2,-31],[-5,-36],[7,-35],[torsoW+2,-29],[torsoW,-8]],C.ink);
+    b.poly([[-torsoW+2,-9],[-torsoW,-29],[-4,-33],[6,-32],[torsoW,-27],[torsoW-2,-9]],mid);
+    b.poly([[-torsoW,-26],[-3,-31],[-1,-11],[-torsoW+2,-12]],light);b.line(1,-30,3,-10,dark,3);
+    if(robe){b.poly([[-9,-27],[-14,-4],[-7,-1],[0,-5],[8,-1],[14,-4],[9,-27]],dark);b.line(-7,-25,-10,-5,light);b.line(7,-25,10,-5,mid);}
+    if(skeletal){for(let y=-29;y<-13;y+=4){b.line(-7,y,7,y+1,C.ivory);b.dot(0,y,C.ink);}b.rect(-7,-12,15,3,C.ivory);}
+    if(iron){for(const side of [-1,1]){b.rect(side*10-3,-31,7,8,C.ink);b.rect(side*10-2,-30,5,5,light);b.rect(side*10-1,-28,2,2,eye);}b.diamond(0,-22,3,5,eye);}
+    b.rect(-9,headY-4,18,14,C.ink);b.rect(-7,headY-2,14,10,robe?dark:skeletal?C.ivory:light);b.rect(0,headY-2,7,10,mid);eyes(b,headY+1,eye,3);
+    b.rect(-3,headY+6,7,3,dark);if(skeletal)b.rect(-2,headY+7,2,2,C.ivory);
+    if(robe){b.poly([[-10,headY+7],[-9,headY-7],[0,headY-12],[9,headY-7],[10,headY+7],[6,headY+3],[0,headY-4],[-6,headY+3]],mid);eyes(b,headY+1,eye,3);}
+    if(demonic){for(const side of [-1,1]){b.poly([[side*5,headY-2],[side*12,headY-12],[side*14,headY-6],[side*10,headY+2]],C.ink);b.line(side*7,headY-3,side*12,headY-9,light,2);}b.line(-8,-11,-17,-8,dark,3);b.line(-17,-8,-22,-13,mid,2);}
+    for(const side of [-1,1]){b.line(side*(torsoW-1),-29,side*17,armY,C.ink,5);b.line(side*(torsoW-1),-29,side*17,armY,mid,3);b.rect(side*17-2,armY-2,4,4,light);}
+    if(a==='archer'){b.line(19,armY-12,23,armY,light,2);b.line(23,armY,19,armY+12,light,2);b.line(19,armY-12,19,armY+12,dark);b.line(9,armY,24,armY,C.ivory);}
+    else if(['sorcerer','summoner','spitter'].includes(a)){b.line(18,-3,18,-42,C.wood,2);b.diamond(18,-43,4,5,C.ink);b.diamond(18,-43,2,3,frame===2?C.white:eye);}
+    else if(a==='guardian'){b.poly([[12,-30],[23,-26],[22,-12],[16,-7],[10,-14]],C.ink);b.poly([[14,-27],[21,-24],[20,-14],[16,-10],[12,-15]],dark);b.line(16,-25,17,-14,light,2);}
+    else {b.line(18,armY+8,18,armY-14,C.wood,2);b.poly([[18,Math.max(-51,armY-20)],[14,armY-10],[18,armY-12],[23,armY-8],[23,armY-14]],light);}
+  }
+  // Species-specific scars, growths and sigils keep related anatomy distinct.
+  for(let i=0;i<4;i++){const x=-8+((seed>>>(i*5))%15),y=-12-i*5;b.rect(x,y,1+(seed>>>(i*3))%3,1,i%2?dark:light);}
+  const sigil=(seed%7)+1;b.rect(-3,-18,7,6,dark);for(let i=0;i<3;i++)if(sigil&(1<<i))b.rect(-2+i*2,-17,1,3,eye);
+  if(frame===2){b.rect(-1,-24,3,2,eye);b.line(-6,-23,-3,-25,light);}
+  if(boss){b.poly([[-10,-45],[-12,-51],[-5,-48],[0,-54],[5,-48],[12,-51],[10,-45]],C.ink);b.line(-9,-47,0,-51,C.fire,2);b.line(0,-51,9,-47,C.flame,2);}
+  const key=`enemy:${type}:${frame}:${mirror?1:0}:`;
+  if(!boss)return b.finish(key,mirror);
+  const sprite=b.finish(key);
+  return resize(sprite,Math.min(88,Math.round(52*Math.min(def.size||1.35,1.5))),Math.min(88,Math.round(58*Math.min(def.size||1.35,1.5))),key,mirror);
+}
+
 function buildEnemy(type, frame, mirror, objectiveName = '') {
+  if(!objectiveName&&!ORIGINAL_ENEMY_TYPES.includes(type))return newCreature(type,ENEMY_TYPES[type]||{},frame,mirror);
   const boss = BOSSES.has(type), wolfType = type === 'wolf' || type === 'frostwolf';
   const wide = TALL_ARMOUR.has(type) || type === 'emberlord', construct = ['obsidian_knight','moon_construct','frost_colossus','echo_guard'].includes(type);
   const width=type==='world_heart'?88:wide?72:boss?64:wolfType?48:type==='void_watcher'?40:construct||type==='skeleton'?36:32;
@@ -446,6 +574,39 @@ function buildEnemy(type, frame, mirror, objectiveName = '') {
   else if(type==='night_devourer') devourer(b,frame);
   else watcher(b,frame,type==='world_heart');
   return b.finish(`enemy:${type}:${frame}:${mirror?1:0}:${objectiveName}`, mirror);
+}
+
+export const PIXEL_COMPANION_TYPES = Object.freeze(['cinder_moth','ossuary_hound','root_wisp','rime_lynx','gloam_raven','tide_lantern','iron_beetle','moon_eidolon','blood_weasel','abyss_sentinel']);
+function companion(type,frame,mirror,key) {
+  const quadruped=['ossuary_hound','rime_lynx','blood_weasel'].includes(type),b=new Brush(quadruped?48:40,42,[quadruped?24:20,37]);
+  b.shadow(quadruped?15:9);
+  if(quadruped){
+    wolf(b,type==='rime_lynx',frame);
+    b.rect(-7,-6,12,2,type==='blood_weasel'?C.emberDark:C.wood);b.rect(9,-12,2,5,C.fire);b.dot(10,-9,C.flame);
+    if(type==='ossuary_hound'){b.rect(8,-19,9,7,C.ivory);b.rect(13,-16,2,2,C.ink);b.rect(17,-13,3,2,C.ironDark);b.rect(-7,-13,8,2,C.silver);}
+    if(type==='rime_lynx'){b.line(6,-21,5,-26,C.ink);b.line(13,-22,14,-27,C.ink);b.rect(-9,-12,3,2,C.iceDark);b.rect(-2,-14,3,2,C.iceDark);}
+    if(type==='blood_weasel'){b.rect(-6,-16,10,3,C.emberDark);b.line(-14,-9,-21,-17,C.wood,3);b.line(-21,-17,-22,-22,C.sand,2);}
+  }else if(type==='cinder_moth'){
+    const flap=frame===1?3:0;
+    for(const side of [-1,1]){b.poly([[side*2,-25],[side*13,-33+flap],[side*17,-26],[side*11,-20],[side*16,-14],[side*9,-6],[side*2,-17]],C.ink);b.poly([[side*3,-24],[side*12,-30+flap],[side*14,-25],[side*9,-21],[side*13,-14],[side*9,-10],[side*3,-17]],C.bark);b.diamond(side*10,-24+flap,3,4,C.fire);b.diamond(side*9,-14,2,3,C.flame);}
+    b.rect(-2,-27,5,17,C.ink);b.rect(-1,-25,3,13,C.emberDark);b.dot(0,-25,C.flame);b.line(-1,-27,-5,-33,C.sand);b.line(2,-27,6,-33,C.sand);
+  }else if(type==='gloam_raven'){
+    const wing=frame===1?4:0;
+    for(const side of [-1,1]){b.poly([[side*3,-20],[side*15,-32+wing],[side*18,-19],[side*13,-15],[side*10,-9],[side*4,-12]],C.ink);b.poly([[side*4,-20],[side*14,-28+wing],[side*15,-19],[side*9,-14]],C.iron);b.line(side*6,-19,side*13,-24+wing,C.silver);}
+    b.poly([[-5,-12],[-5,-26],[0,-31],[5,-26],[4,-13],[0,-6]],C.voidDark);b.rect(-3,-26,7,5,C.iron);b.dot(2,-24,C.flame);b.poly([[4,-24],[10,-22],[4,-21]],C.sand);b.line(-2,-10,-5,-5,C.bark);b.line(2,-10,5,-5,C.bark);
+  }else if(type==='iron_beetle'){
+    for(const side of [-1,1])for(let i=0;i<3;i++){b.line(side*6,-8-i*4,side*13,-10-i*4+(frame===1?2:0),C.ink,2);b.line(side*13,-10-i*4+(frame===1?2:0),side*15,-5-i*4,C.steel);}
+    b.oval(0,-16,9,12,C.ink);b.oval(0,-17,7,9,C.iron);b.line(0,-25,0,-9,C.sand,2);b.line(-6,-18,6,-18,C.silver);b.rect(-5,-8,11,6,C.ink);b.rect(-4,-8,9,4,C.wood);eyes(b,-6,C.flame,2);b.line(-3,-7,-8,-2,C.silver);b.line(3,-7,8,-2,C.silver);
+  }else if(type==='tide_lantern'){
+    b.line(0,-32,0,-36,C.silver,2);b.rect(-5,-31,11,3,C.ink);b.poly([[-10,-25],[-5,-29],[5,-29],[10,-25],[8,-8],[-8,-8]],C.ink);b.rect(-6,-24,13,14,C.ice);b.rect(-4,-22,9,9,C.iceLight);b.diamond(0,-18,3,6,C.snow);for(const x of [-7,0,7])b.rect(x,-24,2,15,C.ironDark);b.rect(-10,-9,21,4,C.steel);b.poly([[-7,-4],[0,1],[7,-4]],C.iceDark);b.dot(0,-1,C.iceLight);
+  }else if(type==='abyss_sentinel'){
+    boots(b,frame,C.voidDark,5);b.rect(-7,-22,15,18,C.ink);b.rect(-6,-21,13,15,C.iron);b.rect(0,-21,6,15,C.voidDark);b.line(-4,-20,-4,-7,C.silver,2);b.rect(-7,-32,15,12,C.ink);b.rect(-5,-30,11,8,C.void);b.rect(-5,-27,11,2,C.lilac);b.dot(0,-27,C.pink);b.poly([[-8,-22],[-13,-18],[-12,-10],[-7,-7]],C.ironDark);b.line(12,-2,12,-32,C.bark,2);b.poly([[12,-36],[9,-29],[15,-29]],C.silver);b.diamond(0,-14,2,3,C.pink);
+  }else if(type==='moon_eidolon'){
+    b.poly([[-9,-3],[-10,-19],[-6,-30],[0,-35],[6,-30],[10,-19],[9,-3],[3,-7],[0,-1],[-3,-7]],C.ink);b.poly([[-7,-6],[-7,-19],[-4,-28],[0,-32],[4,-28],[7,-19],[7,-6],[0,-5]],C.void);b.poly([[-3,-29],[-5,-21],[-2,-9],[1,-20],[2,-29]],C.lilac);eyes(b,-25,C.pink,2);b.diamond(0,-17,2,4,C.silver);for(const side of [-1,1])b.line(side*7,-18,side*14,-22+(frame===1?3:0),C.violet,2);
+  }else {
+    b.poly([[-7,-4],[-11,-15],[-7,-28],[0,-34],[7,-28],[11,-15],[7,-4],[0,0]],C.ink);b.poly([[-5,-5],[-8,-15],[-5,-26],[0,-31],[5,-26],[8,-15],[5,-5],[0,-3]],C.leafDark);b.poly([[-3,-22],[0,-28],[4,-21],[0,-13]],C.lime);eyes(b,-20,C.pollen,2);b.line(-6,-15,-14,-22+(frame===1?2:0),C.leafLight,2);b.line(6,-15,14,-22+(frame===1?2:0),C.leafLight,2);b.dot(-8,-10,C.pollen);b.dot(8,-11,C.pollen);
+  }
+  return b.finish(key,mirror);
 }
 
 function tree(variant, detail) {
@@ -488,10 +649,10 @@ function tree(variant, detail) {
   return b;
 }
 
-function resize(source, w, h, key) {
+function resize(source, w, h, key, mirror = false) {
   const b = new Brush(w,h,[Math.round(source.pivot[0]*w/source.width),Math.round(source.pivot[1]*h/source.height)]);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++)b.pixels[y*w+x]=source.pixels[Math.min(source.height-1,Math.floor(y*source.height/h))*source.width+Math.min(source.width-1,Math.floor(x*source.width/w))];
-  return b.finish(key);
+  return b.finish(key,mirror);
 }
 
 function rock(variant, detail, key) {
@@ -510,8 +671,12 @@ function rock(variant, detail, key) {
   return b.finish(key);
 }
 
-/** Inspectable native sprite. kind is 'enemy', 'tree' or 'rock'. */
+/** Inspectable native sprite. kind is 'enemy', 'companion', 'tree' or 'rock'. */
 export function getPixelSprite(kind, subject = {}, time = 0) {
+  if(kind==='companion'){
+    const type=PIXEL_COMPANION_TYPES.includes(subject.visualType||subject.type)?subject.visualType||subject.type:'root_wisp',frame=frameFor({...subject,moving:subject.walking??subject.moving??true},time),mirror=Math.cos(subject.face||0)<-.25,key=`companion:${type}:${frame}:${mirror?1:0}`;
+    return remember(key,()=>companion(type,frame,mirror,key));
+  }
   if(kind==='enemy') {
     const type=PIXEL_ENEMY_TYPES.includes(subject.type)?subject.type:'void_watcher', frame=frameFor(subject,time);
     const face=Number.isFinite(subject.face)?subject.face:0,mirror=Math.cos(face)<-.25;
@@ -554,6 +719,7 @@ function draw(c,sprite,x,y) {
 
 export function drawPixelTree(c,t,time=0) {return draw(c,getPixelSprite('tree',t,time),t.x,t.y);}
 export function drawPixelRock(c,r) {return draw(c,getPixelSprite('rock',r),r.x,r.y);}
+export function drawPixelCompanion(c,p,time=0){return draw(c,getPixelSprite('companion',p,time),p.x,p.y);}
 export function drawPixelEnemy(c,e,time=0) {return draw(c,getPixelSprite('enemy',e,time),e.x,e.y);}
 /** Safe label offset above the highest native pixel, including raised weapons. */
 export function pixelEnemyHeight(type) {

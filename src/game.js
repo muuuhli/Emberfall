@@ -1,13 +1,24 @@
 import { ITEMS, SKILLS, QUESTS, RECIPES, ENEMY_TYPES, NPCS, REGIONS, RESOURCES } from './catalog.js';
 import { makeWorld } from './world.js';
 import { expandWorld } from './expansion.js';
-import { CLASSES, getClass } from './classes.js';
+import { CLASSES, getClass, getTalentModifiers, canLearnTalent } from './classes.js';
 import { MAX_LEVEL, xpToNext } from './progression.js';
 import { basePlayerStats, classStatModifiers, capCombatStats, incomingDamage, classPowerMultiplier, normalEnemyStats, enemyXpReward } from './balance.js';
 import { generateLoot, computeItemStats, validateLootItem, salvageYield, computeSetBonuses, GEM_TYPES, ITEM_BASES } from './loot.js';
 import { DUNGEONS, createDungeon, interactPuzzle, updateDungeon, validateDungeonEchoes, restoreDungeonEchoes } from './dungeons.js';
 import { MAX_ACTIVE_CONTRACTS, getContractOffers, createContract, advanceContract, resolveContractOffer, validateContractState, restoreContractState } from './contracts.js';
 import { ABILITIES, getAbility, canLearnAbility, validateAbilityState } from './abilities.js';
+import { BESTIARY_ENEMIES, REGION_ENEMY_POOLS, createBestiaryEnemy } from './bestiary.js';
+import { getSupplyDrop } from './arsenal.js';
+import { getConsumableProfile } from './professions.js';
+import { updateBestiaryEnemy, applyEnemyTraits } from './enemy-ai.js';
+import { INTERACTION_TYPES, WORLD_BOONS, addWorldInteractions, interactionAvailable, captureInteractions, validateInteractionSave, restoreInteractions } from './interactions.js';
+import { SKILLS as LEGACY_SKILLS } from './content.js';
+import { equipmentSlot, EQUIPMENT_SLOT_IDS, createEmptyEquipment } from './equipment-system.js';
+import { isItemProtected, toggleItemFlag, transferStashItem, saveEquipmentLoadout, applyEquipmentLoadout, validateInventoryExtensions, restoreInventoryExtensions } from './inventory-system.js';
+import { resolveWaypoint, adventureGuidance } from './navigation.js';
+import { createJourneyState, validateJourneyState, restoreJourneyState, advanceJourney, claimJourneyAchievement, chooseJourneyMastery, selectJourneyCompanion, getJourneyModifiers, getCompanionModifiers, getCompanionCombatProfile, canCraftJourneyRecipe, COMPANIONS, FACTIONS, ACHIEVEMENTS, JOURNEY_MASTERIES } from './journey.js';
+import { addWorldEvents, interactWorldEvent as interactEvent, updateWorldEvents, claimWorldEventReward, summarizeWorldEvents, captureWorldEvents, validateWorldEventSave, restoreWorldEvents, recordWorldEventContribution } from './world-events.js';
 
 export const SAVE_KEY = 'emberfall.save.v1';
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -41,18 +52,19 @@ export class Game {
     try { this.hasSave = !!storage?.getItem(SAVE_KEY); if(this.hasSave) this.load(); } catch { this.hasSave=false; }
   }
   initialize() {
-    this.world = expandWorld(makeWorld()); this.overworld=this.world;this.dungeonInstance=null;this.dungeonRecords={};this.npcs = NPCS; this.time = 0;
-    for(const enemy of this.world.enemies)if(!ENEMY_TYPES[enemy.type]?.boss&&enemy.level>=12){const tuned=normalEnemyStats(enemy.level);Object.assign(enemy,{hp:tuned.hp,maxHp:tuned.hp,damage:tuned.damage,xp:tuned.xp,attackPeriod:tuned.attackPeriod});}
+    this.world = addWorldEvents(addWorldInteractions(expandWorld(makeWorld()))); this.overworld=this.world;this.dungeonInstance=null;this.dungeonRecords={};this.npcs = NPCS; this.time = 0;
+    for(const enemy of this.world.enemies)if(!BESTIARY_ENEMIES[enemy.type]&&!ENEMY_TYPES[enemy.type]?.boss&&enemy.level>=12){const tuned=normalEnemyStats(enemy.level);Object.assign(enemy,{hp:tuned.hp,maxHp:tuned.hp,damage:tuned.damage,xp:tuned.xp,attackPeriod:tuned.attackPeriod});}
     this.player = { name:'Aren', x:520, y:1250, face:Math.PI/2, walking:false, hp:112, mana:85, level:1, xp:0, gold:45, skillPoints:2, invulnerable:0, attackUntil:0, dashUntil:0, hitUntil:0 };
     this.inventory = {}; this.resources = {wood:0,ore:0,herb:0,crystal:0,seed:6,wheat:0};
     for(const id of Object.keys(RESOURCES)) this.resources[id]??=0;
     this.player.classId='guardian';this.player.shield=0;this.player.shieldUntil=0;
     this.classId='guardian';
-    this.generatedItems={};this.lootPity={legendaryMisses:0,bossMisses:0};this.lootSerial=0;this.summons=[];this.hazards=[];this.partyGames=[this];this.otherPlayers=[];
-    this.equipment = {weapon:null,armor:null,charm:null};
+    this.generatedItems={};this.lootPity={legendaryMisses:0,bossMisses:0};this.lootSerial=0;this.summons=[];this.hazards=[];this.buffs=[];this.partyGames=[this];this.otherPlayers=[];
+    this.equipment=createEmptyEquipment();this.itemFlags={};this.stash={};this.loadouts=[];this.trackedQuestId='';this.waypoint=null;
     this.skills = {}; this.questState = {}; this.discovered = ['daemmerhain']; this.unlockedShrines = [];
     this.learnedAbilities={};this.abilityLoadout=[null,null];
     this.contracts={active:[],completed:{}};
+    this.journey=createJourneyState();advanceJourney(this,'explore','daemmerhain');
     this.flags = {}; this.ledger = {}; this.kills = 0; this.cooldowns = {attack:0,dash:0,nova:0,bolt:0,potion:0};
     this.camera = {x:520,y:1250}; this.effects = []; this.projectiles = []; this.drops = [];
     this.shake = 0; this.combo = 0; this.comboTime = -Infinity; this.dead = false; this.autoSaveTimer = 0;
@@ -76,21 +88,24 @@ export class Game {
       for(const [key,value] of Object.entries(modifiers)) s[key]=(s[key]||0)+value;
     }
     for(const [key,value] of Object.entries(computeSetBonuses(Object.values(equipmentOverride).map(id=>this.item(id)).filter(Boolean)))) s[key]=(s[key]||0)+value;
-    for(const skill of SKILLS) {
-      const rank=this.skills[skill.id]||0;
-      if(!rank) continue;
-      const effects=Array.isArray(skill.effect)?skill.effect:[skill.effect];
-      for(const effect of effects) if(effect?.stat) s[effect.stat]=(s[effect.stat]||0)+effect.value*rank;
+    for(const [key,value] of Object.entries(getTalentModifiers(this.skills,p.classId)))s[key]=(s[key]||0)+value;
+    // First-generation journeys could invest in the shared arcane/ranger trees.
+    // Keep those ranks effective without granting other classes' new talents.
+    for(const skill of LEGACY_SKILLS)if(!skill.id.startsWith('guardian_')) {
+      const rank=Math.min(skill.maxRank,Math.max(0,this.skills[skill.id]||0));
+      s[skill.effect.stat]=(s[skill.effect.stat]||0)+skill.effect.value*rank;
     }
+    for(const boon of this.buffs||[])if(boon.expiresAt>this.time)for(const [key,value] of Object.entries(boon.effects))s[key]=(s[key]||0)+value;
+    for(const modifiers of [getJourneyModifiers(this),getCompanionModifiers(this)])for(const [key,value] of Object.entries(modifiers))s[key]=(s[key]||0)+value;
     return capCombatStats(s,{level:p.level});
   }
   item(id) { return this.generatedItems[id]||ITEMS[id]||null; }
   itemStats(id) { const item=this.item(id);return this.generatedItems[id]?computeItemStats(item):item?.stats||{}; }
   previewEquipment(id) {
-    const item=this.item(id);if(!item||!['weapon','armor','charm'].includes(item.type))return null;
-    const before=this.stats(),after=this.stats({...this.equipment,[item.type]:id}),delta={};
+    const item=this.item(id),slot=equipmentSlot(item);if(!slot)return null;
+    const before=this.stats(),after=this.stats({...this.equipment,[slot]:id}),delta={};
     for(const key of new Set([...Object.keys(before),...Object.keys(after)]))if(typeof before[key]==='number'||typeof after[key]==='number')delta[key]=(after[key]||0)-(before[key]||0);
-    return {before,after,delta,currentId:this.equipment[item.type],slot:item.type};
+    return {before,after,delta,currentId:this.equipment[slot],slot};
   }
   availableSkills() { return getClass(this.player.classId).talents; }
   selectClass(id) {
@@ -104,6 +119,7 @@ export class Game {
     this.player.xp += Math.max(0,amount);
     while(this.player.level<MAX_LEVEL && this.player.xp>=this.xpNeeded()) {
       this.player.xp-=this.xpNeeded(); this.player.level++; this.player.skillPoints+=2;
+      advanceJourney(this,'level',this.player.level);
       const s=this.stats(); this.player.hp=s.maxHp; this.player.mana=s.mana;
       this.notice(`Level ${this.player.level} erreicht · 2 Talentpunkte`,'level');
       this.effect('ring',this.player.x,this.player.y,{color:'#e7bf68',radius:100,life:1}); this.onSound('level');
@@ -124,6 +140,7 @@ export class Game {
     this.started=true; this.paused=false; this.dead=false; this.keys.clear();
     if(!this.flags.welcomed) {
       this.flags.welcomed=true;
+      if(!this.trackedQuestId&&!this.waypoint)this.setWaypoint('npc','mira');
       this.notice('Willkommen in Dämmerhain. Sprich mit der Hüterin am Dorfbrunnen.');
     }
     this.change();
@@ -140,6 +157,10 @@ export class Game {
   text(x,y,text,color='#f2d090') { this.effect('text',x,y,{text:String(text),color,life:1.1}); }
   event(kind,target,amount=1) {
     const key=`${kind}:${target}`; this.ledger[key]=(this.ledger[key]||0)+amount;
+    const journeyEvent=advanceJourney(this,kind,target,amount,{regionId:this.regionAt().id,partySize:(this.partyGames||[this]).filter(g=>!g.dead).length,
+      dungeonTier:this.dungeonInstance?.tier||1,worldObject:this.world.interactions?.find(o=>o.id===target)});
+    for(const id of journeyEvent.unlockedCompanions)this.notice(`Neuer Reisegefährte gewonnen · ${COMPANIONS.find(c=>c.id===id)?.name||'Gefährte'}`,'quest');
+    for(const rank of journeyEvent.newFactionRanks)this.notice(`${FACTIONS.find(f=>f.id===rank.id)?.name||'Dein Bund'} · Rufrang ${rank.rank}`,'quest');
     for(const contract of this.contracts.active) {
       const before=contract.status;
       advanceContract(contract,kind,target,amount,{regionId:this.regionAt().id});
@@ -176,36 +197,36 @@ export class Game {
     const contract=this.contracts.active.find(c=>c.id===id),offer=resolveContractOffer(id),giver=contract&&this.contractGiver(contract.region);
     if(!contract||!offer||contract.status!=='ready'||!giver||dist(this.player,giver)>110||this.dungeonInstance||!validateContractState(this.contracts,{level:this.player.level}))return false;
     this.contracts.active=this.contracts.active.filter(c=>c.id!==id);
+    if(this.trackedQuestId===id)this.trackQuest('');
     this.contracts.completed[offer.region]=(this.contracts.completed[offer.region]||0)+1;
+    this.event('contract',offer.region);
     this.player.gold+=offer.reward.gold;this.resources.dust+=offer.reward.dust;this.gainXp(offer.reward.xp);
     if(offer.reward.item)this.addItem(offer.reward.item);
     this.notice(`Auftrag abgeschlossen · +${offer.reward.xp} EP · +${offer.reward.dust} Glutstaub`,'quest');this.change();this.save(false);return true;
   }
   cancelContract(id) {
     if(!this.contracts.active.some(c=>c.id===id))return false;
-    this.contracts.active=this.contracts.active.filter(c=>c.id!==id);this.notice('Auftrag aufgegeben.');this.change();this.save(false);return true;
+    this.contracts.active=this.contracts.active.filter(c=>c.id!==id);if(this.trackedQuestId===id)this.trackQuest('');this.notice('Auftrag aufgegeben.');this.change();this.save(false);return true;
   }
   questAccept(id) {
     const q=QUESTS.find(q=>q.id===id); if(!q || !this.canAccept(q)) return false;
     const counts=q.objectives.map(o=>['explore','puzzle','dungeon','raid'].includes(o.kind)||(o.kind==='kill'&&ENEMY_TYPES[o.target]?.boss)?Math.min(o.count,this.ledger[`${o.kind}:${o.target}`]||0):0);
     this.questState[id]={status:q.objectives.every((o,i)=>counts[i]>=o.count)?'ready':'active',counts};
+    if(!this.trackedQuestId)this.trackQuest(id);
     this.notice(`Quest angenommen: ${q.title}`,'quest'); this.onSound('quest'); this.save(false); this.change(); return true;
   }
   questTurnIn(id) {
     const q=QUESTS.find(q=>q.id===id); if(!q || this.questState[id]?.status!=='ready') return false;
     this.questState[id].status='done'; this.player.gold+=q.reward.gold||0; this.gainXp(q.reward.xp||0);
+    if(this.trackedQuestId===id)this.trackQuest('');
     if(q.reward.item) this.addItem(q.reward.item,1);
     if(q.reward.skillPoints) this.player.skillPoints+=q.reward.skillPoints;
     this.notice(`Abgeschlossen: ${q.title} · +${q.reward.xp||0} EP · +${q.reward.gold||0} Gold`,'quest');
     this.onSound('quest'); this.change(); this.save(false); return true;
   }
   learn(id) {
-    const skill=SKILLS.find(s=>s.id===id); if(!skill) return false;
-    if(!this.availableSkills().some(s=>s.id===id)||this.player.level<(skill.minLevel||1)) return false;
+    const skill=SKILLS.find(s=>s.id===id),eligibility=canLearnTalent(this,id);if(!skill||!eligibility.ok)return false;
     const rank=this.skills[id]||0, cost=skill.cost||1;
-    const requirement=skill.requires;
-    const prereq = !requirement || (typeof requirement==='string' ? (this.skills[requirement]||0)>0 : Array.isArray(requirement) ? requirement.every(r=>(this.skills[typeof r==='string'?r:r.id]||0)>=(r.rank||1)) : (this.skills[requirement.id]||0)>=(requirement.rank||1));
-    if(rank>=(skill.maxRank||3) || this.player.skillPoints<cost || !prereq) return false;
     this.skills[id]=rank+1; this.player.skillPoints-=cost;
     this.notice(`${skill.name} · Rang ${rank+1}`,'level'); this.onSound('level'); this.change(); this.save(false); return true;
   }
@@ -224,20 +245,112 @@ export class Game {
     this.abilityLoadout[slot]=id;this.change();this.save(false);return true;
   }
   addItem(id,amount=1) {
-    if(typeof id==='object'&&validateLootItem(id)) {if(!this.generatedItems[id.id]&&this.bagUsed()>=240)return false;this.generatedItems[id.id]=id;id=id.id;}
+    if(typeof id==='object'&&validateLootItem(id)) {if(!this.inventory[id.id]&&this.bagUsed()>=240)return false;this.generatedItems[id.id]=id;id=id.id;}
     if(!this.item(id)) return false;
     this.inventory[id]=(this.inventory[id]||0)+amount; this.change(); return true;
   }
   bagUsed() {return Object.keys(this.generatedItems).filter(id=>this.inventory[id]>0).length;}
-  equip(id) {
-    const item=this.item(id); if(!item || !this.inventory[id] || !['weapon','armor','charm'].includes(item.type)||item.level>this.player.level) return false;
+  setItemFlag(id,flag) {return toggleItemFlag(this,id,flag);}
+  depositItem(id) {return transferStashItem(this,id,true);}
+  withdrawItem(id) {return transferStashItem(this,id,false);}
+  saveLoadout(name) {return saveEquipmentLoadout(this,name);}
+  applyLoadout(id) {return applyEquipmentLoadout(this,id);}
+  deleteLoadout(id) {
+    if(!this.loadouts.some(l=>l.id===id))return false;
+    this.loadouts=this.loadouts.filter(l=>l.id!==id);this.change();this.save(false);return true;
+  }
+  respecTalents() {
+    const refund=SKILLS.reduce((sum,t)=>sum+Math.min(t.maxRank||3,Math.max(0,Math.floor(this.skills[t.id]||0)))*(t.cost||1),0);
+    const cost=20+this.player.level*5;
+    if(this.dead||!this.inSettlement()||this.inCombat()||!refund||this.player.gold<cost)return false;
+    this.player.gold-=cost;this.player.skillPoints+=refund;this.skills={};
+    const stats=this.stats();this.player.hp=Math.min(this.player.hp,stats.maxHp);this.player.mana=Math.min(this.player.mana,stats.mana);
+    this.notice(`Talente neu verteilt · ${refund} Punkte zurück · ${cost} Gold`);this.change();this.save(false);return true;
+  }
+  trackQuest(id) {
+    if(typeof id!=='string'||id&&!['active','ready'].includes((this.questState[id]||this.contracts.active.find(c=>c.id===id))?.status))return false;
+    this.trackedQuestId=id;
+    if(id)this.waypoint={kind:'quest',id,...resolveWaypoint(this,'quest',id)};
+    else if(this.waypoint?.kind==='quest')this.waypoint=null;
+    this.change();this.save(false);return true;
+  }
+  setWaypoint(kind,id) {
+    if(kind==='clear'&&id===''){this.waypoint=null;this.change();this.save(false);return true;}
+    if(this.dungeonInstance)return false;
+    const destination=resolveWaypoint(this,kind,id);if(!destination)return false;
+    this.waypoint={kind,id,...destination};this.notice(`Reiseziel: ${destination.label}`);this.change();this.save(false);return true;
+  }
+  waypointTarget() {
+    if(!this.waypoint||this.dungeonInstance)return null;
+    const point=resolveWaypoint(this,this.waypoint.kind,this.waypoint.id);
+    return point?{...point,kind:this.waypoint.kind,id:this.waypoint.id,distance:dist(this.player,point)}:null;
+  }
+  adventureGuidance() {return adventureGuidance(this);}
+  claimAchievement(id) {
+    const reward=claimJourneyAchievement(this,id);if(!reward)return false;
+    this.player.gold+=reward.gold||0;this.player.skillPoints+=reward.skillPoints||0;
+    for(const [key,count] of Object.entries(reward.resources||{}))if(Object.hasOwn(this.resources,key))this.resources[key]+=count;
+    if(reward.xp)this.gainXp(reward.xp);if(reward.item)this.addItem(reward.item);
+    this.notice(`Errungenschaft belohnt · ${ACHIEVEMENTS.find(a=>a.id===id)?.name||'Deine Reise'}`,'quest');this.change();this.save(false);return true;
+  }
+  selectCompanion(id) {
+    if(!selectJourneyCompanion(this,id))return false;
+    this.summons=this.summons.filter(s=>!s.companion||s.actorId!==(this.player.id||'local'));
+    const stats=this.stats();this.player.hp=Math.min(this.player.hp,stats.maxHp);this.player.mana=Math.min(this.player.mana,stats.mana);
+    this.notice(id?`${COMPANIONS.find(c=>c.id===id)?.name||'Reisegefährte'} begleitet dich`:'Reisegefährte ruht');this.change();this.save(false);return true;
+  }
+  chooseMastery(id) {
+    if(!chooseJourneyMastery(this,id))return false;
+    const stats=this.stats();this.player.hp=Math.min(this.player.hp,stats.maxHp);this.player.mana=Math.min(this.player.mana,stats.mana);
+    this.notice(`${JOURNEY_MASTERIES.find(m=>m.id===id)?.name||'Meistereid'} gewählt`,'level');this.change();this.save(false);return true;
+  }
+  worldEventSummary() {
+    if(this.networkActive&&this.networkWorldEventSummary)return this.networkWorldEventSummary;
+    return summarizeWorldEvents(this.overworld||this.world);
+  }
+  handleWorldEventEffects(effects) {
+    for(const effect of effects) {
+      const event=this.world.worldEvents?.find(e=>e.id===effect.eventId);
+      const members=(this.partyGames||[this]);
+      if(effect.kind==='warning')this.hazards.push({kind:'warning',x:effect.x,y:effect.y,radius:effect.radius||170,life:effect.duration||2,windup:true,color:'#b87759'});
+      for(const ally of members) {
+        if(dist(ally.player,effect)<700)ally.notice(effect.text,effect.kind==='success'?'quest':'info');
+        if(effect.kind==='success'&&event?.participants.includes(ally.player.id||'local')){ally.event('world_event',effect.eventId);ally.save(false);}
+      }
+    }
+    if(effects.length)this.change();
+  }
+  interactWorldEvent(objectId,choice) {
+    if(!this.started||this.dead)return false;
+    const object=this.world.eventObjects?.find(o=>o.id===objectId&&!o.hidden);
+    if(!object||dist(this.player,object)>85)return false;
+    if(object.role==='reward')return this.claimWorldEvent(object.eventId);
+    const result=interactEvent(this.world,objectId,[this.player],this.time,{choice});
+    this.handleWorldEventEffects(result.effects||[]);
+    if(result.message)this.notice(result.message,result.success?'quest':'info');
+    if(result.success){this.change();this.save(false);}return !!result.success;
+  }
+  claimWorldEvent(id) {
+    if(this.dead||this.bagUsed()>=240){this.notice('Die Belohnung wartet auf einen freien Platz in deinem Gepäck.');return false;}
+    const reward=claimWorldEventReward(this.world,id,this.player,this.time);if(!reward)return false;
+    const loot=generateLoot({level:reward.lootLevel,tier:reward.lootTier,boss:reward.boss,classId:this.player.classId,rng:this.random,pity:this.lootPity,
+      source:id,uid:`event-loot-${++this.lootSerial}-${Math.floor(this.random()*1e9)}-${this.player.id||'local'}`});
+    this.addItem(loot);this.player.gold+=reward.gold;this.resources.dust+=reward.dust;this.gainXp(reward.xp);
+    this.notice(`${loot.name} · +${reward.gold} Gold · Abenteuerbelohnung geborgen`,'loot');this.change();this.save(false);return true;
+  }
+  canEquipItem(id) {
+    const item=this.item(id);if(!item||!this.inventory[id]||!equipmentSlot(item)||(item.minLevel||item.level||1)>this.player.level)return false;
     const base=ITEM_BASES.find(b=>b.id===(item.baseId||item.id));
-    if([item.classIds,base?.classIds].some(ids=>Array.isArray(ids)&&!ids.includes(this.player.classId)))return false;
-    this.equipment[item.type]=id;const s=this.stats();this.player.hp=Math.min(this.player.hp,s.maxHp);this.player.mana=Math.min(this.player.mana,s.mana);
+    return ![item.classIds,base?.classIds].some(ids=>Array.isArray(ids)&&!ids.includes(this.player.classId));
+  }
+  equip(id) {
+    if(!this.canEquipItem(id))return false;const item=this.item(id);
+    this.equipment[equipmentSlot(item)]=id;const s=this.stats();this.player.hp=Math.min(this.player.hp,s.maxHp);this.player.mana=Math.min(this.player.mana,s.mana);
+    this.event('equip',id);
     this.notice(`${item.name} ausgerüstet`); this.change(); this.save(false); return true;
   }
   unequip(slot) {
-    if(!['weapon','armor','charm'].includes(slot)||!this.equipment[slot])return false;
+    if(!EQUIPMENT_SLOT_IDS.includes(slot)||!this.equipment[slot])return false;
     this.equipment[slot]=null;const s=this.stats();this.player.hp=Math.min(this.player.hp,s.maxHp);this.player.mana=Math.min(this.player.mana,s.mana);
     this.notice('Ausrüstung abgelegt.');this.change();this.save(false);return true;
   }
@@ -246,26 +359,29 @@ export class Game {
       if(this.player.gold<4) return false;
       this.player.gold-=4; this.resources.seed+=3; this.notice('3 Saatgut gekauft'); this.change(); this.save(false); return true;
     }
-    const item=this.item(id); if(!item || this.player.gold<item.price) return false;
+    const item=ITEMS[id]; if(!item || this.player.gold<item.price||(item.minLevel||item.level||1)>this.player.level||item.classIds&&!item.classIds.includes(this.player.classId)) return false;
     this.player.gold-=item.price; this.addItem(id); this.notice(`${item.name} gekauft`); this.save(false); return true;
   }
   sell(id) {
-    const item=this.item(id); if(!item || !this.inventory[id] || Object.values(this.equipment).includes(id)) return false;
-    this.inventory[id]--; this.player.gold+=Math.max(1,Math.floor(item.price*.4));if(this.inventory[id]<=0&&this.generatedItems[id]){delete this.generatedItems[id];delete this.inventory[id];} this.change(); this.save(false); return true;
+    const item=this.item(id); if(!item || !this.inventory[id] || Object.values(this.equipment).includes(id)||isItemProtected(this,id)) return false;
+    this.inventory[id]--; this.player.gold+=Math.max(1,Math.floor(item.price*.4));if(this.inventory[id]<=0&&this.generatedItems[id]&&!this.stash[id]){delete this.generatedItems[id];delete this.inventory[id];delete this.itemFlags[id];} this.change();this.save(false);return true;
   }
   consume(id) {
     const item=this.item(id); if(item?.type!=='consumable'||!this.inventory[id]) return false;
-    if(this.dead||this.player.hp<=0||this.cooldowns.potion>0||item.level>this.player.level)return false;
+    const profile=getConsumableProfile(item);
+    if(!profile||this.dead||this.player.hp<=0||this.cooldowns.potion>0||(this.cooldowns[profile.cooldownGroup]||0)>0||profile.minLevel>this.player.level)return false;
+    if(profile.outOfCombat&&this.inCombat()){this.notice('Diese Mahlzeit braucht einen ruhigen Moment außerhalb des Kampfes.');return false;}
     const s=this.stats(); const p=this.player;
     if((!item.stats.hpRestore||p.hp>=s.maxHp)&&(!item.stats.manaRestore||p.mana>=s.mana)) return false;
     this.inventory[id]--; p.hp=Math.min(s.maxHp,p.hp+(item.stats.hpRestore||0)); p.mana=Math.min(s.mana,p.mana+(item.stats.manaRestore||0));
-    this.cooldowns.potion=3;
+    this.cooldowns[profile.cooldownGroup]=profile.cooldown;
+    this.cooldowns.potion=Math.max(this.cooldowns.potion||0,3);
     this.notice(`${item.name} verwendet`); this.onSound('heal'); this.change(); this.save(false); return true;
   }
   salvage(id) {
-    const item=this.generatedItems[id];if(!item||!this.inventory[id]||Object.values(this.equipment).includes(id)) return false;
+    const item=this.generatedItems[id];if(!item||!this.inventory[id]||Object.values(this.equipment).includes(id)||isItemProtected(this,id)) return false;
     this.inventory[id]--;for(const [key,n] of Object.entries(salvageYield(item))) this.resources[key]=(this.resources[key]||0)+n;
-    if(this.inventory[id]<=0){delete this.generatedItems[id];delete this.inventory[id];}
+    if(this.inventory[id]<=0&&!this.stash[id]){delete this.generatedItems[id];delete this.inventory[id];delete this.itemFlags[id];}
     this.notice(`${item.name} zerlegt`,'loot');this.change();this.save(false);return true;
   }
   socket(id,gemId) {
@@ -281,6 +397,8 @@ export class Game {
   }
   craft(id) {
     const recipe=RECIPES.find(r=>r.id===id); if(!recipe) return false;
+    const factionGate=canCraftJourneyRecipe(this,recipe);if(!factionGate.ok){this.notice(factionGate.reason);return false;}
+    if(this.player.level<(recipe.minLevel||1)||recipe.classIds&&!recipe.classIds.includes(this.player.classId)){this.notice('Dieses Rezept erfordert eine höhere Stufe oder eine andere Klasse.');return false;}
     if(!Object.entries(recipe.ingredients).every(([res,n])=>(this.resources[res]||this.inventory[res]||0)>=n)) { this.notice('Dir fehlen noch Materialien.'); return false; }
     for(const [res,n] of Object.entries(recipe.ingredients)) {
       if(Object.hasOwn(this.resources,res)) this.resources[res]-=n; else this.inventory[res]-=n;
@@ -297,19 +415,123 @@ export class Game {
     this.world.plots.forEach(n=>add('plot',n,n.state==='empty'?'Saat pflanzen':n.readyAt<=this.time?'Weizen ernten':'Weizen wächst …',48));
     this.world.chests.filter(n=>!n.opened&&!n.locked).forEach(n=>add('chest',n,'Truhe öffnen',60));
     this.world.shrines.forEach(n=>add('shrine',n,`${n.name} entzünden / rasten`,80));
+    for(const n of this.world.interactions||[])if(interactionAvailable(n,this.time))add('worldObject',n,n.active&&!n.challengeCompleted?'Herausforderung läuft …':n.challengeCompleted?'Belohnung bergen':n.label,70);
+    for(const n of this.world.eventObjects||[])if(!n.hidden) {
+      const state=this.world.worldEvents.find(e=>e.id===n.eventId);
+      if(n.role==='start'&&(state.state==='active'||state.readyAt>this.time))continue;
+      if(n.role==='reward'&&state.claimedBy.includes(this.player.id||'local'))continue;
+      if(['objective','escort'].includes(n.role)&&(!(n.repairsLeft>0)||n.hp>=n.maxHp))continue;
+      add('worldEvent',n,n.label,75);
+    }
     for(const n of this.world.dungeonEntrances||[]) add('dungeon',n,`${n.name||DUNGEONS.find(d=>d.id===n.id)?.name} betreten`,85);
     for(const n of this.world.puzzleObjects||[]) add('puzzle',n,n.label||'Runenmechanismus betätigen',60);
     if(this.world.dungeonExit) add('exit',this.world.dungeonExit,'Dungeon verlassen',65);
     for(const other of this.partyGames||[]) if(other!==this&&other.dead) add('revive',other.player,`${other.player.name} wiederbeleben`,75);
-    return candidates.sort((a,b)=>a.distance-b.distance)[0]||null;
+    const destination=this.waypointTarget();
+    return candidates.sort((a,b)=>Number(b.object.id===destination?.objectId)-Number(a.object.id===destination?.objectId)||a.distance-b.distance)[0]||null;
+  }
+  inCombat() {
+    return (this.player.lastDamageAt!==undefined&&this.time-this.player.lastDamageAt<5)||
+      this.world.enemies.some(e=>e.alive&&dist(e,this.player)<260&&(e.aggro||e.phase==='windup'));
+  }
+  interactionSummary() {
+    if(this.networkActive&&this.networkInteractionSummary)return this.networkInteractionSummary;
+    const objects=(this.overworld||this.world).interactions||[];
+    return Object.entries(INTERACTION_TYPES).map(([kind,definition])=>({...definition,kind,total:objects.filter(o=>o.kind===kind).length,
+      completed:objects.filter(o=>o.kind===kind&&(o.used||(this.ledger[`interact:${o.id}`]||0)>0)).length}));
+  }
+  addWorldBoon(id,expiresAt=this.time+WORLD_BOONS[id]?.duration) {
+    const definition=WORLD_BOONS[id];if(!definition)return false;
+    const base=basePlayerStats(this.player.level),effects={...definition.effects};
+    if(id==='blood_oath')effects.damage=Math.round(base.damage*.1);
+    if(id==='night_aether')effects.spellDamage=Math.round(base.spellDamage*.1);
+    this.buffs=this.buffs.filter(b=>b.id!==id);
+    this.buffs.push({id,name:definition.name,expiresAt:Math.min(expiresAt,this.time+definition.duration),effects});
+    this.change();return true;
+  }
+  spawnWorldChallenge(object) {
+    const pool=REGION_ENEMY_POOLS[object.region]||['wolf'];
+    const count=object.kind==='cursed_chest'?1:2;
+    const choices=Array.isArray(pool)?pool:pool.enemies||pool.normal||pool.types||['wolf'];
+    object.challengeIds=[];
+    for(let index=0;index<count;index++) {
+      const base=choices[(index+Math.floor(this.random()*choices.length))%choices.length];
+      const type=object.kind==='cursed_chest'?`${base}_boss`:base;
+      if(!BESTIARY_ENEMIES[type])continue;
+      const angle=index*Math.PI+Math.PI/2,x=object.x+Math.cos(angle)*85,y=object.y+Math.sin(angle)*85;
+      const enemy=createBestiaryEnemy(type,`${object.id}-guardian-${index}`,x,y,{level:object.level,region:object.region});
+      enemy.challengeId=object.id;enemy.phase='idle';enemy.aggro=false;enemy.attackTimer=1.2;
+      this.world.enemies.push(enemy);object.challengeIds.push(enemy.id);
+      this.effect('ring',x,y,{color:'#bf596b',radius:40,life:1});
+    }
+    object.active=true;
+    this.notice(object.kind==='cursed_chest'?'Der schwarze Schwur ruft einen Boss. Besiege ihn und kehre zur Truhe zurück.':'Die Grabwächter erwachen. Besiege beide, bevor du das Grab plünderst.','quest');
+  }
+  updateWorldInteractions() {
+    for(const object of this.world.interactions||[])if(object.active&&!object.used&&!object.challengeCompleted) {
+      if(!object.challengeIds?.length)this.spawnWorldChallenge(object);
+      if(object.challengeIds.length&&object.challengeIds.every(id=>!this.world.enemies.find(e=>e.id===id)?.alive)) {
+        object.challengeCompleted=true;this.notice(`${object.name}: Der Fluch ist gebrochen. Berge deine Belohnung.`,'loot');this.change();
+      }
+    }
+  }
+  interactWorldObject(id) {
+    const object=this.world.interactions?.find(o=>o.id===id);
+    if(!this.started||this.dead||this.paused||!object||dist(this.player,object)>75||!interactionAvailable(object,this.time))return false;
+    const level=object.level||1,scale=1+Math.floor(level/12),p=this.player;
+    if(object.kind==='fountain'&&p.hp>=this.stats().maxHp&&p.mana>=this.stats().mana&&!(p.afflictions||[]).length&&!(p.slowUntil>this.time)) {
+      this.notice('Du bist vollständig erholt. Die Seelenquelle bleibt für später erhalten.');return false;
+    }
+    if(['sarcophagus','cursed_chest','sealed_cache'].includes(object.kind)&&(object.challengeCompleted||object.kind==='sealed_cache')&&this.bagUsed()>=240) {
+      this.notice('Dein Gepäck ist voll. Die Belohnung bleibt hier, bis du einen Platz frei machst.');return false;
+    }
+    if(['sarcophagus','cursed_chest'].includes(object.kind)&&!object.challengeCompleted) {
+      if(object.active){this.notice('Besiege zuerst die herbeigerufenen Wächter.');return false;}
+      this.spawnWorldChallenge(object);this.change();this.save(false);return true;
+    }
+    if(object.kind==='captive'&&this.world.enemies.some(e=>e.alive&&dist(e,object)<170)){this.notice('Der Gefangene ist noch in Gefahr. Besiege die Feinde im Umkreis.');return false;}
+    if(object.kind==='campfire') {
+      if(this.inCombat()){this.notice('Du kannst erst außerhalb des Kampfes rasten.');return false;}
+      if(this.resources.wood<2){this.notice('Du brauchst 2 Holz, um den Glutherd zu entzünden.');return false;}
+      if(p.hp>=this.stats().maxHp&&p.mana>=this.stats().mana){this.notice('Du bist bereits vollständig erholt.');return false;}
+      this.resources.wood-=2;p.hp=Math.min(this.stats().maxHp,p.hp+this.stats().maxHp*.45);p.mana=Math.min(this.stats().mana,p.mana+this.stats().mana*.45);object.readyAt=this.time+60;
+    } else if(['altar','obelisk'].includes(object.kind)) {
+      const cost=object.kind==='altar'?3:5;
+      if(this.resources.crystal<cost){this.notice(`Du brauchst ${cost} Glutkristalle für dieses Ritual.`);return false;}
+      if(object.kind==='altar'&&p.hp<this.stats().maxHp*.3){this.notice('Du bist zu stark verwundet für den Bluteid.');return false;}
+      this.resources.crystal-=cost;if(object.kind==='altar')p.hp=Math.max(1,p.hp*.8);
+      this.addWorldBoon(object.kind==='altar'?'blood_oath':'night_aether');object.used=true;
+    } else {
+      object.used=true;object.active=false;
+      if(object.kind==='barrel'){this.resources.wood+=2*scale;this.resources.ore+=scale;p.gold+=5+level;}
+      if(object.kind==='urn'){this.resources.dust+=2*scale;this.resources.crystal+=scale;}
+      if(object.kind==='fountain'){p.hp=this.stats().maxHp;p.mana=this.stats().mana;p.afflictions=[];p.slowUntil=0;this.onSound('heal');}
+      if(object.kind==='captive'){p.gold+=25+level*2;this.gainXp(50+level*15);this.event('rescue',object.region);}
+      if(object.kind==='lore'){this.gainXp(20+level*5);this.notice(object.text,'quest');}
+      if(object.kind==='lever') {
+        const cache=this.world.interactions.find(o=>o.id===object.linkedId);
+        if(cache){cache.locked=false;this.effect('ring',cache.x,cache.y,{radius:50,color:'#d8b27c',life:1.5});this.notice('Eine Kette schlägt gegen Stein. Der nahe Gruftvorrat ist geöffnet.','quest');}
+      }
+      if(['sarcophagus','cursed_chest','sealed_cache'].includes(object.kind)) {
+        p.gold+=15+level*3;this.resources.dust+=scale*3;
+        const loot=generateLoot({level,boss:object.kind==='cursed_chest',source:object.kind,classId:p.classId,rng:this.random,pity:this.lootPity,uid:`loot-${++this.lootSerial}-${Math.floor(this.random()*1e9)}`});
+        this.addItem(loot);this.notice(`${loot.name} aus ${object.name} geborgen`,'loot');
+        this.gainXp(25+level*5);
+      }
+    }
+    this.event('interact',object.id);this.event('interaction',object.kind);this.effect('burst',object.x,object.y,{color:object.color,radius:40,life:.6});
+    this.notice(`${object.name}${object.kind==='campfire'?' · Erholt':object.kind==='lore'?' · Chronik entdeckt':' · Interaktion abgeschlossen'}`,'loot');
+    this.onSound('gather');this.change();this.save(false);return true;
   }
   interact() {
     if(!this.started || this.dead || this.paused) return;
     const n=this.nearby(); if(!n) { this.notice('Gehe näher an eine Person oder Ressource.'); return; }
     const o=n.object;
+    if(n.kind==='worldEvent'){this.interactWorldEvent(o.id,o.choice);return;}
+    if(n.kind==='worldObject'){this.interactWorldObject(o.id);return;}
     if(n.kind==='dungeon') {this.enterDungeon(o.dungeonId||o.id);return;}
     if(n.kind==='exit') {this.exitDungeon();return;}
-    if(n.kind==='revive') { const ally=this.partyGames.find(g=>g.player===o);if(ally) {ally.dead=false;ally.paused=false;ally.player.hp=ally.stats().maxHp*.4;ally.player.invulnerable=3;ally.onRevived?.();this.notice(`${o.name} wiederbelebt`);this.change();}return;}
+    if(n.kind==='revive') { const ally=this.partyGames.find(g=>g.player===o);if(ally) {ally.dead=false;ally.paused=false;ally.player.hp=ally.stats().maxHp*.4;ally.player.invulnerable=3;ally.onRevived?.();this.event('revive',o.id||o.name);this.notice(`${o.name} wiederbelebt`);this.change();}return;}
     if(n.kind==='puzzle') {
       const result=interactPuzzle(this.dungeonInstance,o.id,this.partyGames.filter(g=>!g.dead).map(g=>g.player),this.time);
       this.notice(result.message||'Mechanismus betätigt');if(result.event)for(const ally of this.partyGames)ally.event(result.event,result.target||this.dungeonInstance.id);
@@ -478,13 +700,14 @@ export class Game {
       radius:a.radius,damage,heal:s.spellDamage*(a.healMultiplier||0)*healFactor,healFraction:(a.healFraction||0)*healFactor,slow:a.slow||0,life:a.duration,actorId,color:a.color,tick:1});
     if(a.kind==='curse')this.hazards.push({id:`ability-curse-${++this.lootSerial}`,kind:'curse',targetId:target.id,x:target.x,y:target.y,radius:24,damage,drain:a.drain*healFactor,life:a.duration,actorId,color:a.color,tick:1});
     if(a.kind==='summon') {
-      const present=this.summons.filter(summon=>summon.actorId===actorId).length,count=Math.min(a.count,Math.max(0,8-present));
+      const present=this.summons.filter(summon=>summon.actorId===actorId&&!summon.companion).length,count=Math.min(a.count,Math.max(0,8-present));
       for(let i=0;i<count;i++)this.summons.push({id:`ability-summon-${++this.lootSerial}`,x:p.x+(i-(count-1)/2)*28,y:p.y+30,life:a.duration,attackTimer:0,damage,actorId,color:a.color,
         range:a.range,attackCooldown:a.attackCooldown,ranged:!!a.ranged,splashRadius:a.splashRadius||0,visualType:a.id});
     }
     if(a.kind==='revive') {
       target.dead=false;target.paused=false;target.player.hp=target.stats().maxHp*a.reviveFraction;target.player.invulnerable=a.duration;target.keys.clear();target.onRevived?.();
       target.notice(`${p.name} hat dich mit Neuer Frühling erweckt.`,'quest');target.change();target.save(false);
+      this.event('revive',target.player.id||target.player.name);
       this.effect('ring',target.player.x,target.player.y,{radius:65,color:a.color,life:.7});
     }
     if(a.kind==='bargain') {
@@ -550,11 +773,11 @@ export class Game {
       }
       this.onSound(name==='nova'?'nova':'spell');
     } else if(name==='potion') {
-      const id=Object.keys(this.inventory).find(id=>ITEMS[id]?.type==='consumable'&&ITEMS[id]?.stats.hpRestore&&this.inventory[id]>0);
+      const id=Object.keys(this.inventory).filter(id=>{const item=this.item(id),profile=getConsumableProfile(item);return profile&&profile.hpRestore>0&&!profile.outOfCombat&&this.inventory[id]>0&&profile.minLevel<=p.level;})
+        .sort((a,b)=>this.item(b).stats.hpRestore-this.item(a).stats.hpRestore)[0];
       if(!id) { this.notice('Keine Heiltränke mehr. Braue neue im Handwerk.'); return false; }
-      if(p.hp>=s.maxHp && (!ITEMS[id].stats.manaRestore||p.mana>=s.mana)) { this.notice('Dein Leben ist bereits voll.'); return false; }
-      this.inventory[id]--; p.hp=Math.min(s.maxHp,p.hp+(ITEMS[id].stats.hpRestore||0)); p.mana=Math.min(s.mana,p.mana+(ITEMS[id].stats.manaRestore||0));
-      this.cooldowns.potion=3; this.effect('ring',p.x,p.y,{color:'#a1e29f',radius:55,life:.6}); this.onSound('heal');
+      if(!this.consume(id))return false;
+      this.effect('ring',p.x,p.y,{color:'#a1e29f',radius:55,life:.6});
     } else return false;
     this.change(); return true;
   }
@@ -565,8 +788,11 @@ export class Game {
     if(required>1&&living.size<required) {this.text(e.x,e.y-24,'Gruppe unvollständig','#b9acda');return 0;}
     if(e.shielded||e.shieldDamageMultiplier===0) {this.text(e.x,e.y-24,'Geschützt','#b9acda');return 0;}
     const crit=this.random()<this.stats().crit;
-    const result=Math.max(1,Math.round(damage*(crit?1.7:1)*(.9+this.random()*.2)));
+    const ward=e.wardUntil>this.time?clamp(e.wardReduction||0,0,.3):0;
+    const armor=ENEMY_TYPES[e.type]?.traits?.includes('armored')?.1:0;
+    const result=Math.max(1,Math.round(damage*(crit?1.7:1)*(.9+this.random()*.2)*(1-ward)*(1-armor)));
     const applied=Math.min(e.hp,result);e.hp-=result; e.hitUntil=this.time+.12; e.aggro=true;
+    if(applied>0&&e.eventId)recordWorldEventContribution(this.world,e.eventId,this.player);
     const a=Math.atan2(e.y-this.player.y,e.x-this.player.x);
     this.move(e,Math.cos(a)*knockback,Math.sin(a)*knockback,ENEMY_TYPES[e.type]?.boss?22:10);
     this.text(e.x,e.y-24,crit?`${result}!`:result,crit?'#ffd37b':'#f4edd7');
@@ -578,19 +804,21 @@ export class Game {
   }
   killEnemy(e) {
     if(!e.alive) return;
-    const def=ENEMY_TYPES[e.type]; e.alive=false; e.hp=0; e.respawnAt=def.boss?Infinity:this.time+55; e.aggro=false;
+    const def=ENEMY_TYPES[e.type]; e.alive=false; e.hp=0; e.respawnAt=def.boss||e.challengeId?Infinity:this.time+55; e.aggro=false;
+    if(e.rewardless){e.respawnAt=Infinity;this.effect('burst',e.x,e.y,{color:def.color,radius:25,life:.4});return;}
     const party=(this.partyGames||[this]).filter(g=>!g.dead&&dist(g.player,e)<1200);
-    for(const ally of party) {ally.kills++;ally.event('kill',e.type);ally.gainXp(enemyXpReward(e.xp||def.xp,{enemyLevel:e.level||def.level,playerLevel:ally.player.level,boss:def.boss}));ally.player.gold+=e.gold||def.gold;ally.change();}
+    for(const ally of party) {ally.kills++;ally.event('kill',e.type);if(def.questTarget&&def.questTarget!==e.type)ally.event('kill',def.questTarget);ally.gainXp(enemyXpReward(e.xp||def.xp,{enemyLevel:e.level||def.level,playerLevel:ally.player.level,boss:def.boss}));ally.player.gold+=e.gold||def.gold;ally.change();}
     this.text(e.x,e.y,`+${enemyXpReward(e.xp||def.xp,{enemyLevel:e.level||def.level,playerLevel:this.player.level,boss:def.boss})} EP`,'#b5ce83');
     this.effect('burst',e.x,e.y,{color:def.color,radius:def.boss?80:35,life:.65});
     if(this.random()<(def.boss?1:.3)) {
       for(const ally of party) {
-        const item=generateLoot({level:e.lootLevel||e.level||def.level,tier:e.lootTier||1,boss:def.boss,classId:ally.player.classId,rng:ally.random,source:e.type,pity:ally.lootPity,uid:`loot-${++ally.lootSerial}-${Math.floor(ally.random()*1e9)}-${ally.player.id||'local'}`});
+        const item=generateLoot({level:e.lootLevel||e.level||def.level,tier:e.lootTier||1,boss:def.boss,classId:ally.player.classId,traits:def.traits,rng:ally.random,source:e.type,pity:ally.lootPity,uid:`loot-${++ally.lootSerial}-${Math.floor(ally.random()*1e9)}-${ally.player.id||'local'}`});
         this.drops.push({x:e.x+(party.indexOf(ally)-.5)*16,y:e.y,item:item.id,loot:item,ownerId:ally.player.id||'local',life:120,color:item.rarity});
         if(ally.random()<.06)ally.resources[['ruby','sapphire','emerald'][Math.floor(ally.random()*3)]]++;
       }
     }
-    if(def.boss)for(const ally of party) { ally.flags[e.type]=true;ally.notice(`${def.name} besiegt!`,'level');ally.onSound('level');ally.save(false); }
+    if(def.boss)for(const ally of party) { ally.flags[e.type]=true;ally.event('boss',def.baseType||def.speciesId||e.type);ally.notice(`${def.name} besiegt!`,'level');ally.onSound('level');ally.save(false); }
+    for(const ally of party){const supply=getSupplyDrop({level:e.level||def.level,boss:!!def.boss,traits:def.traits,rng:ally.random});if(supply)ally.addItem(supply);}
     const bossTypes=['thorn_guardian','frost_sentinel','emberlord'];
     if(bossTypes.length && bossTypes.every(id=>this.flags[id]) && !this.flags.victory) { this.flags.victory=true; this.save(false); this.onVictory(); }
   }
@@ -598,21 +826,25 @@ export class Game {
     const p=this.player; if((p.invulnerable>0&&!ignoreInvulnerability)||this.dead) return;
     const hit=incomingDamage(damage,{armor:this.stats().armor,attackerLevel,trueDamage});if(!hit)return;
     const absorbed=Math.min(p.shield||0,hit);p.shield=Math.max(0,(p.shield||0)-absorbed);
-    p.hp=Math.max(0,p.hp-hit+absorbed); p.invulnerable=.6; p.hitUntil=this.time+.18;
+    const before=p.hp;p.hp=Math.max(0,p.hp-hit+absorbed); p.invulnerable=.6; p.hitUntil=this.time+.18;
+    p.lastDamageAt=this.time;
     this.text(p.x,p.y-30,`−${hit}`,'#f39786'); this.onSound('hurt');
     if(this.settings.shake) this.shake=Math.min(1,this.shake+.35);
     this.change(); if(p.hp<=0) { this.dead=true; this.paused=true; this.keys.clear(); this.onDeath(); }
+    return before-p.hp;
   }
   respawn() {
     this.player.x=this.dungeonInstance?.spawn.x||520; this.player.y=this.dungeonInstance?.spawn.y||1250; this.player.hp=this.stats().maxHp; this.player.mana=this.stats().mana;
     this.player.gold=Math.max(0,Math.floor(this.player.gold*.9)); this.player.invulnerable=3;
+    this.player.afflictions=[];this.player.slowUntil=0;
     this.dead=false; this.paused=false; this.projectiles=[]; this.notice('Am Glutherd erwacht · 10 % Gold für deine Rettung'); this.save(false); this.change();
   }
   update(dt,{simulateWorld=true}={}) {
     dt=Math.min(.04,Math.max(0,dt));
     if(!this.started || this.paused || this.dead) return;
     this.time+=dt; this.playTime+=dt; this.shake=Math.max(0,this.shake-dt*2);
-    const p=this.player,s=this.stats();
+    const boonCount=this.buffs.length;this.buffs=this.buffs.filter(b=>b.expiresAt>this.time);if(boonCount!==this.buffs.length)this.change();
+    const p=this.player,s=this.stats(),previousPosition={x:this.player.x,y:this.player.y};
     Object.keys(this.cooldowns).forEach(k=>this.cooldowns[k]=Math.max(0,this.cooldowns[k]-dt));
     p.invulnerable=Math.max(0,p.invulnerable-dt);
     if(p.shieldUntil<this.time)p.shield=0;
@@ -624,7 +856,10 @@ export class Game {
     if(length>0) { mx/=length; my/=length; if(!this.aim) p.face=Math.atan2(my,mx); }
     if(this.aim) p.face=Math.atan2(this.aim.y-p.y,this.aim.x-p.x);
     if(p.dashUntil>this.time) this.move(p,Math.cos(p.dashAngle??p.face)*s.speed*3.9*dt,Math.sin(p.dashAngle??p.face)*s.speed*3.9*dt);
-    else this.move(p,mx*s.speed*dt,my*s.speed*dt);
+    else {const slow=p.slowUntil>this.time?p.slowFactor||.85:1;this.move(p,mx*s.speed*slow*dt,my*s.speed*slow*dt);}
+    p.velocityX=dt>0?(p.x-previousPosition.x)/dt:0;p.velocityY=dt>0?(p.y-previousPosition.y)/dt:0;
+    for(const affliction of p.afflictions||[])if(affliction.expiresAt>this.time&&affliction.nextTick<=this.time){affliction.nextTick+=1;this.damagePlayer(affliction.damage,{attackerLevel:affliction.attackerLevel});}
+    p.afflictions=(p.afflictions||[]).filter(a=>a.expiresAt>this.time);
     const region=this.regionAt();
     if(!this.dungeonInstance&&!this.discovered.includes(region.id)) { this.discovered.push(region.id); this.event('explore',region.id); this.notice(`${region.name} entdeckt`,'quest'); this.save(false); }
     if(region.id!==this.lastRegion) { this.lastRegion=region.id; this.change(); }
@@ -635,6 +870,15 @@ export class Game {
   updateWorld(dt,partyGames=[this]) {
     this.partyGames=partyGames;for(const ally of partyGames)ally.partyGames=partyGames;
     const living=partyGames.filter(g=>!g.dead);
+    for(const ally of living) {
+      const profile=getCompanionCombatProfile(ally),actorId=ally.player.id||'local';
+      let companion=this.summons.find(s=>s.companion&&s.actorId===actorId);
+      if(profile) {
+        if(!companion){companion={...profile,id:`companion-${actorId}`,actorId,x:ally.player.x-28,y:ally.player.y+22,attackTimer:1};this.summons.push(companion);}
+        Object.assign(companion,profile,{id:`companion-${actorId}`,actorId,life:3600,damage:Math.min(profile.maximumDamage||0,ally.stats()[profile.stat]*profile.damageMultiplier)});
+      } else if(companion)companion.life=0;
+    }
+    for(const companion of this.summons.filter(s=>s.companion))if(!living.some(g=>(g.player.id||'local')===companion.actorId))companion.life=0;
     if(this.dungeonInstance) {
       const events=updateDungeon(this.dungeonInstance,dt,living.map(g=>({...g.player,human:true,alive:true})));
       for(const event of events) {
@@ -655,6 +899,8 @@ export class Game {
     }
     for(const plot of this.world.plots) if(plot.state==='growing'&&plot.readyAt<=this.time) { plot.state='ripe'; this.change(); }
     this.updateEnemies(dt,partyGames);
+    if(this.world.worldEvents)this.handleWorldEventEffects(updateWorldEvents(this.world,dt,partyGames,this.time));
+    this.updateWorldInteractions();
     for(const projectile of this.projectiles) {
       projectile.x+=Math.cos(projectile.angle)*projectile.speed*dt; projectile.y+=Math.sin(projectile.angle)*projectile.speed*dt; projectile.life-=dt;
       if(this.collides(projectile.x,projectile.y,3)) { projectile.life=0; continue; }
@@ -669,7 +915,8 @@ export class Game {
           if(projectile.splash)for(const e of this.world.enemies)if(e!==target&&e.alive&&dist(e,target)<projectile.splash)caster.hitEnemy(e,projectile.damage*.6,0);
           if(projectile.burnDamage&&applied)this.hazards.push({id:`ability-burn-${++caster.lootSerial}`,kind:'burn',x:target.x,y:target.y,radius:38,damage:projectile.burnDamage,life:projectile.burnDuration,actorId:projectile.actorId,color:projectile.color,tick:1});
         }
-      } else {const target=living.find(g=>dist(projectile,g.player)<23);if(target){target.damagePlayer(projectile.damage,{attackerLevel:projectile.attackerLevel||target.player.level});projectile.life=0;}}
+      } else {const target=living.find(g=>dist(projectile,g.player)<23);if(target){const applied=target.damagePlayer(projectile.damage,{attackerLevel:projectile.attackerLevel||target.player.level});
+        const attacker=this.world.enemies.find(e=>e.id===projectile.attackerId);if(attacker)applyEnemyTraits(this,attacker,ENEMY_TYPES[attacker.type],target,applied);projectile.life=0;}}
     }
     this.projectiles=this.projectiles.filter(p=>p.life>0);
     for(const fx of this.effects) { fx.life-=dt; if(fx.kind==='text') fx.y-=18*dt; }
@@ -717,7 +964,7 @@ export class Game {
     this.hazards=this.hazards.filter(h=>h.life>0);
     for(const summon of this.summons) {
       summon.life-=dt;summon.attackTimer-=dt;const caster=partyGames.find(g=>(g.player.id||'local')===summon.actorId)||this;
-      const target=this.world.enemies.filter(e=>e.alive&&dist(e,summon)<(summon.range||350)).sort((a,b)=>dist(a,summon)-dist(b,summon))[0];
+      const target=summon.companion&&summon.damage<=0?null:this.world.enemies.filter(e=>e.alive&&dist(e,summon)<(summon.range||350)).sort((a,b)=>dist(a,summon)-dist(b,summon))[0];
       const follow=summon.ranged?caster.player:target||caster.player,a=Math.atan2(follow.y-summon.y,follow.x-summon.x);
       if(dist(follow,summon)>45)this.move(summon,Math.cos(a)*120*dt,Math.sin(a)*120*dt,8);
       if(target&&dist(target,summon)<(summon.ranged?summon.range:70)&&summon.attackTimer<=0){summon.attackTimer=summon.attackCooldown||1;
@@ -732,6 +979,7 @@ export class Game {
     const living=partyGames.filter(g=>!g.dead);if(!living.length)return;
     for(const e of this.world.enemies) {
       const d=ENEMY_TYPES[e.type]; if(!d) continue;
+      if(updateBestiaryEnemy(this,e,d,dt,living))continue;
       const taunted=e.tauntUntil>this.time?living.find(g=>(g.player.id||'local')===e.targetId):null;
       const targetGame=taunted||living.reduce((a,b)=>dist(a.player,e)<dist(b.player,e)?a:b),p=targetGame.player;
       if(!e.alive) { if(!d.boss&&e.respawnAt<this.time&&living.every(g=>dist(g.player,e)>500)) { e.alive=true; e.hp=e.maxHp; e.x=e.homeX; e.y=e.homeY; e.phase='idle'; } continue; }
@@ -795,6 +1043,7 @@ export class Game {
         if(distance>28) this.move(e,Math.cos(a)*speed*dt,Math.sin(a)*speed*dt,d.boss?22:10);
       }
     }
+    this.world.enemies=this.world.enemies.filter(e=>!e.summonedBy||e.alive);
   }
   capture() {
     const w=this.overworld||this.world;
@@ -806,8 +1055,12 @@ export class Game {
     }:null;
     const abilityCooldowns=Object.fromEntries(ABILITIES.filter(a=>this.learnedAbilities[a.id]===true).map(a=>[a.id,this.cooldowns[`ability:${a.id}`]||0]));
     return {version:2,savedAt:Date.now(),player:{...this.player,walking:false},inventory:this.inventory,resources:this.resources,equipment:this.equipment,generatedItems:this.generatedItems,lootPity:this.lootPity,lootSerial:this.lootSerial,dungeonRecords:this.dungeonRecords,dungeon,contracts:this.contracts,skills:this.skills,
+      stash:{...this.stash},itemFlags:this.itemFlags,loadouts:this.loadouts,trackedQuestId:this.trackedQuestId,waypoint:this.waypoint?{kind:this.waypoint.kind,id:this.waypoint.id}:null,journey:this.journey,
       learnedAbilities:{...this.learnedAbilities},abilityLoadout:[...this.abilityLoadout],abilityCooldowns,
-      questState:this.questState,discovered:this.discovered,unlockedShrines:this.unlockedShrines,flags:this.flags,ledger:this.ledger,kills:this.kills,settings:this.settings,time:this.time,playTime:this.playTime,world:{nodes:w.nodes.map(n=>({id:n.id,readyAt:n.readyAt})),plots:w.plots,chests:w.chests.map(c=>({id:c.id,opened:c.opened})),enemies:w.enemies.filter(e=>ENEMY_TYPES[e.type]?.boss&&!e.alive).map(e=>e.id)}};
+      consumableCooldowns:{potion:this.cooldowns.potion||0,food:this.cooldowns.food||0},
+      buffs:this.buffs.filter(b=>b.expiresAt>this.time).map(({id,expiresAt})=>({id,expiresAt})),
+      questState:this.questState,discovered:this.discovered,unlockedShrines:this.unlockedShrines,flags:this.flags,ledger:this.ledger,kills:this.kills,settings:this.settings,time:this.time,playTime:this.playTime,world:{nodes:w.nodes.map(n=>({id:n.id,readyAt:n.readyAt})),plots:w.plots,chests:w.chests.map(c=>({id:c.id,opened:c.opened})),enemies:w.enemies.filter(e=>ENEMY_TYPES[e.type]?.boss&&!e.alive&&!e.eventId).map(e=>e.id),interactions:captureInteractions(w),worldEvents:captureWorldEvents(w),
+        challenges:w.enemies.filter(e=>e.challengeId&&!e.eventId).map(({id,type,challengeId,hp,alive,level,x,y})=>({id,type,challengeId,hp,alive,level,x,y}))}};
   }
   save(manual=true) {
     try {
@@ -824,6 +1077,9 @@ export class Game {
     // must either succeed completely or leave the running save unchanged.
     const record=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
     if(!record(data.world)||!record(data.player)) throw new Error('Ungültige Weltdaten.');
+    if(data.journey!==undefined&&!validateJourneyState(data.journey,{level:data.player.level}))throw new Error('Ungültige Reisechronik.');
+    if(!validateInventoryExtensions(data)||data.trackedQuestId!==undefined&&typeof data.trackedQuestId!=='string'||data.waypoint!==undefined&&data.waypoint!==null&&(!record(data.waypoint)||!['npc','shrine','quest','event','interaction','dungeon','region'].includes(data.waypoint.kind)||typeof data.waypoint.id!=='string'))throw new Error('Ungültige Inventar- oder Reisedaten.');
+    if(data.player.afflictions!==undefined&&(!Array.isArray(data.player.afflictions)||data.player.afflictions.length>3||new Set(data.player.afflictions.map(a=>a?.kind)).size!==data.player.afflictions.length||data.player.afflictions.some(a=>!record(a)||!['venom','burn','bleed'].includes(a.kind)||!Number.isFinite(a.damage)||a.damage<0||a.damage>500||!Number.isFinite(a.expiresAt)||a.expiresAt<0||!Number.isFinite(a.nextTick)||a.nextTick<0||!Number.isInteger(a.attackerLevel)||a.attackerLevel<1||a.attackerLevel>MAX_LEVEL)))throw new Error('Ungültige Wunddaten.');
     const abilityState=validateAbilityState(data);
     for(const key of ['inventory','resources','equipment','skills','questState','flags','ledger','settings']) {
       if(data[key]!==undefined&&!record(data[key])) throw new Error(`Ungültiges Feld: ${key}`);
@@ -832,6 +1088,11 @@ export class Game {
     for(const key of ['nodes','plots','chests','enemies']) if(data.world[key]!==undefined&&!Array.isArray(data.world[key])) throw new Error(`Ungültige Weltliste: ${key}`);
     for(const key of ['nodes','plots','chests']) if(data.world[key]?.some(v=>!record(v)||typeof v.id!=='string')) throw new Error('Ungültiger Weltzustand.');
     if(data.world.enemies?.some(id=>typeof id!=='string')) throw new Error('Ungültige Gegnerdaten.');
+    if(data.consumableCooldowns!==undefined&&(!record(data.consumableCooldowns)||Object.entries(data.consumableCooldowns).some(([key,value])=>!['potion','food'].includes(key)||!Number.isFinite(value)||value<0||value>30)))throw new Error('Ungültige Trankabklingzeit.');
+    if(!validateInteractionSave(data.world.interactions))throw new Error('Ungültige Weltinteraktionen.');
+    if(!validateWorldEventSave(data.world.worldEvents))throw new Error('Ungültige Weltabenteuer.');
+    if(data.buffs!==undefined&&(!Array.isArray(data.buffs)||data.buffs.length>2||new Set(data.buffs.map(b=>b?.id)).size!==data.buffs.length||data.buffs.some(b=>!record(b)||!Object.hasOwn(WORLD_BOONS,b.id)||!Number.isFinite(b.expiresAt)||b.expiresAt<0)))throw new Error('Ungültige Weltsegen.');
+    if(data.world.challenges!==undefined&&(!Array.isArray(data.world.challenges)||data.world.challenges.length>100||data.world.challenges.some(e=>!record(e)||typeof e.id!=='string'||typeof e.challengeId!=='string'||!BESTIARY_ENEMIES[e.type]||!Number.isInteger(e.level)||e.level<1||e.level>100||!Number.isFinite(e.hp)||!Number.isFinite(e.x)||!Number.isFinite(e.y))))throw new Error('Ungültige Herausforderung.');
     for(const state of Object.values(data.questState||{})) if(!record(state)||!Array.isArray(state.counts)) throw new Error('Ungültige Questdaten.');
     if(data.generatedItems!==undefined&&(!record(data.generatedItems)||Object.keys(data.generatedItems).length>2000||Object.entries(data.generatedItems).some(([id,item])=>item?.id!==id||!validateLootItem(item))))throw new Error('Ungültige Ausrüstungsdaten.');
     if(data.dungeonRecords!==undefined&&!record(data.dungeonRecords))throw new Error('Ungültige Dungeonchronik.');
@@ -851,8 +1112,10 @@ export class Game {
     for(const key of ['x','y','hp','mana','level','xp','gold','skillPoints']) this.player[key]=validNum(p[key],this.player[key]);
     this.player.name=typeof p.name==='string'?p.name.slice(0,24):'Aren';this.player.classId=getClass(p.classId).id;
     this.classId=this.player.classId;
+    this.journey=restoreJourneyState(data.journey,{level:this.player.level,legacy:data});
     this.learnedAbilities=abilityState.learned;this.abilityLoadout=abilityState.loadout;
     for(const [id,cooldown] of Object.entries(abilityState.cooldowns))this.cooldowns[`ability:${id}`]=cooldown;
+    for(const [key,cooldown] of Object.entries(data.consumableCooldowns||{}))this.cooldowns[key]=cooldown;
     this.contracts=restoreContractState(data.contracts||{active:[],completed:{}},{level:this.player.level});
     this.generatedItems=data.generatedItems||{};this.lootSerial=Math.floor(validNum(data.lootSerial,0));
     this.lootPity={legendaryMisses:Math.floor(validNum(data.lootPity?.legendaryMisses,0,0,500)),bossMisses:Math.floor(validNum(data.lootPity?.bossMisses,0,0,34))};
@@ -860,7 +1123,10 @@ export class Game {
     this.player.x=clamp(this.player.x,30,this.world.width-30); this.player.y=clamp(this.player.y,30,this.world.height-30);
     for(const [id,count] of Object.entries(data.inventory||{})) if(this.item(id)) this.inventory[id]=Math.floor(validNum(count,0));
     for(const key of Object.keys(this.resources)) this.resources[key]=Math.floor(validNum(data.resources?.[key],0));
-    for(const slot of Object.keys(this.equipment)) { const id=data.equipment?.[slot]; this.equipment[slot]=this.item(id)?.type===slot&&this.inventory[id]>0?id:null; }
+    for(const slot of Object.keys(this.equipment)) { const id=data.equipment?.[slot],legacySlot=['weapon','armor','charm'].includes(slot);
+      this.equipment[slot]=equipmentSlot(this.item(id))===slot&&this.inventory[id]>0&&(legacySlot||this.canEquipItem(id))?id:null;
+    }
+    restoreInventoryExtensions(this,data);
     for(const s of SKILLS) this.skills[s.id]=Math.floor(validNum(data.skills?.[s.id],0,0,s.maxRank||3));
     for(const q of QUESTS) {
       const state=data.questState?.[q.id]; if(!state||!['active','ready','done'].includes(state.status)) continue;
@@ -872,6 +1138,19 @@ export class Game {
     this.flags=typeof data.flags==='object'&&data.flags?data.flags:{}; this.ledger={};
     for(const [key,value] of Object.entries(data.ledger||{})) this.ledger[key]=validNum(value,0);
     this.time=validNum(data.time,0); this.playTime=validNum(data.playTime,0); this.kills=validNum(data.kills,0);
+    if(Number.isFinite(p.lastDamageAt)&&p.lastDamageAt>=0&&p.lastDamageAt<=this.time)this.player.lastDamageAt=p.lastDamageAt;
+    this.player.afflictions=(p.afflictions||[]).filter(a=>a.expiresAt>this.time).map(a=>({...a,expiresAt:Math.min(a.expiresAt,this.time+3),nextTick:Math.min(a.nextTick,this.time+1)}));
+    if(Number.isFinite(p.slowUntil)&&p.slowUntil>this.time){this.player.slowUntil=Math.min(p.slowUntil,this.time+1.4);this.player.slowFactor=.85;}
+    for(const boon of data.buffs||[])if(boon.expiresAt>this.time)this.addWorldBoon(boon.id,boon.expiresAt);
+    restoreInteractions(this.world,data.world.interactions,this.time);
+    restoreWorldEvents(this.world,data.world.worldEvents,this.time);
+    for(const saved of data.world.challenges||[]) {
+      const object=this.world.interactions.find(o=>o.id===saved.challengeId);
+      if(!object||object.used||!['sarcophagus','cursed_chest'].includes(object.kind)||!REGION_ENEMY_POOLS[object.region]?.includes(BESTIARY_ENEMIES[saved.type].baseType||saved.type))continue;
+      const enemy=createBestiaryEnemy(saved.type,saved.id,clamp(saved.x,30,this.world.width-30),clamp(saved.y,30,this.world.height-30),{level:object.level,region:object.region});
+      enemy.hp=clamp(saved.hp,0,enemy.maxHp);enemy.alive=saved.alive!==false&&enemy.hp>0;enemy.challengeId=object.id;enemy.respawnAt=Infinity;
+      (object.challengeIds||=[]).push(enemy.id);this.world.enemies.push(enemy);
+    }
     if(data.settings) for(const key of Object.keys(this.settings)) if(typeof data.settings[key]==='boolean') this.settings[key]=data.settings[key];
     for(const node of this.world.nodes) { const saved=data.world.nodes?.find(n=>n.id===node.id); if(saved) node.readyAt=validNum(saved.readyAt,0); }
     for(const plot of this.world.plots) { const saved=data.world.plots?.find(n=>n.id===plot.id); if(saved&&['empty','growing','ripe'].includes(saved.state)) { plot.state=saved.state; plot.readyAt=validNum(saved.readyAt,0); } }
@@ -900,11 +1179,14 @@ export class Game {
       this.world=instance.world;this.dungeonInstance=instance;this.npcs=[];this.returnPoint=d.returnPoint||{...instance.definition.entrance};
     }
     this.player.hp=clamp(this.player.hp,1,this.stats().maxHp); this.player.mana=clamp(this.player.mana,0,this.stats().mana);
+    if(data.trackedQuestId&&['active','ready'].includes((this.questState[data.trackedQuestId]||this.contracts.active.find(c=>c.id===data.trackedQuestId))?.status))this.trackedQuestId=data.trackedQuestId;
+    if(data.waypoint){const point=resolveWaypoint(this,data.waypoint.kind,data.waypoint.id);if(point)this.waypoint={...data.waypoint,...point};}
     if(p.hp<=0) {
       // Reloading a journey at the defeat screen follows the same rescue rule
       // as the button, instead of trapping the player at one HP among enemies.
       this.player.x=this.dungeonInstance?.spawn.x||520;this.player.y=this.dungeonInstance?.spawn.y||1250;this.player.hp=this.stats().maxHp;this.player.mana=this.stats().mana;
       this.player.gold=Math.floor(this.player.gold*.9);this.player.invulnerable=3;
+      this.player.afflictions=[];this.player.slowUntil=0;
     }
     if(this.collides(this.player.x,this.player.y)) { this.player.x=this.dungeonInstance?.spawn.x||520;this.player.y=this.dungeonInstance?.spawn.y||1250; }
     this.camera={x:this.player.x,y:this.player.y}; this.lastRegion=this.regionAt().id; this.change();

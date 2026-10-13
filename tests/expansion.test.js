@@ -4,6 +4,7 @@ import { makeWorld } from '../src/world.js';
 import { REGIONS, QUESTS, RECIPES, ENEMY_TYPES } from '../src/content.js';
 import { DUNGEONS } from '../src/dungeons.js';
 import { EXPANSION_REGIONS, EXPANSION_QUESTS, EXPANSION_NPCS, EXPANSION_ENEMIES, FRONTIER_BOUNDS, expandWorld, populateSector } from '../src/expansion.js';
+import { bestiaryCombatStats } from '../src/bestiary.js';
 
 test('sixteen disjoint regions cover the complete frontier without shrinking the starting lands', () => {
   const regions = [...REGIONS, ...EXPANSION_REGIONS];
@@ -88,8 +89,9 @@ test('frontier encounter levels and actual combat/loot stats match their regions
     const enemies = world.enemies.filter(e => e.region === region.id); assert.ok(enemies.length > 0);
     for (const enemy of enemies) {
       assert.ok(enemy.level >= region.level && enemy.level <= region.maxLevel);
-      assert.equal(enemy.lootLevel, enemy.level); assert.equal(enemy.maxHp, Math.round(90 + enemy.level * 13 + enemy.level ** 2 * .13));
-      assert.equal(enemy.damage, 14 + Math.round(enemy.level * 1.8)); assert.equal(enemy.xp, Math.round(35 + enemy.level ** 2 * 2.3));
+      const budget=bestiaryCombatStats(enemy.type,enemy.level);
+      assert.equal(enemy.lootLevel, enemy.level); assert.equal(enemy.maxHp, budget.hp);
+      assert.equal(enemy.damage, budget.damage); assert.equal(enemy.xp, budget.xp);
     }
   }
   const dream = world.enemies.find(e => e.region === 'traumsenke'); assert.equal(dream.level, 76); assert.notEqual(dream.lootLevel, EXPANSION_ENEMIES.void_watcher.level);

@@ -1,7 +1,7 @@
 const SESSION_KEY='emberfall.network.v1';
 const INPUT_KEYS=new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
-const REMOTE_METHODS=['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract'];
-const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp'];
+const REMOTE_METHODS=['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent'];
+const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey'];
 
 /** Browser transport; the server owns combat, progression, drops and movement. */
 export class NetworkClient {
@@ -97,6 +97,9 @@ export class NetworkClient {
     for(const key of PERSONAL_FIELDS)if(snapshot[key]!==undefined)game[key]=snapshot[key];
     game.time=snapshot.time;game.effects=snapshot.effects||[];game.projectiles=snapshot.projectiles||[];game.drops=snapshot.drops||[];game.hazards=snapshot.hazards||[];game.summons=snapshot.summons||[];
     game.dungeonInstance=snapshot.dungeonInstance?{...snapshot.dungeonInstance,world:game.world}:null;
+    if(!game.dungeonInstance)game.overworld=game.world;
+    game.networkInteractionSummary=snapshot.authoritativeInteractionSummary||null;
+    game.networkWorldEventSummary=snapshot.authoritativeWorldEventSummary||null;
     game.worldMode=snapshot.worldMode;game.activeDungeon=snapshot.activeDungeon;game.paused=!!game.dead;
     if(snapshot.npcs)game.npcs=snapshot.npcs;
     const previousParty=new Map(this.players.map(p=>[p.id,p]));this._targets.clear();
@@ -163,6 +166,8 @@ export class NetworkClient {
     this.token=null;this.roomCode=null;this.players=[];this._targetPlayer=null;this._hasSnapshot=false;
     for(const [name,original]of this._methods)this.game[name]=original;this._methods.clear();
     this.game.network=null;this.game.networkActive=false;this.game.partyPlayers=[];this.game.otherPlayers=[];this.game.party=[];
+    this.game.networkInteractionSummary=null;
+    this.game.networkWorldEventSummary=null;
     if(this._offlineSave){this.game.applySave(this._offlineSave);this.game.started=this._offlineStarted;this.game.paused=false;this._offlineSave=null;}
     if(forget)try{this.storage?.removeItem(SESSION_KEY);}catch{}
     this._disconnecting=false;

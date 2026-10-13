@@ -85,7 +85,7 @@ test('every authored enemy and boss has a collision-free melee approach', () => 
   const inaccessible = game.world.enemies.filter(enemy => !approachable(enemy, 75));
   assert.deepEqual(inaccessible.map(enemy => `${enemy.type}:${enemy.id} @ ${enemy.x},${enemy.y}`), []);
   const bosses = game.world.enemies.filter(enemy => ENEMY_TYPES[enemy.type].boss);
-  assert.equal(bosses.length, 3);
+  assert.equal(bosses.length, 83, 'Three story bosses plus a champion for each of eighty species');
 });
 
 test('NPCs stand outside the opaque footprint of village buildings', () => {

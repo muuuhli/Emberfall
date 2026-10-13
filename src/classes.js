@@ -174,5 +174,215 @@ export const CLASSES = [
   },
 ];
 
+// Three linked specializations per class. The fourth node is an explicit
+// bargain: a focused benefit costs a different defense, resource or damage stat.
+// Existing talent IDs, rank limits and costs remain intact for older characters.
+const specialization=(classId,branch,root,nodes)=>nodes.map(([suffix,name,description,stat,value,penalties],index)=>talent(
+  classId,branch,suffix,name,description,stat,value,{
+    minLevel:[8,20,45,75][index],maxRank:index===3?1:index===2?4:3,cost:index===3?5:index===0?1:2,
+    requires:index===0?root:`${classId}_${nodes[index-1][0]}`,requiresRank:index===3?3:2,
+    icon:({maxHp:'♥',mana:'◈',damage:'⚔',armor:'⬡',crit:'◎',speed:'↝',spellDamage:'✦',manaRegen:'≈',cooldown:'◷',dodgeCooldown:'↝',gatherYield:'❧',lifeSteal:'✚'})[stat],
+    mastery:true,tier:index+1,keystone:index===3,secondaryEffects:penalties||[],
+  },
+));
+
+const SPECIALIZATIONS={
+  guardian:[
+    ...specialization('guardian','Bastion','guardian_steel',[
+      ['gatekeeper','Torhüter','+12 maximales Leben pro Rang.','maxHp',12],
+      ['black_plate','Schwarzes Eisen','+1,2 Rüstung pro Rang.','armor',1.2],
+      ['siege_heart','Belagerungsherz','+16 maximales Leben pro Rang.','maxHp',16],
+      ['living_citadel','Lebende Zitadelle','+130 maximales Leben, aber −12 Bewegungstempo.','maxHp',130,[{stat:'speed',value:-12}]],
+    ]),
+    ...specialization('guardian','Vergeltung','guardian_might',[
+      ['iron_edge','Schneide aus Eisen','+2 Nahkampfschaden pro Rang.','damage',2],
+      ['avenger','Rächer der Gefallenen','+0,6 % kritische Trefferchance pro Rang.','crit',.006],
+      ['executioner','Urteil des Wächters','+3 Nahkampfschaden pro Rang.','damage',3],
+      ['broken_oath','Gebrochener Eid','+28 Nahkampfschaden, aber −5 Rüstung.','damage',28,[{stat:'armor',value:-5}]],
+    ]),
+    ...specialization('guardian','Wächter','guardian_vigor',[
+      ['vigil','Totenwache','+5 Mana pro Rang.','mana',5],
+      ['battle_breath','Atem der Schlacht','+0,25 Mana-Regeneration pro Rang.','manaRegen',.25],
+      ['unyielding_rhythm','Unbeugsamer Takt','+1 % Abklingzeitverkürzung pro Rang.','cooldown',.01],
+      ['solemn_duty','Ewiger Dienst','+7 % Abklingzeitverkürzung, aber −12 Nahkampfschaden.','cooldown',.07,[{stat:'damage',value:-12}]],
+    ]),
+  ],
+  paladin:[
+    ...specialization('paladin','Schutz','paladin_faith',[
+      ['oathkeeper','Eidwahrer','+12 maximales Leben pro Rang.','maxHp',12],
+      ['pilgrim_plate','Pilgerpanzer','+1 Rüstung pro Rang.','armor',1],
+      ['martyr_heart','Märtyrerherz','+15 maximales Leben pro Rang.','maxHp',15],
+      ['stone_vow','Steinerner Schwur','+9 Rüstung, aber −10 Bewegungstempo.','armor',9,[{stat:'speed',value:-10}]],
+    ]),
+    ...specialization('paladin','Licht','paladin_radiance',[
+      ['ember_prayer','Glutgebet','+5 Mana pro Rang.','mana',5],
+      ['mercy','Gnade der Asche','+2 Zauberkraft pro Rang.','spellDamage',2],
+      ['litany','Letzte Litanei','+0,3 Mana-Regeneration pro Rang.','manaRegen',.3],
+      ['healers_vow','Eid der Heilenden','+28 Zauberkraft, aber −14 Nahkampfschaden.','spellDamage',28,[{stat:'damage',value:-14}]],
+    ]),
+    ...specialization('paladin','Vergeltung','paladin_radiance',[
+      ['inquisition','Inquisition','+2 Nahkampfschaden pro Rang.','damage',2],
+      ['zealot','Ascheneifer','+0,6 % kritische Trefferchance pro Rang.','crit',.006],
+      ['judges_hammer','Richterhammer','+3 Nahkampfschaden pro Rang.','damage',3],
+      ['fanatic','Fanatiker','+6 % kritische Trefferchance, aber −30 maximales Mana.','crit',.06,[{stat:'mana',value:-30}]],
+    ]),
+  ],
+  ranger:[
+    ...specialization('ranger','Jagd','ranger_aim',[
+      ['bloodtrail','Blutspur','+2 Fernkampfschaden pro Rang.','damage',2],
+      ['keen_sight','Blick der Nacht','+0,6 % kritische Trefferchance pro Rang.','crit',.006],
+      ['hunters_patience','Geduld des Jägers','+3 Fernkampfschaden pro Rang.','damage',3],
+      ['glass_arrow','Gläserner Pfeil','+30 Fernkampfschaden, aber −65 maximales Leben.','damage',30,[{stat:'maxHp',value:-65}]],
+    ]),
+    ...specialization('ranger','Wildnis','ranger_trail',[
+      ['silent_trail','Stiller Pfad','+2 Bewegungstempo pro Rang.','speed',2],
+      ['sure_foot','Sicherer Tritt','+1 % kürzere Ausweichzeit pro Rang.','dodgeCooldown',.01],
+      ['weathered','Wettergegerbt','+12 maximales Leben pro Rang.','maxHp',12],
+      ['restless','Rastloser Wanderer','+8 % kürzere Ausweichzeit, aber −16 Fernkampfschaden.','dodgeCooldown',.08,[{stat:'damage',value:-16}]],
+    ]),
+    ...specialization('ranger','Bestien','ranger_aim',[
+      ['beast_bond','Bund der Bestien','+5 Mana pro Rang.','mana',5],
+      ['pack_call','Ruf des Rudels','+0,25 Mana-Regeneration pro Rang.','manaRegen',.25],
+      ['falconer','Nachtfalkner','+1 % Abklingzeitverkürzung pro Rang.','cooldown',.01],
+      ['wild_pact','Wilder Pakt','+1,8 Mana-Regeneration, aber −3,5 % kritische Trefferchance.','manaRegen',1.8,[{stat:'crit',value:-.035}]],
+    ]),
+  ],
+  nightblade:[
+    ...specialization('nightblade','Assassine','nightblade_edge',[
+      ['death_edge','Todesschneide','+2 Nahkampfschaden pro Rang.','damage',2],
+      ['ambusher','Hinterhalt','+0,7 % kritische Trefferchance pro Rang.','crit',.007],
+      ['sever','Abtrennen','+3 Nahkampfschaden pro Rang.','damage',3],
+      ['fragile_killer','Zerbrechlicher Henker','+30 Nahkampfschaden, aber −90 maximales Leben.','damage',30,[{stat:'maxHp',value:-90}]],
+    ]),
+    ...specialization('nightblade','Schatten','nightblade_step',[
+      ['unseen','Ungesehen','+2 Bewegungstempo pro Rang.','speed',2],
+      ['afterimage','Nachbild','+1 % kürzere Ausweichzeit pro Rang.','dodgeCooldown',.01],
+      ['cold_focus','Kalter Fokus','+5 Mana pro Rang.','mana',5],
+      ['shadow_vow','Schwur des Schattens','+7 % Abklingzeitverkürzung, aber −16 Nahkampfschaden.','cooldown',.07,[{stat:'damage',value:-16}]],
+    ]),
+    ...specialization('nightblade','Gift','nightblade_edge',[
+      ['venom_rite','Giftritus','+0,25 Mana-Regeneration pro Rang.','manaRegen',.25],
+      ['widow_heart','Witwenherz','+0,3 % Lebensraub pro Rang.','lifeSteal',.003],
+      ['cruel_patience','Grausame Geduld','+1 % Abklingzeitverkürzung pro Rang.','cooldown',.01],
+      ['blood_alchemy','Blutalchemie','+1,8 % Lebensraub, aber −4 Rüstung.','lifeSteal',.018,[{stat:'armor',value:-4}]],
+    ]),
+  ],
+  flamecaller:[
+    ...specialization('flamecaller','Feuer','flamecaller_spark',[
+      ['char','Verkohlung','+2 Zauberkraft pro Rang.','spellDamage',2],
+      ['fire_gaze','Feuerblick','+0,6 % kritische Trefferchance pro Rang.','crit',.006],
+      ['hellbrand','Höllenbrand','+3 Zauberkraft pro Rang.','spellDamage',3],
+      ['glass_pyromancer','Gläserne Flamme','+36 Zauberkraft, aber −95 maximales Leben.','spellDamage',36,[{stat:'maxHp',value:-95}]],
+    ]),
+    ...specialization('flamecaller','Äther','flamecaller_reservoir',[
+      ['coal_well','Kohlenbrunnen','+6 Mana pro Rang.','mana',6],
+      ['ember_current','Glutstrom','+0,3 Mana-Regeneration pro Rang.','manaRegen',.3],
+      ['ritual_fire','Ritualfeuer','+1 % Abklingzeitverkürzung pro Rang.','cooldown',.01],
+      ['eternal_fuel','Ewiger Brennstoff','+2 Mana-Regeneration, aber −14 Zauberkraft.','manaRegen',2,[{stat:'spellDamage',value:-14}]],
+    ]),
+    ...specialization('flamecaller','Asche','flamecaller_reservoir',[
+      ['ash_blood','Aschenblut','+11 maximales Leben pro Rang.','maxHp',11],
+      ['cinder_shell','Kohlenpanzer','+0,8 Rüstung pro Rang.','armor',.8],
+      ['smoke_steps','Rauchpfade','+1 % kürzere Ausweichzeit pro Rang.','dodgeCooldown',.01],
+      ['ashen_rebirth','Wiederkehr aus Asche','+8 Rüstung, aber −14 Zauberkraft.','armor',8,[{stat:'spellDamage',value:-14}]],
+    ]),
+  ],
+  frostweaver:[
+    ...specialization('frostweaver','Winter','frostweaver_shard',[
+      ['bitter_shard','Bitterer Splitter','+2 Zauberkraft pro Rang.','spellDamage',2],
+      ['white_hunger','Weißer Hunger','+0,6 % kritische Trefferchance pro Rang.','crit',.006],
+      ['deep_winter','Tiefer Winter','+3 Zauberkraft pro Rang.','spellDamage',3],
+      ['brittle_power','Brüchige Macht','+32 Zauberkraft, aber −4 Rüstung.','spellDamage',32,[{stat:'armor',value:-4}]],
+    ]),
+    ...specialization('frostweaver','Eiswall','frostweaver_shell',[
+      ['ice_blood','Eisblut','+12 maximales Leben pro Rang.','maxHp',12],
+      ['rime_plate','Reifpanzer','+0,9 Rüstung pro Rang.','armor',.9],
+      ['glacial_heart','Gletscherherz','+14 maximales Leben pro Rang.','maxHp',14],
+      ['frozen_statue','Gefrorene Statue','+9 Rüstung, aber −10 Bewegungstempo.','armor',9,[{stat:'speed',value:-10}]],
+    ]),
+    ...specialization('frostweaver','Reif','frostweaver_shard',[
+      ['quiet_snow','Stiller Schnee','+5 Mana pro Rang.','mana',5],
+      ['cold_current','Kältestrom','+0,25 Mana-Regeneration pro Rang.','manaRegen',.25],
+      ['winter_rhythm','Wintertakt','+1 % Abklingzeitverkürzung pro Rang.','cooldown',.01],
+      ['endless_frost','Endloser Frost','+7 % Abklingzeitverkürzung, aber −16 Zauberkraft.','cooldown',.07,[{stat:'spellDamage',value:-16}]],
+    ]),
+  ],
+  druid:[
+    ...specialization('druid','Blüte','druid_bloom',[
+      ['night_bloom','Nachtblüte','+2 Zauberkraft pro Rang.','spellDamage',2],
+      ['dew','Letzter Tau','+0,3 Mana-Regeneration pro Rang.','manaRegen',.3],
+      ['lunar_sap','Mondsaft','+5 Mana pro Rang.','mana',5],
+      ['healers_roots','Wurzeln der Gnade','+28 Zauberkraft, aber −10 Bewegungstempo.','spellDamage',28,[{stat:'speed',value:-10}]],
+    ]),
+    ...specialization('druid','Wildnis','druid_harvest',[
+      ['old_growth','Altes Wachstum','+12 maximales Leben pro Rang.','maxHp',12],
+      ['thick_bark','Dichte Borke','+0,9 Rüstung pro Rang.','armor',.9],
+      ['deep_soil','Tiefer Boden','+0,15 Sammelertrag pro Rang.','gatherYield',.15],
+      ['rooted_guardian','Verwurzelter Hüter','+140 maximales Leben, aber −10 Bewegungstempo.','maxHp',140,[{stat:'speed',value:-10}]],
+    ]),
+    ...specialization('druid','Mond','druid_bloom',[
+      ['dark_thorns','Dunkle Dornen','+2 Zauberkraft pro Rang.','spellDamage',2],
+      ['moon_step','Mondschritt','+1 % kürzere Ausweichzeit pro Rang.','dodgeCooldown',.01],
+      ['lunar_cycle','Mondzyklus','+1 % Abklingzeitverkürzung pro Rang.','cooldown',.01],
+      ['wild_moon','Wilder Mond','+6 % kritische Trefferchance, aber −4 Rüstung.','crit',.06,[{stat:'armor',value:-4}]],
+    ]),
+  ],
+  shadowbinder:[
+    ...specialization('shadowbinder','Seele','shadowbinder_hunger',[
+      ['soul_scar','Seelennarbe','+10 maximales Leben pro Rang.','maxHp',10],
+      ['blood_rite','Blutritus','+0,3 % Lebensraub pro Rang.','lifeSteal',.003],
+      ['soul_current','Seelenstrom','+0,3 Mana-Regeneration pro Rang.','manaRegen',.3],
+      ['starved_vessel','Ausgehungertes Gefäß','+2,2 % Lebensraub, aber −70 maximales Leben.','lifeSteal',.022,[{stat:'maxHp',value:-70}]],
+    ]),
+    ...specialization('shadowbinder','Pakt','shadowbinder_whisper',[
+      ['grave_whisper','Gruftflüstern','+2 Zauberkraft pro Rang.','spellDamage',2],
+      ['soul_reserve','Seelenvorrat','+5 Mana pro Rang.','mana',5],
+      ['unholy_rhythm','Unheiliger Takt','+1 % Abklingzeitverkürzung pro Rang.','cooldown',.01],
+      ['abyssal_vow','Schwur des Abgrunds','+34 Zauberkraft, aber −5 Rüstung.','spellDamage',34,[{stat:'armor',value:-5}]],
+    ]),
+    ...specialization('shadowbinder','Grab','shadowbinder_whisper',[
+      ['bone_dust','Knochenstaub','+10 maximales Leben pro Rang.','maxHp',10],
+      ['ossuary_plate','Beinhauspanzer','+0,8 Rüstung pro Rang.','armor',.8],
+      ['ghost_walk','Geisterpfad','+1 % kürzere Ausweichzeit pro Rang.','dodgeCooldown',.01],
+      ['sealed_crypt','Versiegelte Gruft','+8 Rüstung, aber −16 Zauberkraft.','armor',8,[{stat:'spellDamage',value:-16}]],
+    ]),
+  ],
+};
+
+for(const characterClass of CLASSES)characterClass.talents.push(...SPECIALIZATIONS[characterClass.id]);
+
 export function getClass(id) { return CLASSES.find(entry => entry.id === id) || CLASSES[0]; }
 export const CLASS_TALENTS = CLASSES.flatMap(entry => entry.talents);
+
+/** Shared authoritative learning rules and UI explanation for passive talents. */
+export function canLearnTalent(game,id) {
+  const skill=CLASS_TALENTS.find(entry=>entry.id===id),p=game?.player||{},ranks=game?.skills||{};
+  if(!skill)return {ok:false,reason:'Unbekanntes Talent.'};
+  if(skill.classId!==(p.classId||'guardian'))return {ok:false,reason:'Dieses Talent gehört zu einer anderen Klasse.'};
+  if(game?.dead||p.hp<=0)return {ok:false,reason:'Erwache zuerst am Glutherd.'};
+  if(!Number.isFinite(p.level)||p.level<(skill.minLevel||1))return {ok:false,reason:`Benötigt Stufe ${skill.minLevel||1}.`};
+  const rank=Number.isFinite(ranks[id])?Math.max(0,Math.floor(ranks[id])):0;
+  if(rank>=skill.maxRank)return {ok:false,reason:'Bereits gemeistert.'};
+  const requirements=!skill.requires?[]:Array.isArray(skill.requires)?skill.requires:[skill.requires];
+  for(const requirement of requirements) {
+    const requiredId=typeof requirement==='string'?requirement:requirement.id,requiredRank=typeof requirement==='string'?skill.requiresRank||1:requirement.rank||1;
+    if(!Number.isFinite(ranks[requiredId])||ranks[requiredId]<requiredRank) {
+      const name=CLASS_TALENTS.find(entry=>entry.id===requiredId)?.name||requiredId;
+      return {ok:false,reason:`Benötigt ${name} auf Rang ${requiredRank}.`};
+    }
+  }
+  if(!Number.isFinite(p.skillPoints)||p.skillPoints<skill.cost)return {ok:false,reason:`Benötigt ${skill.cost} Talentpunkte.`};
+  return {ok:true,reason:''};
+}
+
+/** Additive modifiers, including the costs of keystones; does not mutate saves. */
+export function getTalentModifiers(skills={},classId='guardian') {
+  const modifiers={};
+  for(const skill of getClass(classId).talents) {
+    const stored=skills?.[skill.id],rank=Number.isFinite(stored)?Math.min(skill.maxRank,Math.max(0,Math.floor(stored))):0;
+    if(!rank)continue;
+    const primary=Array.isArray(skill.effect)?skill.effect:[skill.effect];
+    for(const effect of [...primary,...(skill.secondaryEffects||[])])if(effect?.stat&&Number.isFinite(effect.value))modifiers[effect.stat]=(modifiers[effect.stat]||0)+effect.value*rank;
+  }
+  return modifiers;
+}

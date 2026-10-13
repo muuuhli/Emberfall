@@ -127,3 +127,15 @@ test('DOM textures are evicted with sprite data after mixed families exhaust the
     const info=pixelWorldCacheInfo();assert.equal(info.sprites,192);assert.equal(info.canvases,192);
   } finally {globalThis.document=previous;clearPixelWorldCache();}
 });
+
+test('the ten journey companions have distinct unclipped native artwork and stable feet', async () => {
+  const {PIXEL_COMPANION_TYPES,drawPixelCompanion}=await import('../src/pixel-world.js');
+  assert.equal(PIXEL_COMPANION_TYPES.length,10);const artwork=new Set();
+  for(const type of PIXEL_COMPANION_TYPES){
+    const idle=getPixelSprite('companion',{type},0);assert.equal(idle.clippedPixels,0,type);
+    assert.ok(idle.runs.length>30,type);assert.ok(!artwork.has(digest(idle)),type);artwork.add(digest(idle));
+    for(const face of [0,Math.PI])for(const phase of ['chase','windup','recover'])assert.equal(getPixelSprite('companion',{type,phase,face},.2).clippedPixels,0,`${type}/${phase}`);
+    const bounds=drawPixelCompanion(recordingContext(),{visualType:type,x:101.3,y:205.7},.16);
+    assert.equal(bounds.pivotX,102);assert.equal(bounds.pivotY,206);
+  }
+});

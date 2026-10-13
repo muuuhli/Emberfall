@@ -1,5 +1,6 @@
 // Authored routes and encounters, seeded foliage. Coordinates use world pixels.
 import { ENEMY_TYPES, REGIONS } from './content.js';
+import { BESTIARY_ENEMIES, createBestiaryEnemy } from './bestiary.js';
 
 const seeded = (seed) => () => {
   seed |= 0; seed = seed + 0x6D2B79F5 | 0;
@@ -89,11 +90,32 @@ export function makeWorld() {
     ['imp',1810,1470],['imp',1910,1730],['imp',2290,1580],['imp',2450,1900],['imp',2490,1470],['imp',2850,1630],['imp',2930,2120],['imp',2570,2230],['skeleton',2050,2180],['emberlord',2760,1960]
   ];
   spawns.forEach(([type,x,y],i)=>{
+    if(BESTIARY_ENEMIES[type]) {
+      const region=REGIONS.find(r=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h)?.id;
+      world.enemies.push(createBestiaryEnemy(type,`enemy-${i}`,x,y,{region}));
+      return;
+    }
     const data=ENEMY_TYPES[type];
     world.enemies.push({id:`enemy-${i}`,type,x,y,homeX:x,homeY:y,hp:data.hp,maxHp:data.hp,attackTimer:0,phase:'idle',alive:true,respawnAt:0,boss:data.boss});
   });
+  // New species occupy side routes. The original quest packs and boss arenas
+  // remain authored in place, while optional champions stay far from Glutwacht.
+  const newEncounters = [
+    ['grave_rat',460,2220],['carrion_crow',990,2240],['gallows_cultist',1200,1550],
+    ['ice_spider',250,750],['rime_archer',650,190],['glacier_ram',1240,390],['frost_witch',320,240],
+    ['bone_hound',1800,520],['plague_spitter',2620,760],['grave_cantor',2970,1020],
+    ['cinder_beetle',1820,2050],['ash_brute',2180,1270],['infernal_lancer',2660,1810],['soot_priest',3120,2100],
+  ];
+  newEncounters.forEach(([type,x,y])=>world.enemies.push(createBestiaryEnemy(type,`bestiary-${type}`,x,y)));
+  const championNests = [
+    ['wolf',210,2240],['slime',630,2180],['grave_rat',920,2120],['carrion_crow',1260,2240],['gallows_cultist',1260,1050],
+    ['frostwolf',180,220],['ice_spider',460,170],['rime_archer',800,140],['glacier_ram',1180,150],['frost_witch',1350,670],
+    ['skeleton',1750,180],['wraith',2200,180],['bone_hound',2900,180],['plague_spitter',3040,530],['grave_cantor',2850,980],
+    ['imp',1760,2350],['cinder_beetle',2180,2340],['ash_brute',2980,1220],['infernal_lancer',3100,1710],['soot_priest',2860,2320],
+  ];
+  championNests.forEach(([type,x,y])=>world.enemies.push(createBestiaryEnemy(type,`champion-${type}`,x,y,{boss:true})));
   [[1085,1590],[1230,2010],[390,450],[1300,350],[2040,530],[2490,1030],[2920,900],[2310,1370],[1850,2260],[2990,2250]].forEach(([x,y],i)=>world.chests.push({id:`chest-${i}`,x,y,opened:false}));
-  const usable = (o) => ![...world.nodes,...world.enemies,...world.chests].some(e=>Math.hypot(e.x-o.x,e.y-o.y)<50);
+  const usable = (o) => ![...world.nodes,...world.enemies,...world.chests].some(e=>Math.hypot(e.x-o.x,e.y-o.y)<(e.boss?110:55));
   world.trees=world.trees.filter(usable); world.rocks=world.rocks.filter(usable);
   return world;
 }

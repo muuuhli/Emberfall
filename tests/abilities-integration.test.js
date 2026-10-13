@@ -23,12 +23,20 @@ function enemy(game,dx=60,changes={}) {
 }
 function party(...games) {for(const game of games){game.world=games[0].world;game.partyGames=games;for(const key of ['projectiles','hazards','summons','effects','drops'])game[key]=games[0][key];}return games;}
 function advance(game,seconds) {for(let t=0;t<seconds-1e-8;t+=.02){for(const ally of game.partyGames)ally.update(.02,{simulateWorld:false});game.updateWorld(.02,game.partyGames);}}
-function prepare(game,id) {for(const a of ABILITIES.filter(a=>a.classId===game.player.classId&&a.level<=getAbility(id).level))assert.equal(game.learnAbility(a.id),true);game.setAbilityLoadout(0,null);game.setAbilityLoadout(1,null);assert.equal(game.setAbilityLoadout(0,id),true);}
+function prepare(game,id) {
+  const chain=[];
+  const prerequisites=ability=>{if(ability.requires)prerequisites(getAbility(ability.requires));chain.push(ability);};
+  prerequisites(getAbility(id));game.player.level=Math.max(game.player.level,getAbility(id).level);
+  game.player.skillPoints=Math.max(game.player.skillPoints,chain.filter(a=>!game.learnedAbilities[a.id]).reduce((sum,a)=>sum+a.talentCost,0));
+  game.player.mana=game.stats().mana;
+  for(const a of chain)if(!game.learnedAbilities[a.id])assert.equal(game.learnAbility(a.id),true);
+  game.setAbilityLoadout(0,null);game.setAbilityLoadout(1,null);assert.equal(game.setAbilityLoadout(0,id),true);
+}
 
-test('all eight classes have three real learning milestones and strict class, level, points and prerequisites',()=>{
-  assert.equal(ABILITIES.length,24);assert.equal(new Set(ABILITIES.map(a=>a.id)).size,24);
+test('all eight classes keep three original milestones and expand with five alternative techniques',()=>{
+  assert.equal(ABILITIES.length,64);assert.equal(new Set(ABILITIES.map(a=>a.id)).size,64);
   for(const cls of CLASSES) {
-    const defs=ABILITIES.filter(a=>a.classId===cls.id);assert.deepEqual(defs.map(a=>a.level),[4,12,25]);
+    const defs=ABILITIES.filter(a=>a.classId===cls.id);assert.deepEqual(defs.slice(0,3).map(a=>a.level),[4,12,25]);assert.deepEqual(defs.slice(3).map(a=>a.level),[8,18,35,50,70]);
     const game=arena(cls.id,3),[first,second,third]=defs;
     assert.equal(canLearnAbility(game,first.id).ok,false);assert.equal(game.learnAbility(first.id),false);
     game.player.level=25;assert.equal(game.learnAbility(second.id),false);
@@ -68,7 +76,7 @@ test('every learned skill pays mana once, animates and has a real combat / suppo
     if(['cone','execute','fan','projectile','trap','meteor','sanctum','storm','curse','summon'].includes(a.kind))assert.ok(target.hp<enemyHp,`${a.id}: actual damage`);
     if(a.kind==='regeneration')assert.ok(ally.player.hp>allyHp,a.id);
     if(a.kind==='sanctum')assert.ok(ally.player.hp>allyHp,a.id);
-    if(a.kind==='storm'||a.kind==='trap')assert.ok(target.slowFactor<1,a.id);
+    if((a.kind==='storm'||a.kind==='trap')&&a.slow)assert.ok(target.slowFactor<1,a.id);
   }
 });
 
