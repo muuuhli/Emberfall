@@ -30,6 +30,21 @@ function resolveBoss(type,fraction=.75,distance=80) {
   return {game,enemy,shots:game.projectiles};
 }
 
+test('the village farm remains safe for a full crop growth cycle',()=>{
+  const game=new Game({storage:storage(),random:()=>.5});game.start();
+  const plot=game.world.plots.find(p=>p.id==='plot-1-3');
+  game.player.x=plot.x+45;game.player.y=plot.y;
+  const wolf=game.world.enemies.find(e=>e.type==='wolf');
+  wolf.x=game.player.x;wolf.y=game.player.y+42;wolf.aggro=true;
+  game.world.enemies=[wolf];
+  game.interact();assert.equal(plot.state,'growing');
+  advance(game,26);
+  assert.equal(game.dead,false,'A first crop must not turn into a combat trap');
+  assert.equal(game.player.hp,game.stats().maxHp);
+  assert.equal(wolf.aggro,false);assert.equal(plot.state,'ripe');
+  game.interact();assert.equal(game.resources.wheat,3);
+});
+
 test('diagonal movement preserves run speed and axis collision permits sliding',()=>{
   const straight=arena(),diagonal=arena();
   straight.keys.add('d');diagonal.keys.add('d');diagonal.keys.add('s');

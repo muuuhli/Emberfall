@@ -67,6 +67,9 @@ export class Game {
   regionAt(x=this.player.x,y=this.player.y) {
     return REGIONS.find(r=>x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.h)||REGIONS[0];
   }
+  inSettlement(x=this.player.x,y=this.player.y) {
+    return Math.hypot(x-520,y-1250)<430 || (x>=600&&x<=910&&y>=1390&&y<=1630);
+  }
   start() {
     this.started=true; this.paused=false; this.dead=false; this.keys.clear();
     if(!this.flags.welcomed) {
@@ -324,7 +327,7 @@ export class Game {
     Object.keys(this.cooldowns).forEach(k=>this.cooldowns[k]=Math.max(0,this.cooldowns[k]-dt));
     p.invulnerable=Math.max(0,p.invulnerable-dt);
     p.mana=Math.min(s.mana,p.mana+s.manaRegen*dt);
-    if(Math.hypot(p.x-520,p.y-1250)<260) p.hp=Math.min(s.maxHp,p.hp+3*dt);
+    if(this.inSettlement()) p.hp=Math.min(s.maxHp,p.hp+3*dt);
     let mx=(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0);
     let my=(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0);
     const length=Math.hypot(mx,my); p.walking=length>0;
@@ -364,7 +367,7 @@ export class Game {
       const distance=dist(e,p); e.attackTimer=Math.max(0,(e.attackTimer||0)-dt);
       if(distance>600) { e.aggro=false; continue; }
       if(distance<260 || e.hp<e.maxHp) e.aggro=true;
-      if(dist(e,{x:e.homeX,y:e.homeY})>480 || Math.hypot(p.x-520,p.y-1250)<275) e.aggro=false;
+      if(dist(e,{x:e.homeX,y:e.homeY})>480 || this.inSettlement()) e.aggro=false;
       if(!e.aggro) {
         const homeD=Math.hypot(e.x-e.homeX,e.y-e.homeY);
         if(homeD>6) this.move(e,(e.homeX-e.x)/homeD*d.speed*.7*dt,(e.homeY-e.y)/homeD*d.speed*.7*dt,10);
