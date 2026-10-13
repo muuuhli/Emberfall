@@ -121,19 +121,17 @@ Nach einem Sieg wird die nächste Tiefe freigeschaltet, bis **Tiefe 30**. Bereit
 
 ## Grafik und Herkunft
 
-Die Landschaften, Gegnerdarstellung, Effekte und Oberfläche sind eigene Canvas-Grafiken. Die acht Klassen besitzen einen aus **originaler Blender-Geometrie** gerenderten, transparenten Charakteratlas mit vier Blickrichtungen und acht Posen pro Richtung: Leerlauf, vier Laufphasen, zwei Angriffsphasen und eine Bodenpose. Der Atlas enthält 256 logische Zellen à 64 × 96 Pixel. Die finale PNG ist mit `pixelRatio: 2` in 4.096 × 1.536 Pixel gerendert; jede Zelle enthält tatsächlich 128 × 192 Bildpixel. Der Renderer nutzt diese Posen auch für andere Gruppenmitglieder.
+Spieler und NPCs verwenden originale **Pixelart** mit einer gemeinsamen begrenzten Farbpalette, transparentem Hintergrund und klaren Konturen. Die acht Klassen besitzen je vier Blickrichtungen mit acht Posen: Leerlauf, vier Laufphasen, zwei Angriffsphasen und eine Bodenpose. Eine Zelle enthält 32 × 48 echte Bildpixel mit Fußanker `[16, 40]`. Die Figuren werden zweifach ohne Glättung gezeichnet, auch für andere Gruppenmitglieder.
 
-- `assets/build_characters.py`: Erzeugung der ursprünglichen Modelle, Materialien, orthografischen Kamera und Beleuchtung; keine importierten Charaktermodelle.
-- `assets/characters.blend`: gespeicherte Blender-Szene mit korrigierter Klassenreihenfolge und finaler Renderauflösung.
-- `assets/characters-source.png`: ursprünglicher Renderatlas.
-- `assets/characters.png` und `assets/characters.json`: spielbereiter Laufzeitatlas mit Klassenreihenfolge, Posen und Pivot `[32, 67]`.
-- `assets/characters-preview.png`: kleinere Vorschau aus dem früheren Renderdurchlauf.
+Die Welt nutzt eine feste Pixelauflösung mit scharfer zweifacher Vergrößerung. Eigene Pixel-Sprites stellen Bäume, Felsen und Gegner dar. Namen und Questtexte bleiben in voller Bildschirmauflösung lesbar. Die Oberfläche behält ihre ruhigen Moos-, Messing- und Elfenbeinfarben.
 
-Die Metadaten nennen **Blender 5.4.0 Alpha** und der Generator verwendet Eevee. Auf den ersten Render und eine Zwischenfassung mit Pillow folgte ein erneuter Blender-Render der korrigierten Szene in doppelter Auflösung. Die vorhandene finale PNG ist spielbereit; Klassenreihenfolge, Auflösung und Pivot stimmen mit ihren Metadaten überein. Das Erzeugungsskript enthält dieselbe korrigierte Anordnung und Renderkonfiguration. Für eine Neuerzeugung mit einem verfügbaren Blender-Kommando:
+- `assets/pixel-characters.png` und `.json`: acht Klassen, insgesamt 256 Animationszellen.
+- `assets/pixel-npcs.png` und `.json`: NPCs im gleichen Stil mit eigenen Identitäten und Ausstattungen.
+- `tools/build_pixel_characters.py`: reproduzierbarer Pixel-Sprite-Generator; benötigt Python 3 und Pillow.
+- `src/pixel-world.js`: eigene Pixelcluster für Natur und Gegner.
+- `assets/pixel-art-direction.md`: Größen, Palette, Darstellung und Prüfkriterien.
 
-```sh
-Blender --background --python assets/build_characters.py
-```
+Die älteren `assets/characters.*` und die Blender-Szene bleiben als früherer Entwicklungsstand im Repository erhalten. Sie gehören nicht zum aktuellen Browser-Build.
 
 Das Titelbild wurde mit dem integrierten OpenAI-Imagegen-Werkzeug erzeugt. Musik und Klangeffekte entstehen durch eigene Web-Audio-Synthese. Herkunft, ursprünglicher Titelbild-Prompt, Dateieigenschaften und Prüfsummen stehen in [assets/manifest.json](assets/manifest.json). Es wurden keine Grafiken, Charaktere oder Audiodateien aus den genannten Inspirationsspielen übernommen.
 
@@ -147,7 +145,7 @@ npm run build
 
 `npm test` prüft unter anderem Bewegung und Kampf, Klassenfähigkeiten, Talente, die Stufe-100-Kurve, instanzierte Beute, Ausrüstungsmodifikatoren, Quests, Speicherdaten und Dungeonmechaniken. Die Netzwerkprüfungen verwenden tatsächliche HTTP/SSE-Clients gegen einen Testserver und prüfen gemeinsame Aktionen sowie serverseitige Fortschrittsberechnung. Automatische Tests belegen diese geprüften Abläufe; sie belegen keine 200 Stunden Kampagnenspielzeit und keine abgeschlossene Langzeitbalance.
 
-`npm run build` kopiert die Browserdateien und die Laufzeitassets nach `dist/`. Blenderquelldaten, Rohatlas und Erzeugungsskript werden dabei nicht veröffentlicht. Diese statischen Dateien enthalten keinen laufenden Multiplayer-Backendserver.
+`npm run build` kopiert die Browserdateien und die Laufzeitassets nach `dist/`. Kontaktansichten, Grafikgeneratoren und ältere Blenderquelldaten werden dabei nicht veröffentlicht. Diese statischen Dateien enthalten keinen laufenden Multiplayer-Backendserver.
 
 | Datei | Aufgabe |
 | --- | --- |

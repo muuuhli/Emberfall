@@ -4,6 +4,7 @@ import { Renderer, TERRAIN_CHUNK_SIZE, TERRAIN_CACHE_LIMIT, TERRAIN_CACHE_BYTES 
 import { makeWorld } from '../src/world.js';
 import { expandWorld } from '../src/expansion.js';
 import { createDungeon } from '../src/dungeons.js';
+import { QUESTS } from '../src/catalog.js';
 
 function environment(run) {
   const previous = { document: globalThis.document, window: globalThis.window };
@@ -80,17 +81,73 @@ test('stack and spread telegraphs use exactly the authoritative damage centers a
   for (const [x, y] of [[300, 400], [700, 800]]) assert.ok(c.calls.some(call => call.method === 'ellipse' && call.args[0] === x && call.args[1] === y && call.args[2] === 75));
 }));
 
-test('Blender sprites select class, direction, attack pose and the metadata foot pivot', () => environment(({ canvas }) => {
+test('native pixel sprites select class, direction, attack pose and the metadata foot pivot', () => environment(({ canvas }) => {
   const view = canvas(), renderer = new Renderer(view, makeWorld());
-  renderer.characterAtlas = { naturalWidth: 2048, naturalHeight: 768 };
+  renderer.characterAtlas = { naturalWidth: 1024, naturalHeight: 384 };
   const game = gameFor(makeWorld()), player = { ...game.player, classId: 'shadowbinder', attackUntil: 10.2, face: 0 };
   view.context.calls.length = 0; renderer.person(view.context, player, game, true);
   const draw = view.context.calls.find(call => call.method === 'drawImage');
-  assert.equal(draw.args[1], 13 * 64, 'East direction uses columns eight through fifteen');
-  assert.equal(draw.args[2], 7 * 96, 'The eighth class occupies the eighth row');
-  assert.equal(draw.args[5], -32 * 1.5);
-  assert.equal(draw.args[6], -67 * 1.5);
-  assert.equal(draw.args[7], 64 * 1.5);
+  assert.equal(draw.args[1], 13 * 32, 'East direction uses columns eight through fifteen');
+  assert.equal(draw.args[2], 7 * 48, 'The eighth class occupies the eighth row');
+  assert.equal(draw.args[5], -16 * 2);
+  assert.equal(draw.args[6], -40 * 2);
+  assert.equal(draw.args[7], 32 * 2);
+  assert.equal(view.context.imageSmoothingEnabled, false);
+}));
+
+test('NPCs use their own pixel atlas and keep nearby quest labels above the world layer', () => environment(({ canvas }) => {
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld());
+  renderer.npcAtlas={naturalWidth:1024,naturalHeight:864};renderer.npcMetadata.npcs=['other','rowan'];
+  const npc={id:'rowan',name:'Rowan',x:520,y:1250,face:Math.PI/2};
+  renderer.worldLabels=[];renderer.person(renderer.worldCtx,npc,game,false);
+  const draw=renderer.worldCtx.calls.find(call=>call.method==='drawImage');
+  assert.equal(draw.args[2],48);assert.equal(draw.args[7],64);assert.equal(draw.args[8],96);
+  assert.ok(renderer.worldLabels.some(label=>label[0]==='Rowan'));
+}));
+
+test('world pixels stay at integer 2x while text and pointer mapping retain full resolution', () => environment(({canvas}) => {
+  const view=canvas(),world=makeWorld(),renderer=new Renderer(view,world),game=gameFor(world);
+  game.camera={x:521.3,y:1250.7};renderer.draw(game);
+  assert.equal(renderer.worldCanvas.width,500);assert.equal(renderer.worldCanvas.height,350);
+  assert.equal(renderer.camera.x%2,0);assert.equal(renderer.camera.y%2,0);
+  const point=renderer.worldToScreen(580,1300),inverse=renderer.screenToWorld(point.x,point.y);
+  assert.equal(inverse.x,580);assert.equal(inverse.y,1300);
+  const blit=view.context.calls.find(call=>call.method==='drawImage'&&call.args[0]===renderer.worldCanvas);
+  assert.deepEqual(blit.args.slice(1),[0,0,1000,700]);assert.equal(view.context.imageSmoothingEnabled,false);
+}));
+
+test('dungeon gate labels keep absolute world coordinates when replayed above pixel terrain', () => environment(({canvas})=>{
+  const renderer=new Renderer(canvas(),makeWorld()),game=gameFor(makeWorld());
+  const gate={type:'dungeon_gate',x:1068,y:780,w:36,h:250,blocking:true};
+  game.player.x=1086;game.player.y=905;renderer.worldLabels=[];
+  renderer.structure(renderer.worldCtx,gate,game);
+  const hint=renderer.worldLabels.find(label=>label[0]==='Löse die Erinnerungen');
+  assert.deepEqual(hint.slice(1,3),[1086,905]);
+}));
+
+test('damage shakes move both pixel axes and reduced motion disables the impulse', () => environment(({canvas})=>{
+  const renderer=new Renderer(canvas(),makeWorld()),game=gameFor(makeWorld());
+  game.settings={shake:true,reducedMotion:false};game.shake=.35;renderer.draw(game);
+  const translation=renderer.worldCtx.calls.filter(call=>call.method==='translate')[1].args;
+  assert.notEqual(translation[0]+renderer.camera.x,0);assert.notEqual(translation[1]+renderer.camera.y,0);
+  assert.equal((translation[0]+renderer.camera.x)%2,0);assert.equal((translation[1]+renderer.camera.y)%2,0);
+  game.settings.reducedMotion=true;renderer.worldCtx.calls.length=0;renderer.draw(game);
+  assert.deepEqual(renderer.worldCtx.calls.filter(call=>call.method==='translate')[1].args,[-renderer.camera.x,-renderer.camera.y]);
+}));
+
+test('an incomplete atlas falls back to a visible pixel silhouette instead of cropping away a class', () => environment(({canvas})=>{
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld());
+  renderer.characterAtlas={naturalWidth:1024,naturalHeight:48};
+  renderer.person(view.context,{...game.player,classId:'shadowbinder'},game,true);
+  assert.equal(view.context.calls.filter(call=>call.method==='drawImage').length,0);
+  assert.ok(view.context.calls.some(call=>call.method==='fillRect'));
+}));
+
+test('a ready quest takes marker priority over an earlier available quest at the same NPC', () => environment(({canvas})=>{
+  const renderer=new Renderer(canvas(),makeWorld()),game=gameFor(makeWorld()),quests=QUESTS.filter(q=>q.giver==='sera');
+  assert.ok(quests.length>=2);game.canAccept=q=>q.id===quests[0].id;game.questState[quests[1].id]={status:'ready'};
+  renderer.worldLabels=[];renderer.npcStatus(renderer.worldCtx,{id:'sera',name:'Sera',x:520,y:1250},game);
+  assert.ok(renderer.worldLabels.some(label=>label[0]==='?'));assert.ok(!renderer.worldLabels.some(label=>label[0]==='!'));
 }));
 
 test('a static camera reuses terrain chunks instead of repainting them every frame', () => environment(({ canvas }) => {

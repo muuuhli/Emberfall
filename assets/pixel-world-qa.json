@@ -1,0 +1,466 @@
+{
+  "source": "Original authored integer-grid clusters in src/pixel-world.js",
+  "license": "Original project artwork; repository owner may use, modify and distribute.",
+  "worldPixelSize": 2,
+  "filtering": "nearest",
+  "paletteSize": 39,
+  "enemyTypes": 27,
+  "spriteFamilies": {
+    "tree": 4,
+    "rock": 3,
+    "bossObjectives": 3
+  },
+  "allPreviewPosesUnclipped": true,
+  "maxColoursPerEnemy": 14,
+  "assets": [
+    {
+      "name": "wolf",
+      "nativeSize": [
+        48,
+        28
+      ],
+      "pivot": [
+        24,
+        25
+      ],
+      "colours": 6
+    },
+    {
+      "name": "slime",
+      "nativeSize": [
+        32,
+        40
+      ],
+      "pivot": [
+        16,
+        37
+      ],
+      "colours": 6
+    },
+    {
+      "name": "frostwolf",
+      "nativeSize": [
+        48,
+        28
+      ],
+      "pivot": [
+        24,
+        25
+      ],
+      "colours": 6
+    },
+    {
+      "name": "skeleton",
+      "nativeSize": [
+        36,
+        40
+      ],
+      "pivot": [
+        18,
+        37
+      ],
+      "colours": 8
+    },
+    {
+      "name": "wraith",
+      "nativeSize": [
+        32,
+        40
+      ],
+      "pivot": [
+        16,
+        37
+      ],
+      "colours": 8
+    },
+    {
+      "name": "imp",
+      "nativeSize": [
+        32,
+        40
+      ],
+      "pivot": [
+        16,
+        37
+      ],
+      "colours": 9
+    },
+    {
+      "name": "thorn_guardian",
+      "nativeSize": [
+        64,
+        72
+      ],
+      "pivot": [
+        32,
+        69
+      ],
+      "colours": 13
+    },
+    {
+      "name": "frost_sentinel",
+      "nativeSize": [
+        72,
+        84
+      ],
+      "pivot": [
+        36,
+        81
+      ],
+      "colours": 5
+    },
+    {
+      "name": "emberlord",
+      "nativeSize": [
+        72,
+        80
+      ],
+      "pivot": [
+        36,
+        77
+      ],
+      "colours": 9
+    },
+    {
+      "name": "steppe_raider",
+      "nativeSize": [
+        32,
+        40
+      ],
+      "pivot": [
+        16,
+        37
+      ],
+      "colours": 9
+    },
+    {
+      "name": "jade_stalker",
+      "nativeSize": [
+        32,
+        40
+      ],
+      "pivot": [
+        16,
+        37
+      ],
+      "colours": 7
+    },
+    {
+      "name": "tide_reaver",
+      "nativeSize": [
+        32,
+        40
+      ],
+      "pivot": [
+        16,
+        37
+      ],
+      "colours": 7
+    },
+    {
+      "name": "thorn_hunter",
+      "nativeSize": [
+        32,
+        42
+      ],
+      "pivot": [
+        16,
+        39
+      ],
+      "colours": 11
+    },
+    {
+      "name": "obsidian_knight",
+      "nativeSize": [
+        36,
+        44
+      ],
+      "pivot": [
+        18,
+        41
+      ],
+      "colours": 8
+    },
+    {
+      "name": "moon_construct",
+      "nativeSize": [
+        36,
+        44
+      ],
+      "pivot": [
+        18,
+        41
+      ],
+      "colours": 8
+    },
+    {
+      "name": "frost_colossus",
+      "nativeSize": [
+        36,
+        44
+      ],
+      "pivot": [
+        18,
+        41
+      ],
+      "colours": 5
+    },
+    {
+      "name": "sand_revenant",
+      "nativeSize": [
+        32,
+        40
+      ],
+      "pivot": [
+        16,
+        37
+      ],
+      "colours": 9
+    },
+    {
+      "name": "void_watcher",
+      "nativeSize": [
+        40,
+        40
+      ],
+      "pivot": [
+        20,
+        37
+      ],
+      "colours": 7
+    },
+    {
+      "name": "echo_guard",
+      "nativeSize": [
+        36,
+        44
+      ],
+      "pivot": [
+        18,
+        41
+      ],
+      "colours": 8
+    },
+    {
+      "name": "root_matron",
+      "nativeSize": [
+        64,
+        72
+      ],
+      "pivot": [
+        32,
+        69
+      ],
+      "colours": 13
+    },
+    {
+      "name": "drowned_archon",
+      "nativeSize": [
+        64,
+        74
+      ],
+      "pivot": [
+        32,
+        69
+      ],
+      "colours": 9
+    },
+    {
+      "name": "thorn_abbess",
+      "nativeSize": [
+        64,
+        72
+      ],
+      "pivot": [
+        32,
+        69
+      ],
+      "colours": 14
+    },
+    {
+      "name": "chronar",
+      "nativeSize": [
+        72,
+        84
+      ],
+      "pivot": [
+        36,
+        81
+      ],
+      "colours": 10
+    },
+    {
+      "name": "skadi",
+      "nativeSize": [
+        72,
+        84
+      ],
+      "pivot": [
+        36,
+        81
+      ],
+      "colours": 7
+    },
+    {
+      "name": "storm_king",
+      "nativeSize": [
+        64,
+        72
+      ],
+      "pivot": [
+        32,
+        69
+      ],
+      "colours": 10
+    },
+    {
+      "name": "night_devourer",
+      "nativeSize": [
+        64,
+        72
+      ],
+      "pivot": [
+        32,
+        69
+      ],
+      "colours": 11
+    },
+    {
+      "name": "world_heart",
+      "nativeSize": [
+        88,
+        88
+      ],
+      "pivot": [
+        44,
+        80
+      ],
+      "colours": 7
+    },
+    {
+      "name": "tree oak",
+      "nativeSize": [
+        56,
+        68
+      ],
+      "pivot": [
+        28,
+        65
+      ],
+      "colours": 11
+    },
+    {
+      "name": "tree pine",
+      "nativeSize": [
+        56,
+        68
+      ],
+      "pivot": [
+        28,
+        65
+      ],
+      "colours": 8
+    },
+    {
+      "name": "tree dead",
+      "nativeSize": [
+        56,
+        68
+      ],
+      "pivot": [
+        28,
+        65
+      ],
+      "colours": 6
+    },
+    {
+      "name": "tree burnt",
+      "nativeSize": [
+        56,
+        68
+      ],
+      "pivot": [
+        28,
+        65
+      ],
+      "colours": 7
+    },
+    {
+      "name": "rock stone",
+      "nativeSize": [
+        32,
+        24
+      ],
+      "pivot": [
+        16,
+        19
+      ],
+      "colours": 6
+    },
+    {
+      "name": "rock ice",
+      "nativeSize": [
+        32,
+        24
+      ],
+      "pivot": [
+        16,
+        19
+      ],
+      "colours": 6
+    },
+    {
+      "name": "rock ash",
+      "nativeSize": [
+        32,
+        24
+      ],
+      "pivot": [
+        16,
+        19
+      ],
+      "colours": 8
+    },
+    {
+      "name": "Dornenknospe",
+      "nativeSize": [
+        36,
+        44
+      ],
+      "pivot": [
+        18,
+        41
+      ],
+      "colours": 6
+    },
+    {
+      "name": "Hungrige Seele",
+      "nativeSize": [
+        36,
+        44
+      ],
+      "pivot": [
+        18,
+        41
+      ],
+      "colours": 5
+    },
+    {
+      "name": "Prismatischer Anker",
+      "nativeSize": [
+        36,
+        44
+      ],
+      "pivot": [
+        18,
+        41
+      ],
+      "colours": 6
+    }
+  ],
+  "contactSheets": [
+    "pixel-world-preview.png",
+    "pixel-world-bosses-preview.png"
+  ],
+  "runtimeCacheLimit": 192
+}

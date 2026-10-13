@@ -2,10 +2,10 @@
   "game": "Emberfall – Die letzte Glut",
   "artDirection": {
     "view": "top-down 2D",
-    "world": "Original Canvas fantasy landscapes with emerald and olive forests, teal ice, violet corruption, amber waste and twelve additional frontier palettes",
+    "world": "Original pixel-cluster trees, rocks and enemy silhouettes over a fixed-resolution Canvas fantasy landscape; 39-color world sprite palette",
     "interface": "dark moss, aged brass, warm ivory, restrained serif typography",
-    "filtering": "Smoothed Canvas rendering; orthographic character sprites sampled from a 2x atlas",
-    "characters": "Eight original Blender class silhouettes with distinct armor, robes, shields, bow, blades and staffs; four directions and eight poses per direction"
+    "filtering": "Native 32x48 character cells, integer 2x nearest-neighbor world display, pixel-snapped camera; full-resolution text overlay",
+    "characters": "Eight original 2D pixel class silhouettes and 18 NPC identities; shared 25-color indexed palette, four directions and eight poses per direction"
   },
   "assets": [
     {
@@ -26,7 +26,7 @@
     },
     {
       "file": "characters.png",
-      "role": "runtime atlas for player and party character animations",
+      "role": "Archived pre-pixelart development asset: runtime atlas for player and party character animations",
       "source": "Original Blender geometry rendered with Blender Eevee",
       "created": "2026-10-13",
       "blenderVersion": "5.4.0 Alpha",
@@ -72,8 +72,8 @@
         67
       ],
       "normalized": true,
-      "published": true,
-      "status": "Final corrected Blender scene rendered; PNG dimensions and runtime metadata checked",
+      "published": false,
+      "status": "Retained in repository; replaced by native pixel art in runtime",
       "bytes": 3275495,
       "sha256": "5efb743b3fb430182800d7bbe4983a1bd7169cf81413db6f9e96afe723e9fb92",
       "width": 4096,
@@ -84,19 +84,20 @@
     },
     {
       "file": "characters.json",
-      "role": "runtime class, direction, pose and atlas-coordinate metadata",
+      "role": "Archived pre-pixelart development asset: runtime class, direction, pose and atlas-coordinate metadata",
       "source": "Blender generator metadata with logical pivot and 2x pixel ratio",
-      "published": true,
+      "published": false,
       "bytes": 599,
-      "sha256": "99d7538bd9c694398e34da302104787779857f27b06af950ae85cf293c5e2357"
+      "sha256": "99d7538bd9c694398e34da302104787779857f27b06af950ae85cf293c5e2357",
+      "status": "Retained in repository; replaced by native pixel art in runtime"
     },
     {
       "file": "characters.blend",
-      "role": "editable source scene with corrected class ordering and final 2x render settings",
+      "role": "Archived pre-pixelart development asset: editable source scene with corrected class ordering and final 2x render settings",
       "source": "Original scripted Blender meshes, curves, materials, orthographic camera and lights",
       "importedThirdPartyModels": false,
       "published": false,
-      "status": "Saved corrected scene used for the final atlas render",
+      "status": "Retained in repository; replaced by native pixel art in runtime",
       "bytes": 2533035,
       "sha256": "698a33d4429aa90fedd4be2676fbdcf80a3428194e2f933e0b0774c93e57b976"
     },
@@ -143,7 +144,9 @@
       "role": "Canvas world, enemy silhouettes, environment and effects; character atlas integration",
       "source": "Original code-native graphics and atlas animation",
       "published": true,
-      "status": "Integrated with characters.png and characters.json"
+      "status": "Integrated with pixel-characters, pixel-npcs and native pixel-world sprites",
+      "bytes": 47720,
+      "sha256": "7e6e2fe6ed1ee5ccddd37235253f21c612c3bc4149e742d8975d48117f5d020a"
     },
     {
       "file": "../src/audio.js",
@@ -151,9 +154,250 @@
       "source": "Original Web Audio synthesis",
       "published": true,
       "status": "Procedural"
+    },
+    {
+      "file": "pixel-characters.png",
+      "role": "runtime player and party atlas",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": true,
+      "bytes": 22296,
+      "sha256": "3b8946e07634f943e9da4b2d0fd42a31b0c1469a42e3b6d01a77066834103ad1",
+      "license": "MIT / original project artwork",
+      "width": 1024,
+      "height": 384,
+      "format": "PNG",
+      "indexedPalette": true,
+      "transparent": true,
+      "alphaLevels": [
+        0,
+        255
+      ],
+      "logicalTileWidth": 32,
+      "logicalTileHeight": 48,
+      "pixelRatio": 1,
+      "columns": 32,
+      "rows": 8,
+      "frames": 256,
+      "pivot": [
+        16,
+        40
+      ],
+      "paletteSize": 25,
+      "status": "832 family frames technically checked; contact sheets and village NPC/player rendering visually inspected"
+    },
+    {
+      "file": "pixel-characters.json",
+      "role": "runtime class atlas metadata",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": true,
+      "bytes": 3675,
+      "sha256": "aa7ff6b297062c170fe998b9624fc70dc0f7465235c25612c2baac86fe780f35",
+      "license": "MIT / original project artwork"
+    },
+    {
+      "file": "pixel-npcs.png",
+      "role": "runtime NPC atlas",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": true,
+      "bytes": 40952,
+      "sha256": "17f8303e2ec981c6d61adff2d96db1d969788f07b6e005558f50736f99fb3723",
+      "license": "MIT / original project artwork",
+      "width": 1024,
+      "height": 864,
+      "format": "PNG",
+      "indexedPalette": true,
+      "transparent": true,
+      "alphaLevels": [
+        0,
+        255
+      ],
+      "logicalTileWidth": 32,
+      "logicalTileHeight": 48,
+      "pixelRatio": 1,
+      "columns": 32,
+      "rows": 18,
+      "frames": 576,
+      "pivot": [
+        16,
+        40
+      ],
+      "paletteSize": 25,
+      "status": "832 family frames technically checked; contact sheets and village NPC/player rendering visually inspected"
+    },
+    {
+      "file": "pixel-npcs.json",
+      "role": "runtime NPC atlas metadata",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": true,
+      "bytes": 3868,
+      "sha256": "aa9510fb16e66f45e88268c863aff538fdda9d0a9ce2b941ad6ba2096dfa1989",
+      "license": "MIT / original project artwork"
+    },
+    {
+      "file": "pixel-characters-2x.png",
+      "role": "nearest-neighbor 2x authoring export",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": false,
+      "bytes": 33789,
+      "sha256": "04daced80caf90d09d6b4e609904f7b7d584f415c50ca3e73df11b7f0a20aa3d",
+      "license": "MIT / original project artwork",
+      "width": 2048,
+      "height": 768,
+      "format": "PNG",
+      "indexedPalette": true,
+      "transparent": true,
+      "alphaLevels": [
+        0,
+        255
+      ]
+    },
+    {
+      "file": "pixel-npcs-2x.png",
+      "role": "nearest-neighbor 2x authoring export",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": false,
+      "bytes": 64063,
+      "sha256": "2f82d7091d80f5ffde9d84808e75379397f850523a04883741d83aca0d365524",
+      "license": "MIT / original project artwork",
+      "width": 2048,
+      "height": 1728,
+      "format": "PNG",
+      "indexedPalette": true,
+      "transparent": true,
+      "alphaLevels": [
+        0,
+        255
+      ]
+    },
+    {
+      "file": "pixel-characters-preview.png",
+      "role": "eight class contact sheet",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": false,
+      "bytes": 22878,
+      "sha256": "63edae257afcd86b31f01fe19bfbf8360f297e8af4727e1bf1bc34221d5ca168",
+      "license": "MIT / original project artwork",
+      "width": 792,
+      "height": 1428,
+      "format": "PNG",
+      "indexedPalette": true,
+      "transparent": true,
+      "alphaLevels": [
+        255
+      ]
+    },
+    {
+      "file": "pixel-npcs-preview.png",
+      "role": "18 NPC contact sheet",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": false,
+      "bytes": 44520,
+      "sha256": "20d9d122b305b43170cbf01c2d8da2dd7b350d40c0c01da233f394ad0c1c2f1c",
+      "license": "MIT / original project artwork",
+      "width": 792,
+      "height": 3168,
+      "format": "PNG",
+      "indexedPalette": true,
+      "transparent": true,
+      "alphaLevels": [
+        255
+      ]
+    },
+    {
+      "file": "pixel-art-qa.json",
+      "role": "per-frame bounds, palette and animation QA report",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": false,
+      "bytes": 204436,
+      "sha256": "3e368d9b4b1889bb950c21ea47f9c9827889a11e705a1971ed4515d8765eacf2",
+      "license": "MIT / original project artwork"
+    },
+    {
+      "file": "pixel-art-direction.md",
+      "role": "visual and technical pixel-art brief",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": false,
+      "bytes": 2411,
+      "sha256": "bd6eaeed3b4294115be27c6cadf02443679741d9e260e3458d746c07f89cdff8",
+      "license": "MIT / original project artwork"
+    },
+    {
+      "file": "../tools/build_pixel_characters.py",
+      "role": "reproducible indexed-palette character authoring source",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": false,
+      "bytes": 36651,
+      "sha256": "db8c24dadc42c32213c6e8afc412f070f495713ddb56b89d05de2719ada6b934",
+      "license": "MIT / original project artwork"
+    },
+    {
+      "file": "../src/pixel-world.js",
+      "role": "runtime original trees, rocks and 27 enemy pixel sprites",
+      "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
+      "created": "2026-10-13",
+      "published": true,
+      "bytes": 36011,
+      "sha256": "dd0b1cbbd0326a11e9914fee130d41b9dac7dcfb50ef96376f22c1496ea2962e",
+      "license": "MIT / original project artwork"
+    },
+    {
+      "file": "pixel-world-preview.png",
+      "role": "contact sheet for 27 enemies, trees, rocks and boss objectives",
+      "source": "Original pixel clusters authored in src/pixel-world.js",
+      "published": false,
+      "license": "MIT / original project artwork",
+      "bytes": 62122,
+      "sha256": "f9b92b6a21ed93cf8dcdb408bcd0f6982fa84e03b7f7f4ef6fb43ea4727b74ef",
+      "width": 1248,
+      "height": 1458,
+      "format": "PNG",
+      "status": "All poses checked for clipping and native palette; contact sheets visually inspected; village and slime rendered in browser"
+    },
+    {
+      "file": "pixel-world-bosses-preview.png",
+      "role": "boss idle and attack-windup contact sheet",
+      "source": "Original pixel clusters authored in src/pixel-world.js",
+      "published": false,
+      "license": "MIT / original project artwork",
+      "bytes": 35372,
+      "sha256": "1edcd6682eee4f7ff3ea6e073b7cc06bbdc22ee8610cd3e77a647442d69f91d0",
+      "width": 1128,
+      "height": 892,
+      "format": "PNG",
+      "status": "All poses checked for clipping and native palette; contact sheets visually inspected; village and slime rendered in browser"
+    },
+    {
+      "file": "pixel-world-qa.json",
+      "role": "pixel-world clipping, palette, bounds and pose QA",
+      "source": "Original pixel clusters authored in src/pixel-world.js",
+      "published": false,
+      "license": "MIT / original project artwork",
+      "bytes": 6604,
+      "sha256": "a245fc2a7a4364dbbc30a785a772f7ad1e9b007edde4e19a63970c9afe62a691",
+      "status": "All poses checked for clipping and native palette; contact sheets visually inspected; village and slime rendered in browser"
+    },
+    {
+      "file": "../tests/scripts/pixel-world-preview.py",
+      "role": "reproducible pixel-world contact-sheet tool",
+      "source": "Original pixel clusters authored in src/pixel-world.js",
+      "published": false,
+      "license": "MIT / original project artwork",
+      "bytes": 5211,
+      "sha256": "e35bd4769065bcf0fd5e8ade49e90af37779001a3d1d2eb6c92b1ad2ed26264d"
     }
   ],
-  "version": "2.0.0",
+  "version": "2.1.0",
   "updated": "2026-10-13",
   "developmentStatus": {
     "releaseState": "playable development build",
