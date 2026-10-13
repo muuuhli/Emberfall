@@ -175,3 +175,11 @@ test('death stops the simulation and rescue restores control with a bounded gold
   assert.equal(game.player.hp,game.stats().maxHp);assert.equal(game.player.gold,90);assert.equal(game.projectiles.length,0);
   assert.deepEqual({x:game.player.x,y:game.player.y},{x:520,y:1250});
 });
+
+test('reloading a defeated journey safely rescues the player instead of a death loop',()=>{
+  const game=new Game({storage:storage(),random:()=>.5});game.start();
+  game.player.x=2700;game.player.y=2000;game.player.gold=100;game.player.hp=0;
+  const loaded=new Game({storage:storage()});loaded.applySave(game.capture());
+  assert.deepEqual({x:loaded.player.x,y:loaded.player.y},{x:520,y:1250});
+  assert.equal(loaded.player.hp,loaded.stats().maxHp);assert.equal(loaded.player.gold,90);
+});

@@ -460,6 +460,12 @@ export class Game {
     for(const chest of this.world.chests) chest.opened=!!data.world.chests?.find(c=>c.id===chest.id)?.opened;
     for(const enemy of this.world.enemies) if(ENEMY_TYPES[enemy.type]?.boss&&(data.world.enemies||[]).includes(enemy.id)) { enemy.alive=false; enemy.hp=0; enemy.respawnAt=Infinity; }
     this.player.hp=clamp(this.player.hp,1,this.stats().maxHp); this.player.mana=clamp(this.player.mana,0,this.stats().mana);
+    if(p.hp<=0) {
+      // Reloading a journey at the defeat screen follows the same rescue rule
+      // as the button, instead of trapping the player at one HP among enemies.
+      this.player.x=520;this.player.y=1250;this.player.hp=this.stats().maxHp;this.player.mana=this.stats().mana;
+      this.player.gold=Math.floor(this.player.gold*.9);this.player.invulnerable=3;
+    }
     if(this.collides(this.player.x,this.player.y)) { this.player.x=520; this.player.y=1250; }
     this.camera={x:this.player.x,y:this.player.y}; this.lastRegion=this.regionAt().id; this.change();
   }

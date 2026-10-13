@@ -17,7 +17,7 @@
       "transparent": false,
       "status": "visually inspected"
     },
-    {"file":"../src/renderer.js","role":"world, sprites, props, effects","source":"original code-native graphics","status":"game-scale verification pending"},
+    {"file":"../src/renderer.js","role":"world, sprites, props, effects","source":"original code-native graphics","status":"game-scale browser verification complete"},
     {"file":"../src/audio.js","role":"music and SFX","source":"original Web Audio synthesis","status":"procedural"}
   ]
 }
