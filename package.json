@@ -1,0 +1,9 @@
+{
+  "name": "emberfall",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Emberfall – Die letzte Glut. Ein eigenständiges 2D-Action-RPG.",
+  "scripts": { "dev": "node server.mjs", "start": "node server.mjs", "build": "node build.mjs", "test": "node --test tests/*.test.js" },
+  "engines": { "node": ">=20" }
+}

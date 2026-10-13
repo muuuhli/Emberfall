@@ -1,0 +1,23 @@
+{
+  "game": "Emberfall – Die letzte Glut",
+  "artDirection": {
+    "view": "top-down 2D",
+    "world": "Original deterministic Canvas pixel art, muted emerald and olive forest, icy teal north, violet corruption, amber volcanic waste",
+    "interface": "dark moss, aged brass, warm ivory, restrained serif typography",
+    "filtering": "nearest-neighbor pixels at game scale",
+    "characters": "original readable silhouettes; burgundy cloak, gold scarf and steel sword"
+  },
+  "assets": [
+    {
+      "file": "cover.png",
+      "role": "title-screen backdrop",
+      "source": "OpenAI built-in image_gen tool",
+      "created": "2026-10-13",
+      "prompt": "Use case: stylized-concept. Original title background illustration for a 2D fantasy action RPG called Emberfall. No text. Wide landscape. A tiny wandering knight with muted burgundy cloak and golden ember lantern stands in the foreground on a mossy stone path leading toward a cozy medieval timber village and an ancient circular stone gate. Vast twilight emerald forests, distant blue frosted mountain ridges on the left and a smoldering volcanic ruin on the far right. A great glowing amber sun diffused behind cloudy dusk sky. Painterly premium high-detail pixel art landscape with intentional square color clusters, atmospheric perspective, rich inky dark green shadows, olive moss, teal water, warm ochre lights. Widescreen game key art, compelling cinematic composition, readable silhouette and a strong sweeping path. Center/left upper area quiet dark atmospheric space for code-rendered title. Cohesive handcrafted game atmosphere, no UI, no writing, no logos, no border, no famous franchise characters.",
+      "transparent": false,
+      "status": "visually inspected"
+    },
+    {"file":"../src/renderer.js","role":"world, sprites, props, effects","source":"original code-native graphics","status":"game-scale verification pending"},
+    {"file":"../src/audio.js","role":"music and SFX","source":"original Web Audio synthesis","status":"procedural"}
+  ]
+}
