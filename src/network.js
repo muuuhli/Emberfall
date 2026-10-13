@@ -1,7 +1,7 @@
 const SESSION_KEY='emberfall.network.v1';
 const INPUT_KEYS=new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
-const REMOTE_METHODS=['questAccept','questTurnIn','learn','equip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract'];
-const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp'];
+const REMOTE_METHODS=['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract'];
+const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp'];
 
 /** Browser transport; the server owns combat, progression, drops and movement. */
 export class NetworkClient {
@@ -141,6 +141,13 @@ export class NetworkClient {
     if(!this.active||!this.connected){this.game.notice('Die Verbindung zum Spielserver wird wiederhergestellt.');return Promise.resolve(false);}
     this._actionQueue=this._actionQueue.then(async()=>{
       if(!this.active)return false;
+      // Touch / mouse aiming can be newer than the coalesced movement packet.
+      // Flush the newest pending aim after an existing flight, before casting.
+      if(command.type==='action'||command.type==='method'&&command.name==='useLearnedAbility') {
+        if(this._inputFlight)await this._inputFlight;
+        if(this._inputPending){this._inputFlight=this._flushInput();await this._inputFlight;}
+        if(!this.active||!this.connected)return false;
+      }
       try{const result=await this._request(`/api/session/${this.token}/command`,command);return result.accepted;}catch(error){this.game.notice(error.message);return false;}
     });
     return this._actionQueue;

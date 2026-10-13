@@ -397,7 +397,7 @@
       "sha256": "e35bd4769065bcf0fd5e8ade49e90af37779001a3d1d2eb6c92b1ad2ed26264d"
     }
   ],
-  "version": "2.1.0",
+  "version": "2.2.0",
   "updated": "2026-10-13",
   "developmentStatus": {
     "releaseState": "playable development build",
@@ -414,7 +414,13 @@
       "maxPartySize": 8,
       "repeatableRegionalContracts": true,
       "eligibleOffersPerRegion": 3,
-      "maxActiveContracts": 3
+      "maxActiveContracts": 3,
+      "learnableActiveAbilities": 24,
+      "learnedAbilitySlots": 2,
+      "equipmentSlots": 3,
+      "touchActions": 8,
+      "mobilePortraitAndLandscape": true,
+      "gearBalanceVersion": 2
     },
     "campaignHoursTarget": 200,
     "fullCampaignHoursVerified": 0,

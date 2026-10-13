@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Game } from '../src/game.js';
 import { CLASSES, getClass } from '../src/classes.js';
 import { ENEMY_TYPES } from '../src/catalog.js';
+import { classPowerMultiplier } from '../src/balance.js';
 
 let characterSerial = 0;
 function arena(classId = 'guardian', level = 20) {
@@ -161,7 +162,7 @@ test('ranger Durchschlag hits multiple targets once each and scales with weapon 
   const first = enemy(ranger, 100);
   const second = enemy(ranger, 220);
   const third = enemy(ranger, 340);
-  const expected = Math.round(ranger.stats().damage * getClass('ranger').abilities.bolt.damageMultiplier);
+  const expected = Math.round(ranger.stats().damage * getClass('ranger').abilities.bolt.damageMultiplier * classPowerMultiplier('ranger','spell'));
   assert.equal(ranger.action('bolt'), true);
   advance(ranger, 0.15);
   assert.equal(first.maxHp - first.hp, expected);

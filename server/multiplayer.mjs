@@ -7,13 +7,13 @@ import { CLASSES } from '../src/classes.js';
 
 const KEYS = new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
 const ACTIONS = new Set(['attack','dash','bolt','nova','potion','interact','primary','secondary','ultimate']);
-const METHODS = new Set(['questAccept','questTurnIn','learn','equip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract']);
+const METHODS = new Set(['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract']);
 const SHOP_STOCK = {
   elin:new Set(['forest_blade','sentinel_mail']),
   sera:new Set(['heal_potion','mana_potion']),
   oren:new Set(['heal_potion','mana_potion','leather_armor','forest_blade','seed']),
 };
-const PERSONAL_FIELDS = ['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp'];
+const PERSONAL_FIELDS = ['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp'];
 const SHARED_FIELDS = ['effects','projectiles','drops','hazards','summons','dungeonInstance','overworld','activeDungeon','worldMode'];
 const MUTABLE_WORLD = ['enemies','nodes','plots','shrines','chests','puzzles','puzzleObjects','gates','portals','dungeonPortals','dungeonState','dungeonExit'];
 const LAYOUT_FIELDS = ['seed','width','height','regions','paths','river','bridges','structures','trees','rocks','landmarks','dungeons','walls','floors','entrance','exit','rooms','isDungeon','dungeonId','tier'];
@@ -289,8 +289,9 @@ export class MultiplayerHub {
       return !!game.action(command.name);
     }
     if(command.type==='method') {
-      if(Object.keys(command).some(k=>!['type','name','args'].includes(k))||!METHODS.has(command.name)||!Array.isArray(command.args)||command.args.length>2||command.args.some(v=>typeof v!=='string'&&!Number.isFinite(v))||command.args.some(v=>typeof v==='string'&&v.length>120))throw new HttpError(400,'Ungültiger Spielbefehl.');
+      if(Object.keys(command).some(k=>!['type','name','args'].includes(k))||!METHODS.has(command.name)||!Array.isArray(command.args)||command.args.length>2||command.args.some((v,i)=>typeof v!=='string'&&!Number.isFinite(v)&&!(command.name==='setAbilityLoadout'&&i===1&&v===null))||command.args.some(v=>typeof v==='string'&&v.length>120))throw new HttpError(400,'Ungültiger Spielbefehl.');
       if(typeof game[command.name]!=='function')throw new HttpError(400,'Diese Aktion ist noch nicht verfügbar.');
+      if(command.name==='learnAbility'&&(command.args.length!==1||typeof command.args[0]!=='string')||command.name==='useLearnedAbility'&&(command.args.length!==1||!Number.isInteger(command.args[0])||command.args[0]<0||command.args[0]>1)||command.name==='setAbilityLoadout'&&(command.args.length!==2||!Number.isInteger(command.args[0])||command.args[0]<0||command.args[0]>1||command.args[1]!==null&&typeof command.args[1]!=='string')||command.name==='unequip'&&(command.args.length!==1||!['weapon','armor','charm'].includes(command.args[0])))throw new HttpError(400,'Ungültige Fähigkeiten- oder Ausrüstungsparameter.');
       if(['questAccept','questTurnIn'].includes(command.name)) {
         const quest=Catalog.QUESTS.find(q=>q.id===command.args[0]),npc=game.npcs.find(n=>n.id===quest?.giver);
         if(!npc||distance(game.player,npc)>110)throw new HttpError(409,'Sprich zuerst mit dem Questgeber in deiner Nähe.');
