@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../src/game.js';
-import { ENEMY_TYPES, REGIONS } from '../src/content.js';
+import { ENEMY_TYPES, REGIONS } from '../src/catalog.js';
 
 // A 20-pixel grid models the 24-pixel-wide player and the authored paths.
 // Only cardinal edges whose midpoint is also collision-free may be traversed.

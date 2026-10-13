@@ -1,0 +1,18 @@
+import * as base from './content.js';
+import { CLASSES } from './classes.js';
+import { EXPANSION_REGIONS, EXPANSION_ENEMIES, EXPANSION_NPCS, EXPANSION_QUESTS } from './expansion.js';
+import { DUNGEON_ENEMIES } from './dungeons.js';
+export const ITEMS=base.ITEMS;
+export const RECIPES=base.RECIPES;
+export const RESOURCES={...base.RESOURCES,
+  dust:{name:'Arkanstaub',label:'Arkanstaub',icon:'✦',color:'#c7a3dc',description:'Aus zerlegter Ausrüstung. Für Aufwertung und Runen.'},
+  ruby:{name:'Rubin',label:'Rubin',icon:'♦',color:'#d67a73',description:'Gesockelt stärkt er Klinge und Lebenskraft.'},
+  sapphire:{name:'Saphir',label:'Saphir',icon:'♦',color:'#78b5d3',description:'Gesockelt stärkt er Zauber und Äther.'},
+  emerald:{name:'Smaragd',label:'Smaragd',icon:'♦',color:'#82c592',description:'Gesockelt stärkt er Präzision und Regeneration.'},
+  raidSigil:{name:'Quellensiegel',label:'Quellensiegel',icon:'◈',color:'#dbb7e1',description:'Eine Belohnung für gemeisterte Gruppenbegegnungen.'}
+};
+export const REGIONS=[...base.REGIONS,...EXPANSION_REGIONS];
+export const NPCS=[...base.NPCS,...EXPANSION_NPCS];
+export const ENEMY_TYPES={...base.ENEMY_TYPES,...EXPANSION_ENEMIES,...DUNGEON_ENEMIES};
+export const QUESTS=[...base.QUESTS,...EXPANSION_QUESTS];
+export const SKILLS=[...new Map([...base.SKILLS,...CLASSES.flatMap(c=>c.talents)].map(s=>[s.id,s])).values()];

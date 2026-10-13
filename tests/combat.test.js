@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Game } from '../src/game.js';
 import { ENEMY_TYPES } from '../src/content.js';
+import { getClass } from '../src/classes.js';
 
 function storage() {
   const values=new Map();
@@ -99,9 +100,9 @@ test('ranged attacks spawn enemy-owned projectiles and cannot damage another ene
 });
 
 test('glut bolt pays mana once, honors cooldown, and hits a target',()=>{
-  const game=arena('wolf',130),enemy=game.world.enemies[0],mana=game.player.mana;
-  assert.equal(game.action('bolt'),true);assert.equal(game.player.mana,mana-12);
-  assert.equal(game.action('bolt'),false);assert.equal(game.player.mana,mana-12);
+  const game=arena('wolf',130);game.selectClass('flamecaller');const enemy=game.world.enemies[0],mana=game.player.mana,cost=getClass('flamecaller').abilities.bolt.cost;
+  assert.equal(game.action('bolt'),true);assert.equal(game.player.mana,mana-cost);
+  assert.equal(game.action('bolt'),false);assert.equal(game.player.mana,mana-cost);
   assert.equal(game.projectiles[0].owner,'player');advance(game,.4);
   assert.ok(enemy.hp<enemy.maxHp);assert.equal(game.projectiles.length,0);
 });
@@ -114,10 +115,10 @@ test('projectiles absorbed by cover cannot also hit a target behind it in the sa
   game.update(.02);assert.equal(enemy.hp,enemy.maxHp,'Cover must consume the bolt before target collision');assert.equal(game.projectiles.length,0);
 });
 
-test('nova distinguishes range, slows survivors, and cannot cast without mana',()=>{
-  const game=arena('skeleton',150),near=game.world.enemies[0],far={...game.world.enemies[0],id:'far',x:game.player.x+190,homeX:game.player.x+190};
+test('the flamecaller area ability distinguishes range and cannot cast without mana',()=>{
+  const game=arena('skeleton',150);game.selectClass('flamecaller');const near=game.world.enemies[0],far={...game.world.enemies[0],id:'far',x:game.player.x+190,homeX:game.player.x+190};
   game.world.enemies.push(far);assert.equal(game.action('nova'),true);
-  assert.ok(near.hp<near.maxHp);assert.ok(near.slowUntil>game.time);assert.equal(far.hp,far.maxHp);
+  assert.ok(near.hp<near.maxHp);assert.equal(far.hp,far.maxHp);
   game.cooldowns.nova=0;game.player.mana=27;const hp=near.hp;assert.equal(game.action('nova'),false);assert.equal(near.hp,hp);
 });
 
