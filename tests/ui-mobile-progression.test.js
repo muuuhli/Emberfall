@@ -34,3 +34,20 @@ test('learning UI explains prerequisites and turns a learned technique into a re
   await ui.assignAbility(1,null);assert.deepEqual(game.abilityLoadout,[null,null]);assert.match(ui.activeAbilities(),/ERLERNT/);
   game.player.level=12;assert.equal(game.learnAbility('guardian_challenge'),true);assert.match(ui.activeAbilities(),/Herausforderung/);
 });
+
+test('skill descriptions and equipped cooldown previews match the actual balanced cast',()=>{
+  const game=new Game({storage:null,random:()=>.5});game.selectClass('flamecaller');
+  game.player.level=12;game.player.skillPoints=6;
+  const staff=generateLoot({level:12,classId:'flamecaller',rarity:'epic',baseId:'ember_wand',uid:'skill-preview-staff',rng:()=>.5});
+  game.addItem(staff);assert.equal(game.equip(staff.id),true);
+  assert.equal(game.learnAbility('flamecaller_cinder'),true);assert.equal(game.learnAbility('flamecaller_meteor'),true);
+  game.player.mana=game.stats().mana;game.start();assert.equal(game.useLearnedAbility(1),true);
+  const meteor=game.hazards.find(h=>h.kind==='meteor');
+  assert.ok(Math.abs(meteor.damage/game.stats().spellDamage-2.42)<1e-8);
+  const html=view(game).activeAbilities();assert.match(html,/242 % Zauberkraft/);
+  const realCooldown=game.cooldowns['ability:flamecaller_meteor'];assert.ok(realCooldown<15);
+  assert.ok(html.includes(`${realCooldown.toLocaleString('de-DE',{maximumFractionDigits:2})} Sek. Abklingzeit`));
+  for(const [classId,text]of [['guardian','58,5 % Angriffsschaden'],['paladin','8,4 % ihres maximalen Lebens'],['shadowbinder','15 % echten Schadens']]){
+    const other=new Game({storage:null});other.selectClass(classId);assert.ok(view(other).activeAbilities().includes(text));
+  }
+});
