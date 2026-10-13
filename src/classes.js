@@ -33,7 +33,7 @@ export const CLASSES = [
     ],
   },
   {
-    id: 'paladin', name: 'Paladin', role: 'Heilung / Tank', color: '#f2d78c', weaponId: 'rusty_blade',
+    id: 'paladin', name: 'Paladin', role: 'Heilung / Tank', color: '#f2d78c', weaponId: 'novice_hammer',
     description: 'Kämpft mit Hammer und Licht. Heilt Verbündete im Gefecht und reinigt Gegner mit einer heiligen Flut.',
     statMods: statMods({ maxHp: 20, mana: 15, damage: -2, armor: 2, spellDamage: 5, manaRegen: 0.5, speed: -5 }),
     abilities: {
@@ -53,7 +53,7 @@ export const CLASSES = [
     ],
   },
   {
-    id: 'ranger', name: 'Waldläufer', role: 'Fernkampf', color: '#9dcc79', weaponId: 'forest_blade',
+    id: 'ranger', name: 'Waldläufer', role: 'Fernkampf', color: '#9dcc79', weaponId: 'novice_bow',
     description: 'Bleibt beweglich, setzt durchdringende Pfeile und hält Verfolger in Dornenfallen fest.',
     statMods: statMods({ maxHp: -5, damage: 3, armor: -1, crit: 0.04, speed: 15, mana: 5, gatherYield: 1 }),
     abilities: {
@@ -73,7 +73,7 @@ export const CLASSES = [
     ],
   },
   {
-    id: 'nightblade', name: 'Nachtklinge', role: 'Nahkampf / Burst', color: '#bd95cf', weaponId: 'rusty_blade',
+    id: 'nightblade', name: 'Nachtklinge', role: 'Nahkampf / Burst', color: '#bd95cf', weaponId: 'novice_daggers',
     description: 'Ein schneller Duellant mit kritischen Dolchen. Springt durch Gegner und schützt den Rückzug mit Schattenfallen.',
     statMods: statMods({ maxHp: -15, damage: 2, armor: -1, crit: 0.07, speed: 20, dodgeCooldown: 0.1, lifeSteal: 0.01 }),
     abilities: {
@@ -93,7 +93,7 @@ export const CLASSES = [
     ],
   },
   {
-    id: 'flamecaller', name: 'Flammenrufer', role: 'Flächenschaden', color: '#ed995c', weaponId: 'arcanist_staff',
+    id: 'flamecaller', name: 'Flammenrufer', role: 'Flächenschaden', color: '#ed995c', weaponId: 'novice_ember_staff',
     description: 'Wirft Feuerbälle mit explosiver Wirkung und entfesselt große Flächenbrände. Stark gegen dichte Gegnergruppen.',
     statMods: statMods({ maxHp: -15, mana: 30, damage: -4, armor: -2, spellDamage: 8, manaRegen: 1 }),
     abilities: {
@@ -113,7 +113,7 @@ export const CLASSES = [
     ],
   },
   {
-    id: 'frostweaver', name: 'Frostweber', role: 'Kontrolle / Fernkampf', color: '#91cde5', weaponId: 'arcanist_staff',
+    id: 'frostweaver', name: 'Frostweber', role: 'Kontrolle / Fernkampf', color: '#91cde5', weaponId: 'novice_rime_scepter',
     description: 'Verlangsamt Angreifer mit Frostlanzen und einer Eisfalle. Schafft sichere Räume für die Gruppe.',
     statMods: statMods({ mana: 25, spellDamage: 5, armor: 1, damage: -3, manaRegen: 0.5, cooldown: 0.03 }),
     abilities: {
@@ -133,7 +133,7 @@ export const CLASSES = [
     ],
   },
   {
-    id: 'druid', name: 'Druide', role: 'Heilung / Natur', color: '#85c8a0', weaponId: 'arcanist_staff',
+    id: 'druid', name: 'Druide', role: 'Heilung / Natur', color: '#85c8a0', weaponId: 'novice_living_branch',
     description: 'Versorgt die Gruppe mit Heilung und Regeneration. Nutzt die Kraft des Hains und sammelt besonders effizient.',
     statMods: statMods({ maxHp: 5, mana: 30, spellDamage: 3, damage: -3, manaRegen: 1.5, gatherYield: 1 }),
     abilities: {
@@ -153,7 +153,7 @@ export const CLASSES = [
     ],
   },
   {
-    id: 'shadowbinder', name: 'Schattenbinder', role: 'Beschwörung / Lebensraub', color: '#a88ddb', weaponId: 'arcanist_staff',
+    id: 'shadowbinder', name: 'Schattenbinder', role: 'Beschwörung / Lebensraub', color: '#a88ddb', weaponId: 'novice_soul_focus',
     description: 'Beschwört Schattengeister und entzieht Gegnern Leben. Seine Diener üben Druck aus, während er sich selbst heilt.',
     statMods: statMods({ maxHp: -10, mana: 20, damage: -4, spellDamage: 5, manaRegen: 1, lifeSteal: 0.035 }),
     abilities: {

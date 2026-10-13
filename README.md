@@ -2,7 +2,7 @@
 
 Ein eigenständiges, deutschsprachiges 2D-Action-RPG mit direkter Bewegung, gerichteten Angriffen, Ausweichrollen, Quests, Farming und instanzierter Beute. Die Erweiterung verbindet eine große offene Welt mit acht Klassen, Fortschritt bis Stufe 100 und kooperativen Dungeons auf einem lokalen Spielserver.
 
-**Aktueller Stand:** spielbare Entwicklungsversion mit 16 Regionen, 72 Quests und acht Dungeons. Mindestens 200 Stunden abwechslungsreiche Spielzeit und eine Qualität von 5/5 Sternen sind weiterhin Entwicklungsziele. Eine vollständige 200-Stunden-Kampagne wurde nicht durchgespielt und vermessen; eine externe Sternebewertung liegt nicht vor.
+**Aktueller Stand – Version 2.2:** spielbare Entwicklungsversion mit 16 Regionen, 72 Quests, acht Dungeons, mobiler Mehrfingersteuerung und 24 zusätzlich erlernbaren aktiven Fähigkeiten. Die Ausrüstung wurde verstärkt und mit einem vollständigen Wertevergleich versehen. Mindestens 200 Stunden abwechslungsreiche Spielzeit und eine Qualität von 5/5 Sternen sind weiterhin Entwicklungsziele. Eine vollständige 200-Stunden-Kampagne wurde nicht durchgespielt und vermessen; eine externe Sternebewertung liegt nicht vor.
 
 ## Lokal spielen
 
@@ -38,7 +38,7 @@ PORT=4174 npm run multiplayer
 
 Die Mitspieler verwenden dann denselben Port in ihrer Adresse. Falls sie die Seite nicht erreichen, prüfe die Host-IP, das gemeinsame lokale Netz und die Freigabe eingehender Verbindungen für den Node-Spielserver in der Firewall.
 
-Der Server berechnet Bewegung, Gegner, Schaden, Erfahrung, Ressourcen und Beute. Die Gruppe teilt sich Welt und Kämpfe; Inventar, Ausrüstung, Talente und Questfortschritt gehören zum jeweiligen Gruppencharakter. Ein geöffnetes Menü pausiert die gemeinsame Welt nicht.
+Der Server berechnet Bewegung, Gegner, Schaden, Erfahrung, Ressourcen und Beute. Die Gruppe teilt sich Welt und Kämpfe; Inventar, Ausrüstung, Talente, erlernte Fähigkeiten und Questfortschritt gehören zum jeweiligen Gruppencharakter. Lernen, Belegen, Anlegen und Ablegen werden ebenfalls auf dem Server geprüft. Ein geöffnetes Menü pausiert die gemeinsame Welt nicht.
 
 Gruppencharaktere werden in `.emberfall-server/rooms.json` gespeichert. Der Browser merkt sich den Sitzungsschlüssel für **Gespeicherte Gruppe fortsetzen**. Beim Verlassen kehrst du zu deiner vorherigen Einzelspieler-Reise zurück. Nach einem Serverneustart kehrt eine Dungeon-Gruppe in ihre gespeicherte offene Welt zurück; eine laufende Dungeoninstanz wird dabei nicht als gemeinsame Instanz fortgesetzt.
 
@@ -54,7 +54,8 @@ Gruppencharaktere werden in `.emberfall-server/rooms.json` gespeichert. Der Brow
 | Ausweichen | Leertaste oder rechte Maustaste |
 | Erste Klassenfähigkeit | Q oder 1 |
 | Zweite Klassenfähigkeit | F oder 2 |
-| Heiltrank | R oder 3 |
+| Erste / zweite erlernte Zusatzfähigkeit | 3 / 4 |
+| Heiltrank | R |
 | Sprechen, sammeln, pflanzen, ernten, Truhe öffnen, rasten, Dungeon betreten, Rätsel bedienen | E |
 | Inventar / Talente / Charakter | I / T / C |
 | Weltkarte / Questbuch / Handwerk | M / L / B |
@@ -62,7 +63,11 @@ Gruppencharaktere werden in `.emberfall-server/rooms.json` gespeichert. Der Brow
 | Dungeonübersicht | Dungeons-Schaltfläche im Menü |
 | Fenster schließen / Einstellungen | Escape |
 
-Die Namen und Symbole der Fähigkeiten passen sich deiner Klasse an. Auf Touch-Geräten gibt es Richtungs- und Aktionsflächen. Menüs, Klassenauswahl und Gruppenformulare sind mit Maus und Tastatur bedienbar.
+Die Namen und Symbole der Fähigkeiten passen sich deiner Klasse an. Ein leerer Zusatzplatz auf 3 oder 4 öffnet die Lernansicht. Menüs, Klassenauswahl und Gruppenformulare sind mit Maus und Tastatur bedienbar.
+
+Auf dem Handy ziehst du den **Joystick in acht Richtungen**. Acht Aktionsflächen bieten Klassenfähigkeit Q, Klassenfähigkeit F, Ausweichen, Zusatzfähigkeit 3, Angriff, Zusatzfähigkeit 4, Heiltrank und Interagieren. **Halte Angriff**, um wiederholt anzugreifen; die Touchsteuerung richtet Angriffe und offensive Fähigkeiten auf den nächsten lebenden Gegner im sichtbaren Bildausschnitt. Ohne sichtbares Ziel bleibt die Bewegungs- beziehungsweise Blickrichtung maßgeblich. Bewegung, gehaltener Angriff und eine weitere Aktion können mit verschiedenen Fingern gleichzeitig gesteuert werden.
+
+Abgebrochene Berührungen, verlorene Pointer-Captures, Appwechsel und geöffnete Menüs setzen die Touch-Eingaben zurück. Die Oberfläche hat mindestens 44 Pixel hohe Aktionstasten, scrollbare Menüs und eigene Layouts für Hoch- und Querformat. Dynamische Viewporthöhe und Safe Areas berücksichtigen Browserleisten und Bildschirmränder. Geräteübergreifende Bildraten und langfristige Ergonomie müssen weiter auf echten Smartphones geprüft werden.
 
 ## Acht Klassen
 
@@ -79,18 +84,52 @@ Die Namen und Symbole der Fähigkeiten passen sich deiner Klasse an. Auf Touch-G
 
 Die Klasse wird für die jeweilige Reise gewählt. Eigene Talentpfade öffnen sich über Stufe 12, 25, 40, 60 und 80. Prerequisiten, benötigte Stufen, Talentpunktkosten und Ranggrenzen stehen in der Talentansicht. Der Fortschritt endet auf **Stufe 100**.
 
+## Neue aktive Fähigkeiten lernen
+
+Öffne **Talente → Aktive Fähigkeiten** mit T oder über das Menü. Jede Klasse erhält drei zusätzliche Techniken ab **Stufe 4, 12 und 25**, für **1, 2 und 3 Talentpunkte**. Die zweite Technik setzt die erste voraus, die dritte die zweite. Die Anzeige erklärt Stufe, Lernvoraussetzung, Mana, Abklingzeit und verfügbare Punkte. Die bisherigen Grundfähigkeiten auf Q/F und die passiven Talentpfade bleiben verfügbar.
+
+| Klasse | Stufe 4 · 1 Punkt | Stufe 12 · 2 Punkte | Stufe 25 · 3 Punkte |
+| --- | --- | --- | --- |
+| Wächter | Schildstoß | Herausforderung | Schildbrecher |
+| Paladin | Lichtbeistand | Weihegrund | Gemeinsamer Eid |
+| Waldläufer | Fächerschuss | Jägerfalle | Hainfalke |
+| Nachtklinge | Klingenfächer | Rauchschritt | Letzte Klinge |
+| Flammenrufer | Brandlanze | Meteorruf | Glutphönix |
+| Frostweber | Splitterfächer | Kristallhaut | Wandernder Winter |
+| Druide | Wurzelgriff | Lebensrinde | Neuer Frühling |
+| Schattenbinder | Hungriges Mal | Flüsternde Schar | Blut und Äther |
+
+Erlernte Techniken können auf **zwei Zusatzplätze, 3 und 4**, gelegt, verschoben oder abgewählt werden. Beim Lernen wird ein freier Platz automatisch belegt. Das Belegen kostet keine weiteren Talentpunkte; dieselbe Technik belegt höchstens einen Platz. Ihre Abklingzeit bleibt beim Umbelegen bestehen. Lernfortschritt und Belegung werden mit der jeweiligen Reise gespeichert.
+
 ## Welt, Beute und Abenteuer
 
 - **16 Regionen** in einer Welt von 19.200 × 14.400 Spielkoordinaten: Dämmerhain, Frostgrat, Aschenmoor, Glutöde, Sonnensteppe, Jadeauen, Sturmküste, Dornwildnis, Obsidianpass, Mondbruch, Permafrost, Sandsenke, Traumsenke, Blutmark, Sternensund und Nexusriss.
 - **72 Quests**, 18 Bewohner und Reiseführer sowie 27 Gegnertypen einschließlich der Bossdefinitionen.
 - Regionale, wiederholbare Aufträge mit drei wechselnden Angeboten je passendem Gebiet und bis zu drei gleichzeitig aktiven Aufgaben.
 - **38 generierbare Ausrüstungsbasen** neben den bisherigen Gegenständen; fünf Seltenheiten, zwölf normale Affixe, acht klassenspezifische legendäre Effekte und vier Sets mit Boni für zwei und drei verschiedene Ausrüstungsslots.
+- **Stärkere, passende Ausrüstung:** Waffenrollen verwenden den offensiven Primärwert der Klasse; magische Waffen bevorzugen Zauberkraft, physische Klassen Waffenschaden. Neue Rüstungen gewähren Leben und Rüstung sowie materialabhängige Zusatzwerte. Seltene und epische Funde verbessern den Charakter deutlich gegenüber seiner Starterausrüstung.
 - **Sockel und Aufwertungen:** Rubin, Saphir und Smaragd ergänzen Gegenstandswerte. Zerlegen liefert Materialien und Arkanstaub; damit lässt sich generierte Ausrüstung bis **+10** aufwerten. Werte werden aus Basis, Affixen, Aufwertung, Sockeln und Sets neu berechnet.
 - **Seltene Beute:** Die Basiswahrscheinlichkeit für einen legendären Gegenstand beträgt 0,2 % je normalem Ausrüstungsroll und 3 % je Bossroll. Gespeicherte Pity-Zähler garantieren bei fortgesetzten Gegner-Beuterolls spätestens den 500. normalen beziehungsweise den 34. Bossroll. Das sind Wahrscheinlichkeiten pro Beuteroll, nicht pro normalem Gegner.
 - **Farming und Handwerk:** Holz, Erz, Kräuter und Kristalle sammeln; Saatgut pflanzen und Weizen ernten; sechs Rezepte für Nahrung, Tränke und Ausrüstung.
 - Weltkarte, Minikarte, entdeckbare Glutschreine, Schnellreise, Questbuch, Klassenwerte und gespeicherter Fortschritt.
 
 Sprich für den Einstieg mit Mira am Brunnen, Sera und Toma. Die Dorfquests führen in Kämpfe, Alchemie und Landwirtschaft ein. Entzünde Glutschreine mit E, um dort zu rasten und die Schnellreise freizuschalten. Bossangriffe werden durch Flächen angekündigt: Verlasse die markierte Zone und nutze das anschließende Zeitfenster. Der Acker wächst während aktiver Simulation; Einzelspielermenüs pausieren diese, Gruppenmenüs dagegen nicht.
+
+## Ausrüstung vergleichen und wechseln
+
+Inventar und Charakteransicht zeigen die drei Plätze **Waffe, Rüstung und Amulett**, ihre aktuellen Gegenstände und eine **Ablegen**-Aktion. Wähle im Inventar **Anlegen**, um einen passenden Fund auszurüsten. Leere Plätze führen zur Ausrüstungsauswahl. Benötigte Stufe und zulässige Klassen stehen direkt am Gegenstand; gesperrte Ausrüstung lässt sich nicht anlegen. Ein voller Rucksack wird mit zwölf Gegenständen pro Seite angezeigt.
+
+Der Vergleich nennt den ersetzten Gegenstand und zeigt die **gesamten Charakterwerte vorher → nachher**, mit positiven und negativen Änderungen. Basiswerte, Affixe, Sockel, Aufwertungen, verlorene oder hinzukommende Setboni und globale Wertgrenzen sind enthalten. So ist etwa der Verlust eines Zweiteiler-Sets beim Waffenwechsel bereits vor dem Anlegen sichtbar.
+
+Neue Beute verwendet Balanceformat 2. Vorhandene gültige Gegenstände und alte Einzelspielstände bleiben kompatibel: Beim Berechnen ihrer aktuellen Werte wird das neue Budget aus dem ursprünglichen Roll abgeleitet. Die gespeicherten ursprünglichen Basiswerte, IDs, Sockel und Pechschutz-Zähler bleiben erhalten; manipulierte Werte werden weiterhin abgewiesen.
+
+## Rollen und Balance
+
+Der Wächter verbindet Taunts und Schutz mit geringerer direkter Schadensleistung. Paladin und Druide bieten Gruppenheilung, die Mana, Reichweite und Positionierung benötigt. Der Paladin ergänzt Nahkampf und Weiheflächen; der Druide verfügt zusätzlich über Gruppenrinde und Wiederbelebung. Waldläufer, Nachtklinge und Flammenrufer setzen unterschiedliche Schwerpunkte bei Reichweite, schnellen Nahkampftreffern und Flächenschaden; Frostweber kontrollieren Gegner, Schattenbinder kombinieren Diener und Lebensentzug.
+
+Rüstung ist jetzt ein Rating gegen die Stufe des Angreifers und reduziert Schaden höchstens um 75 %. Der automatische Rüstungsanstieg allein macht hohe Stufen nicht nahezu unverwundbar. Globale Grenzen für kritische Treffer, Lebensraub und Abklingzeitverkürzung begrenzen extreme Kombinationen. Normale Gegner der offenen Welt ab Stufe 12 verwenden neue Kampfbudgets; deutlich niedrigstufige Gegner geben weniger Kampf-EP. Dungeon- und Bosswerte werden separat festgelegt, und ihre Pflichtmechaniken bleiben wirksam.
+
+Die reproduzierbaren Ausrüstungsvergleiche verlangen unter ihren Modellannahmen mindestens **35 % mehr effektiven Schaden und 20 % mehr Überleben** gegenüber dem Starter-Loadout. Der [Balancebericht](docs/balance-report.md) legt diese Annahmen offen. Seine stationären Gegner, feste Angriffszeit und gemittelten Mana-Rotationen enthalten keine zusätzlichen erlernten Fähigkeiten, Talente, Sockel, Sets oder maximalen Aufwertungen. Diese analytischen Werte belegen weder faire Schwierigkeit aller Builds noch menschliche Gruppenkoordination oder 200 Stunden Spielzeit. Dafür sind weitere echte Spielrouten und längere Gruppenläufe erforderlich.
 
 ## Regionale Aufträge
 
@@ -143,7 +182,7 @@ npm run test:network
 npm run build
 ```
 
-`npm test` prüft unter anderem Bewegung und Kampf, Klassenfähigkeiten, Talente, die Stufe-100-Kurve, instanzierte Beute, Ausrüstungsmodifikatoren, Quests, Speicherdaten und Dungeonmechaniken. Die Netzwerkprüfungen verwenden tatsächliche HTTP/SSE-Clients gegen einen Testserver und prüfen gemeinsame Aktionen sowie serverseitige Fortschrittsberechnung. Automatische Tests belegen diese geprüften Abläufe; sie belegen keine 200 Stunden Kampagnenspielzeit und keine abgeschlossene Langzeitbalance.
+`npm test` prüft unter anderem Bewegung und Kampf, Klassenfähigkeiten, Lernen und Belegen aktiver Techniken, Talente, die Stufe-100-Kurve, instanzierte Beute, Ausrüstungsvergleiche, Quests, Speicherdaten und Dungeonmechaniken. Eingabeprüfungen decken acht Joystickrichtungen, mehrere gleichzeitige Finger, Autoziel, Pointer-Capture und Eingabeabbrüche ab. Die Netzwerkprüfungen verwenden tatsächliche HTTP/SSE-Clients gegen einen Testserver und prüfen gemeinsame Aktionen sowie serverseitige Fortschrittsberechnung. Automatische Tests belegen diese geprüften Abläufe; sie belegen keine 200 Stunden Kampagnenspielzeit und keine abgeschlossene Langzeitbalance.
 
 `npm run build` kopiert die Browserdateien und die Laufzeitassets nach `dist/`. Kontaktansichten, Grafikgeneratoren und ältere Blenderquelldaten werden dabei nicht veröffentlicht. Diese statischen Dateien enthalten keinen laufenden Multiplayer-Backendserver.
 
@@ -153,7 +192,10 @@ npm run build
 | `src/catalog.js` | Zusammengeführte Inhaltsdaten |
 | `src/expansion.js` | Zusätzliche Regionen, Gegner, Reiseführer und Questketten |
 | `src/classes.js` / `src/progression.js` | Klassen, Talentpfade und Fortschritt bis Stufe 100 |
+| `src/abilities.js` | 24 erlernbare aktive Fähigkeiten, Voraussetzungen und gespeicherte Belegung |
+| `src/balance.js` | Rollenfaktoren, Rüstungsrating, Kampfwertgrenzen und analytische Vergleiche |
 | `src/loot.js` | Seltenheiten, Basisgegenstände, Affixe, Sets, Sockel und Aufwertungen |
+| `src/mobile-input.js` / `src/main.js` | Mehrfinger-Joystick, Eingabezustand, Touch-Autoziel und Spielschleife |
 | `src/dungeons.js` | Dungeoninstanzen, Rätsel und Bossmechaniken |
 | `src/contracts.js` | Wiederholbare regionale Aufträge, Ereignisfortschritt und validierte Belohnungen |
 | `src/world.js` / `src/renderer.js` | Weltgrundlage und Canvas-Darstellung |

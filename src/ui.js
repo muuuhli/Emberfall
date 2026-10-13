@@ -1,13 +1,15 @@
 import { REGIONS, RESOURCES, ITEMS, RECIPES, QUESTS, NPCS, ENEMY_TYPES } from './catalog.js';
 import { CLASSES, getClass } from './classes.js';
-import { GEM_TYPES, SETS, itemPower, describeStat } from './loot.js';
+import { GEM_TYPES, SETS, ITEM_BASES, itemPower, describeStat } from './loot.js';
+import { ABILITIES, getAbility, canLearnAbility, getLearnedAbilities } from './abilities.js';
 import { DUNGEONS } from './dungeons.js';
 import { MAX_LEVEL } from './progression.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const icon = (name, classes = '') => `<svg class="${classes}" aria-hidden="true"><use href="#i-${name}" /></svg>`;
 const format = value => Math.round(Number(value) || 0).toLocaleString('de-DE');
-const percent = value => `${Math.round((Number(value) || 0) * 100)} %`;
+const percent = value => `${((Number(value) || 0) * 100).toLocaleString('de-DE',{maximumFractionDigits:2})} %`;
+const statValue = (key,value) => ['crit','lifeSteal','cooldown','dodgeCooldown'].includes(key) ? percent(value) : (Number(value)||0).toLocaleString('de-DE',{maximumFractionDigits:2});
 const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 0));
 const statLabels = { damage:'Waffenschaden',spellDamage:'Zauberkraft',maxHp:'Lebenspunkte',mana:'Mana',armor:'Rüstung',crit:'Kritische Treffer',speed:'Bewegungstempo',manaRegen:'Mana / Sekunde',lifeSteal:'Lebensraub',gatherYield:'Sammelbonus',cooldown:'Kürzere Zauberabklingzeit',dodgeCooldown:'Kürzere Ausweichabklingzeit',hpRestore:'Heilung',manaRestore:'Mana auffüllen' };
 const rarityLabels = { common:'Gewöhnlich',uncommon:'Ungewöhnlich',rare:'Selten',epic:'Episch',legendary:'Legendär' };
@@ -16,6 +18,7 @@ const itemIcon = item => item?.type === 'weapon' ? /bow|string/.test(item.baseId
 const resourceIcon = id => ['wood','herb','seed','wheat'].includes(id) ? 'leaf' : 'gem';
 const classIcons = { guardian:'shield',paladin:'sun',ranger:'bow',nightblade:'sword',flamecaller:'flame',frostweaver:'snowflake',druid:'leaf',shadowbinder:'gem' };
 const abilityIcon = (ability, classId) => ({ heal:'heart', shield:'shield', drain:'gem', summon:'group', dashstrike:'dash', trap:classId==='frostweaver'?'snowflake':'leaf', aoe:'nova', projectile:classId==='ranger'?'bow':classIcons[classId] || 'bolt', melee:'sword' }[ability?.kind] || 'bolt');
+const learnedIcon = ability => ({'⬡':'shield','⚑':'group','⚔':'sword','✚':'heart','☀':'sun','➤':'bow','⌘':'leaf','❧':'leaf','↝':'dash','◆':'gem','✦':'flame','☄':'flame','❄':'snowflake','✿':'leaf','☾':'gem','◈':'group'}[ability?.icon] || ability?.icon || 'tree');
 const branchIcons = {'Wächter':'shield','Arkanist':'flame','Wildläufer':'leaf'};
 const branchDescriptions = {'Wächter':'Halte stand. Jede Wunde macht dich stärker.','Arkanist':'Entfache die Glut und forme den Äther.','Wildläufer':'Bewege dich frei. Lebe von den Gaben des Hains.'};
 const panels = {map:['Die freien Lande','Neue Horizonte, uralte Tore und Wege bis Stufe 100.'],world:['Die freien Lande','Neue Horizonte, uralte Tore und Wege bis Stufe 100.'],character:['Dein Charakter','Werde zu dem Helden, den diese Welt braucht.'],inventory:['Dein Gepäck','Affixe, Sockel und Sets formen deine Ausrüstung.'],talents:['Dein eigener Weg','Meistere die Pfade deiner Klasse bis Stufe 100.'],craft:['Handwerk','Aus den Gaben der Welt entstehen deine nächsten Abenteuer.'],journal:['Deine Reise','Menschen, denen du hilfst. Orte, die du veränderst.'],party:['Gemeinsam durch die Glut','Bilde eine Gruppe mit bis zu acht Reisenden.'],dungeons:['Tore der Erinnerung','Rätsel, schwere Bosse und immer tiefere Herausforderungen.'],settings:['Ein Moment der Ruhe','Deine Reise wird direkt in diesem Browser gespeichert.']};
@@ -25,6 +28,9 @@ export class GameUI {
     this.game = game;
     this.activePanel = null;
     this.inventoryTab = 'equipment';
+    this.inventoryPage = 0;
+    this.talentTab = 'abilities';
+    this.panelPointers = new Set();
     this.questTab = 'active';
     this.contractRegion = null;
     this.dialogueNPC = null;
@@ -36,6 +42,7 @@ export class GameUI {
     this.networkBusy = false;
     this.lastPartyState = '';
     this.lastAbilityClass = '';
+    this.lastSeenLevel = game.player?.level || 1;
     this.notices = [];
     this.elements = {};
     for (const id of ['welcome-overlay','welcome-classes','start-button','continue-button','panel-overlay','game-panel','panel-title','panel-description','panel-content','close-panel','save-button','save-state','save-import','world-hud','quest-tracker','region-name','region-subtitle','player-name','player-class','player-level','hp-fill','hp-text','hp-shield','party-hud','mana-fill','mana-text','xp-fill','xp-text','gold-count','talent-badge','potion-count','interact-prompt','world-time','world-weather','notice-stack','minimap','world']) this.elements[id] = document.getElementById(id);
@@ -49,8 +56,10 @@ export class GameUI {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;
       if (button.dataset.panel) { this.togglePanel(button.dataset.panel === 'world' ? 'map' : button.dataset.panel); return; }
-      if (button.dataset.action) { this.game.action(button.dataset.action); this.update(true); return; }
-      if (button.dataset.inventoryTab) { this.inventoryTab = button.dataset.inventoryTab; this.renderPanel(); return; }
+      if (button.dataset.action) { if(this.game.started&&!this.activePanel&&!this.game.paused)this.game.action(button.dataset.action); this.update(true); return; }
+      if (button.dataset.abilitySlot !== undefined) { this.useAbilitySlot(Number(button.dataset.abilitySlot)); return; }
+      if (button.dataset.talentTab) { this.talentTab=button.dataset.talentTab;this.renderPanel();return; }
+      if (button.dataset.inventoryTab) { this.inventoryTab = button.dataset.inventoryTab;this.inventoryPage=0; this.renderPanel(); return; }
       if (button.dataset.questTab) { this.questTab = button.dataset.questTab; this.renderPanel(); return; }
       if (button.dataset.command) this.command(button.dataset.command, button.dataset.id, button);
     });
@@ -62,7 +71,6 @@ export class GameUI {
     this.elements['close-panel'].addEventListener('click', () => this.closePanel());
     this.elements['panel-overlay'].addEventListener('click', event => { if (event.target === this.elements['panel-overlay']) this.closePanel(); });
     this.elements['save-button'].addEventListener('click', () => this.manualSave());
-    document.getElementById('touch-interact').addEventListener('click', () => this.game.interact());
     this.elements['save-import'].addEventListener('change', async event => {
       const file = event.target.files?.[0];
       if (!file) return;
@@ -73,6 +81,7 @@ export class GameUI {
       event.target.value = '';
     });
     document.addEventListener('change', event => {
+      if(event.target.dataset.abilityLoadout!==undefined) {this.assignAbility(Number(event.target.dataset.abilityLoadout),event.target.value||null);return;}
       if(event.target.dataset.contractRegion!==undefined) {this.contractRegion=event.target.value;this.renderPanel();return;}
       const key = event.target.dataset.setting;
       if (!key) return;
@@ -84,17 +93,27 @@ export class GameUI {
       if (event.key === 'Escape' && this.activePanel) { event.preventDefault(); event.stopImmediatePropagation(); this.closePanel(); }
       if (event.key === 'Tab') this.trapFocus(event);
     });
-    const moveKeys = {up:'w',left:'a',down:'s',right:'d'};
-    document.querySelectorAll('[data-move]').forEach(button => {
-      const key = moveKeys[button.dataset.move];
-      const stop = () => { this.game.keys?.delete(key); button.classList.remove('pressed'); };
-      button.addEventListener('pointerdown', event => { event.preventDefault(); if (!this.game.started || this.game.paused) return; button.setPointerCapture(event.pointerId); this.game.keys?.add(key); button.classList.add('pressed'); });
-      for (const event of ['pointerup','pointercancel','lostpointercapture']) button.addEventListener(event, stop);
-    });
-    window.addEventListener('blur', () => { this.game.keys?.clear(); });
+    this.elements['game-panel'].addEventListener('pointerdown',event=>this.panelPointers.add(event.pointerId));
+    const release=event=>{this.panelPointers.delete(event.pointerId);if(!this.panelPointers.size&&this.pendingPanelRender)requestAnimationFrame(()=>{if(!this.panelPointers.size){this.pendingPanelRender=false;this.renderPanel();}});};
+    for(const name of ['pointerup','pointercancel'])document.addEventListener(name,release);
+    this.elements['game-panel'].addEventListener('focusout',()=>{if(this.pendingPanelRender)requestAnimationFrame(()=>{if(!this.panelPointers.size){this.pendingPanelRender=false;this.renderPanel();}});});
+    window.addEventListener('blur',()=>{this.panelPointers.clear();this.game.keys?.clear();});
   }
 
   get currentPanel() { return this.activePanel; }
+
+  useAbilitySlot(slot) {
+    if(!this.game.started||this.activePanel||this.game.paused)return;
+    if(this.game.abilityLoadout?.[slot])this.game.useLearnedAbility(slot);
+    else {this.talentTab='abilities';this.togglePanel('talents');}
+    this.update(true);
+  }
+
+  async assignAbility(slot,id) {
+    const previous=id?(this.game.abilityLoadout||[]).indexOf(id):-1;
+    if(previous>=0&&previous!==slot)await this.game.setAbilityLoadout(previous,null);
+    await this.game.setAbilityLoadout(slot,id);this.update(true);
+  }
 
   begin() {
     this.closePanel();
@@ -131,6 +150,11 @@ export class GameUI {
     const game = this.game;
     const player = game.player || {};
     const stats = typeof game.stats === 'function' ? game.stats() : {};
+    if(game.started&&player.level>this.lastSeenLevel){
+      const unlocked=ABILITIES.filter(ability=>ability.classId===player.classId&&ability.level>this.lastSeenLevel&&ability.level<=player.level&&!game.learnedAbilities?.[ability.id]);
+      if(unlocked.length)this.showNotice(`Neue Technik: ${unlocked.map(ability=>ability.name).join(', ')} · Öffne Talente zum Lernen.`,'level');
+    }
+    this.lastSeenLevel=player.level||1;
     let region = game.region;
     if (typeof region === 'function') region = region.call(game);
     if (!region && typeof game.regionAt === 'function') region = game.regionAt(player.x, player.y);
@@ -164,7 +188,7 @@ export class GameUI {
     if (nearby) this.elements['interact-prompt'].querySelector('span').textContent = nearby.label || 'Interagieren';
     const trackerState = JSON.stringify([game.questState || {},game.contracts]);
     if (force || trackerState !== this.lastTracker) { this.lastTracker = trackerState; this.renderTracker(); }
-    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.equipment,game.generatedItems,game.resources,game.skills,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,this.dungeonId()]);
+    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,this.dungeonId()]);
     if (force || state !== this.lastState) { this.lastState = state; if (this.activePanel && !['death','victory','reset','settings','party'].includes(this.activePanel)) this.renderPanel(); }
     this.updateParty();
     const now = performance.now();
@@ -174,6 +198,10 @@ export class GameUI {
     this.setText('world-time', `${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`);
     this.setText('world-weather', minutes < 600 ? 'Morgenlicht' : minutes < 1020 ? 'Tageslicht' : minutes < 1200 ? 'Abendglut' : 'Sternennacht');
     this.updateCooldowns();
+    const blocked=!game.started||Boolean(this.activePanel)||game.paused;
+    document.querySelector('.touch-controls').hidden=blocked;
+    document.querySelector('.touch-controls').inert=blocked;
+    document.body.classList.toggle('gameplay-blocked',blocked);
   }
 
   updateCooldowns() {
@@ -190,12 +218,28 @@ export class GameUI {
         button.title=`${ability.name}${ability.cost?` · ${ability.cost} Mana`:''} · ${ability.cooldown} Sek. Abklingzeit`;
       }
     }
-    for (const button of document.querySelectorAll('.ability')) {
-      const action = button.dataset.action;
-      const value = Number(this.game.cooldowns?.[action] ?? this.game.player?.cooldowns?.[action]) || 0;
+    for(const [action,ability] of Object.entries(currentClass.abilities)) {
+      const button=document.querySelector(`[data-touch-action="${action}"]`);if(!button)continue;
+      button.querySelector('use').setAttribute('href',`#i-${abilityIcon(ability,currentClass.id)}`);button.setAttribute('aria-label',ability.name);
+      if(action==='attack')button.querySelector('span').textContent='Angriff halten';
+      else button.querySelector('span').textContent=ability.name;
+    }
+    for (const button of document.querySelectorAll('.ability,.touch-ability')) {
+      const slot=button.dataset.abilitySlot??button.dataset.touchSlot;
+      const learned=slot!==undefined?getAbility(this.game.abilityLoadout?.[Number(slot)]):null;
+      const action = button.dataset.action||button.dataset.touchAction;
+      const cooldownKey=learned?`ability:${learned.id}`:action;
+      const value = Number(this.game.cooldowns?.[cooldownKey] ?? this.game.player?.cooldowns?.[cooldownKey]) || 0;
+      if(slot!==undefined){
+        button.querySelector('span').textContent=learned?learned.name:`Lernen ${Number(slot)+3}`;
+        button.querySelector('use').setAttribute('href',`#i-${learnedIcon(learned)}`);
+        button.setAttribute('aria-label',learned?`${learned.name}, Platz ${Number(slot)+3}`:`Fähigkeit für Platz ${Number(slot)+3} lernen`);
+        button.title=learned?`${learned.name} · ${learned.cost} Mana · ${learned.cooldown} Sek. Abklingzeit`:'Neue aktive Fähigkeiten lernen und auf 3 oder 4 belegen';
+        button.classList.toggle('empty-slot',!learned);
+      }
       button.classList.toggle('is-cooling', value > 0);
       const cover = button.querySelector('.cooldown-cover');
-      if (cover) cover.style.height = `${clamp(value / (maxCooldown[action] || 1) * 100,0,100)}%`;
+      if (cover) cover.style.height = `${clamp(value / (learned?.cooldown || maxCooldown[action] || 1) * 100,0,100)}%`;
     }
   }
 
@@ -220,6 +264,9 @@ export class GameUI {
     if(name==='reset') this.pendingClass=this.game.player.classId || 'guardian';
     if (this.game.started) this.game.paused = true;
     this.game.keys?.clear();
+    this.onInputReset?.();
+    document.querySelector('.touch-controls').hidden=true;
+    document.body.classList.add('gameplay-blocked');
     this.elements['panel-overlay'].hidden = false;
     this.elements['world-hud'].classList.add('disabled');
     document.querySelectorAll('.nav-item').forEach(button=>button.classList.toggle('active',button.dataset.panel===name));
@@ -245,6 +292,7 @@ export class GameUI {
   renderPanel() {
     const name = this.activePanel;
     if (!name) return;
+    if(this.panelPointers.size||document.activeElement?.matches?.('select')&&this.elements['game-panel'].contains(document.activeElement)){this.pendingPanelRender=true;return;}
     const focusId = document.activeElement?.dataset?.id;
     const focusCommand = document.activeElement?.dataset?.command;
     const titles = name === 'dialogue' ? [this.dialogueNPC?.name || 'Eine Begegnung',this.dialogueNPC?.role || ''] : name==='death' ? ['Die Glut lebt weiter','Auch die dunkelste Nacht endet.'] : name==='victory' ? ['Ein neuer Morgen','Du hast der Welt ihre Glut zurückgebracht.'] : name==='reset' ? ['Ein neuer Anfang','Eine neue Reise ersetzt deinen gespeicherten Fortschritt.'] : panels[name] || panels.inventory;
@@ -265,10 +313,19 @@ export class GameUI {
     return [...new Set([...Object.keys(stats),...Object.keys(compare || {})])].map(key => {
       const value=Number(stats[key]) || 0;
       const isPercent = ['crit','lifeSteal','cooldown','dodgeCooldown'].includes(key);
-      const text = isPercent ? percent(value) : format(value);
+      const text = statValue(key,value);
       const delta = compare ? Number(value) - (Number(compare[key]) || 0) : null;
-      return `${escape(statLabels[key] || key)} +${text}${delta !== null && delta !== 0 ? ` <span class="${delta>0?'stat-better':'stat-worse'}">(${delta>0?'+':''}${isPercent?percent(delta):format(delta)})</span>` : ''}`;
+      return `${escape(statLabels[key] || key)} +${text}${delta !== null && delta !== 0 ? ` <span class="${delta>0?'stat-better':'stat-worse'}">(${delta>0?'+':''}${statValue(key,delta)})</span>` : ''}`;
     }).join(' · ');
+  }
+
+  equipmentComparison(item) {
+    if(!['weapon','armor','charm'].includes(item.type)||this.game.equipment?.[item.type]===item.id)return '';
+    const currentId=this.game.equipment?.[item.type],current=this.item(currentId),before=this.game.stats();
+    const candidate=this.itemStats(item.id),old=this.itemStats(currentId);
+    const preview=this.game.previewEquipment?.(item.id)||{before,after:Object.fromEntries([...new Set([...Object.keys(before),...Object.keys(candidate),...Object.keys(old)])].map(key=>[key,(before[key]||0)+(candidate[key]||0)-(old[key]||0)]))};
+    const changes=Object.keys(preview.after).filter(key=>Math.abs((preview.after[key]||0)-(preview.before[key]||0))>.00001);
+    return `<div class="gear-comparison"><p>Ersetzt: <strong>${escape(current?.name||'Leerer Platz')}</strong></p><dl>${changes.map(key=>{const delta=(preview.after[key]||0)-(preview.before[key]||0);return `<div><dt>${escape(statLabels[key]||key)}</dt><dd>${statValue(key,preview.before[key])} <span aria-hidden="true">→</span> <strong>${statValue(key,preview.after[key])}</strong> <span class="${delta>0?'stat-better':'stat-worse'}">${delta>0?'+':''}${statValue(key,delta)}</span></dd></div>`;}).join('')||'<div><dt>Charakterwerte</dt><dd>Unverändert</dd></div>'}</dl></div>`;
   }
 
   itemRow(item, count, action = 'equip', shop = false) {
@@ -279,14 +336,18 @@ export class GameUI {
     const command = shop ? 'buy' : action === 'sell' ? 'sell' : item.type === 'consumable' ? 'consume' : action;
     const stats = this.game.stats();
     const consumeDisabled = command === 'consume' && (!item.stats.hpRestore || this.game.player.hp >= stats.maxHp) && (!item.stats.manaRestore || this.game.player.mana >= stats.mana);
-    const levelLocked = !shop && command==='equip' && item.level>this.game.player.level;
+    const requiredLevel=item.level||item.minLevel||1;
+    const classIds=item.classIds||ITEM_BASES.find(base=>base.id===item.baseId)?.classIds;
+    const classLocked=Array.isArray(classIds)&&!classIds.includes(this.game.player.classId);
+    const levelLocked = command==='equip' && requiredLevel>this.game.player.level;
+    const lockReason=classLocked?`Nur ${classIds.map(id=>getClass(id).name).join(', ')}`:levelLocked?`Benötigt Stufe ${requiredLevel}`:'';
     const generated = !!item.baseId;
     const itemStats = generated ? this.itemStats(item.id) : item.stats;
     const upgrade = item.upgrade || 0, upgradeCost = 8 + upgrade * 6;
     const gems = generated && item.sockets.includes(null) ? Object.values(GEM_TYPES).filter(gem=>(this.game.resources?.[gem.id] || 0)>0) : [];
     const modifiers = generated ? `<details class="item-details"><summary>Affixe${item.sockets.length?` · ${item.sockets.length} Sockel`:''}${item.setId?' · Set':''}</summary><p>${escape(item.description)}</p>${item.affixes.map(affix=>`<div class="item-modifier ${affix.legendary?'legendary-modifier':''}"><strong>${escape(affix.name)}</strong><span>${Object.entries(affix.stats).map(([key,value])=>escape(describeStat(key,value))).join(' · ')}</span></div>`).join('')}${item.sockets.length?`<div class="socket-list">${item.sockets.map(gem=>`<span>${icon('gem')}${gem?escape(GEM_TYPES[typeof gem==='string'?gem:gem.id]?.name || 'Edelstein'):'Freier Sockel'}</span>`).join('')}</div>`:''}${item.setId?`<p class="set-description">${escape(SETS[item.setId]?.name)} · 2 Teile: ${this.statsText(SETS[item.setId]?.bonuses[2])} · 3 Teile: ${this.statsText(SETS[item.setId]?.bonuses[3])}</p>`:''}</details>` : '';
     const improve = generated && !shop && action==='equip' ? `<div class="item-improvement-actions"><button class="small-button" data-command="upgradeItem" data-id="${escape(item.id)}" ${upgrade>=10 || (this.game.resources?.dust || 0)<upgradeCost?'disabled':''}>${upgrade>=10?'Aufwertung +10':`Aufwerten · ${upgradeCost} Staub`}</button>${!equipped?`<button class="small-button subtle-button" data-command="salvage" data-id="${escape(item.id)}">Zerlegen</button>`:''}${gems.map(gem=>`<button class="small-button" data-command="socket" data-id="${escape(item.id)}" data-gem="${gem.id}" title="${escape(this.statsText(gem.stats))}">${escape(gem.name)} sockeln</button>`).join('')}</div>` : '';
-    return `<div class="item-row ${generated?'instanced-item':''}"><div class="item-icon ${escape(item.rarity)}">${icon(itemIcon(item))}</div><div class="item-main"><h3>${escape(item.name)}${upgrade?` <span class="item-upgrade">+${upgrade}</span>`:''}</h3><p>${escape(rarityLabels[item.rarity])} · ${escape(typeLabels[item.type])}${generated?` · Stufe ${item.level}${item.dungeonTier>1?` · Tiefe ${item.dungeonTier}`:''} · Macht ${itemPower(item)}`:''}</p><p class="item-description">${this.statsText(itemStats, !shop && !equipped && item.type!=='consumable' ? comparison : null)}</p>${modifiers}${improve}</div>${shop ? `<button class="small-button" data-command="buy" data-id="${escape(item.id)}" ${canBuy?'':'disabled'}>${icon('coin')}${format(item.price)}</button>` : `${count>1?`<span class="item-count">×${count}</span>`:''}${equipped?'<span class="equipped-badge">ANGELEGT</span>':`<button class="small-button" data-command="${command}" data-id="${escape(item.id)}" ${consumeDisabled || levelLocked?'disabled':''}>${command==='consume'?'Nutzen':command==='sell'?`Verkaufen · ${Math.max(1,Math.floor(item.price*.4))}`:levelLocked?`Benötigt Stufe ${item.level}`:'Anlegen'}</button>`}`}</div>`;
+    return `<div class="item-row ${generated?'instanced-item':''} ${equipped?'is-equipped':''}"><div class="item-icon ${escape(item.rarity)}">${icon(itemIcon(item))}</div><div class="item-main"><h3>${escape(item.name)}${upgrade?` <span class="item-upgrade">+${upgrade}</span>`:''}</h3><p>${escape(rarityLabels[item.rarity])} · ${escape(typeLabels[item.type])} · Stufe ${requiredLevel}${generated?`${item.dungeonTier>1?` · Tiefe ${item.dungeonTier}`:''} · Macht ${itemPower(item)}`:''}${classIds?` · ${escape(classIds.map(id=>getClass(id).name).join(' / '))}`:''}</p><p class="item-description">${this.statsText(itemStats)}</p>${!shop&&command==='equip'&&!equipped?this.equipmentComparison(item):''}${lockReason?`<p class="equipment-lock">${icon('shield')}${escape(lockReason)}</p>`:''}${modifiers}${improve}</div><div class="item-actions">${shop ? `<button class="small-button" data-command="buy" data-id="${escape(item.id)}" ${canBuy?'':'disabled'}>${icon('coin')}${format(item.price)}</button>` : `${count>1?`<span class="item-count">×${count}</span>`:''}${equipped?`<span class="equipped-badge">ANGELEGT</span><button class="small-button subtle-button" data-command="unequip" data-id="${escape(item.type)}">Ablegen</button>`:`<button class="small-button" data-command="${command}" data-id="${escape(item.id)}" ${consumeDisabled || command==='equip'&&(levelLocked||classLocked)?'disabled':''}>${command==='consume'?'Nutzen':command==='sell'?`Verkaufen · ${Math.max(1,Math.floor(item.price*.4))}`:'Anlegen'}</button>`}`}</div></div>`;
   }
 
   inventory() {
@@ -294,15 +355,18 @@ export class GameUI {
     const entries = Object.entries(this.game.inventory || {}).filter(([id,count])=>count>0 && this.item(id));
     const tabs = `<div class="panel-tabs"><button class="${tab==='equipment'?'active':''}" data-inventory-tab="equipment">Ausrüstung</button><button class="${tab==='consumables'?'active':''}" data-inventory-tab="consumables">Vorräte</button><button class="${tab==='resources'?'active':''}" data-inventory-tab="resources">Ressourcen</button></div>`;
     const filtered = entries.filter(([id]) => tab === 'consumables' ? this.item(id).type === 'consumable' : this.item(id).type !== 'consumable');
+    const pageSize=12,pages=Math.max(1,Math.ceil(filtered.length/pageSize));this.inventoryPage=Math.min(this.inventoryPage,pages-1);
+    const page=filtered.slice(this.inventoryPage*pageSize,(this.inventoryPage+1)*pageSize);
     const resourceRows = Object.entries(RESOURCES).map(([id,resource])=>`<div class="item-row"><div class="item-icon">${icon(resourceIcon(id))}</div><div class="item-main"><h3>${escape(resource.name)}</h3><p>${escape(resource.description)}</p></div><span class="item-count">${format(this.game.resources?.[id])}</span></div>`).join('');
-    const body = tab === 'resources' ? resourceRows : filtered.length ? filtered.map(([id,count])=>this.itemRow(this.item(id),count)).join('') : '<p class="empty-inventory">Dein Rucksack hat noch Platz für neue Geschichten.<br><span class="panel-note">Finde Truhen, besiege Gegner oder stelle etwas an der Werkbank her.</span></p>';
-    return `${tabs}<div class="inventory-layout"><div class="item-list">${body}</div><aside class="inventory-summary"><h3 class="section-title">Angelegt</h3>${this.equipmentSlots()}<h3 class="section-title">Dein Vermögen</h3><div class="summary-stat"><span>Goldstücke</span><strong>${format(this.game.player?.gold)}</strong></div><p class="panel-note">Werte in Klammern vergleichen einen Gegenstand mit deiner aktuellen Ausrüstung.</p><button class="small-button" data-panel="craft">${icon('craft')}Handwerk öffnen</button></aside></div>`;
+    const body = tab === 'resources' ? resourceRows : filtered.length ? page.map(([id,count])=>this.itemRow(this.item(id),count)).join('') : '<p class="empty-inventory">Dein Rucksack hat noch Platz für neue Geschichten.<br><span class="panel-note">Finde Truhen, besiege Gegner oder stelle etwas an der Werkbank her.</span></p>';
+    const pagination=tab!=='resources'&&pages>1?`<div class="inventory-pagination"><button class="small-button" data-command="inventory-page" data-id="${this.inventoryPage-1}" ${this.inventoryPage===0?'disabled':''}>Zurück</button><span>${this.inventoryPage+1} / ${pages} · ${filtered.length} Gegenstände</span><button class="small-button" data-command="inventory-page" data-id="${this.inventoryPage+1}" ${this.inventoryPage===pages-1?'disabled':''}>Weiter</button></div>`:'';
+    return `${tabs}<div class="inventory-layout"><div class="item-list">${body}${pagination}</div><aside class="inventory-summary"><h3 class="section-title">Deine Ausrüstungsplätze</h3>${this.equipmentSlots()}<h3 class="section-title">Dein Vermögen</h3><div class="summary-stat"><span>Goldstücke</span><strong>${format(this.game.player?.gold)}</strong></div><p class="panel-note">Der Vergleich zeigt deine gesamten Charakterwerte vor und nach dem Anlegen, einschließlich Setboni.</p><button class="small-button" data-panel="craft">${icon('craft')}Handwerk öffnen</button></aside></div>`;
   }
 
   equipmentSlots() {
     return [['weapon','Waffe'],['armor','Rüstung'],['charm','Amulett']].map(([slot,label])=> {
       const item = this.item(this.game.equipment?.[slot]);
-      return `<div class="equipment-slot"><div class="item-icon ${escape(item?.rarity || '')}">${icon(item ? itemIcon(item) : slot === 'weapon' ? 'sword' : slot === 'armor' ? 'shield' : 'gem')}</div><div class="item-main"><span class="slot-label">${label.toUpperCase()}</span><h3>${escape(item?.name || 'Noch unbesetzt')}</h3></div></div>`;
+      return `<div class="equipment-slot ${item?'filled':'empty'}"><div class="item-icon ${escape(item?.rarity || '')}">${icon(item ? itemIcon(item) : slot === 'weapon' ? 'sword' : slot === 'armor' ? 'shield' : 'gem')}</div><div class="item-main"><span class="slot-label">${label.toUpperCase()}</span><h3>${escape(item?.name || 'Noch unbesetzt')}</h3>${item?`<p>${this.statsText(this.itemStats(item.id))}</p>`:'<p>Finde passende Ausrüstung auf deinen Wegen.</p>'}</div>${item?`<button class="small-button subtle-button" data-command="unequip" data-id="${slot}" aria-label="${label} ablegen">Ablegen</button>`:`<button class="small-button" data-command="open-equipment">Anlegen</button>`}</div>`;
     }).join('');
   }
 
@@ -313,7 +377,7 @@ export class GameUI {
     const completed = Object.values(this.game.questState || {}).filter(state=>state.status==='done').length;
     const currentClass = getClass(player.classId);
     const values = ['damage','spellDamage','maxHp','mana','armor','crit','speed','manaRegen','lifeSteal','gatherYield','cooldown','dodgeCooldown'];
-    return `<div class="character-banner"><div class="character-seal" style="color:${currentClass.color}">${icon(classIcons[currentClass.id])}</div><div><h3>${escape(player.name || 'Aren')}</h3><p>${escape(currentClass.name)} · ${escape(currentClass.role)} · Stufe ${player.level || 1} / ${MAX_LEVEL}<br>${player.level>=MAX_LEVEL?'Höchste Stufe erreicht':`${format(player.xp)} / ${format(xpNeeded)} Erfahrung`} · ${format(player.skillPoints)} freie Talentpunkte</p></div></div><p class="panel-note">${escape(currentClass.description)}</p><div class="class-abilities">${Object.entries(currentClass.abilities).map(([key,ability])=>`<div>${icon(abilityIcon(ability,currentClass.id))}<strong>${escape(ability.name)}</strong><span>${key==='attack'?'J / Klick':key==='bolt'?'Q / 1':'F / 2'}${ability.cost?` · ${ability.cost} Mana`:''} · ${ability.cooldown} Sek.</span></div>`).join('')}</div><div class="stats-grid">${values.map(key=>`<div class="summary-stat"><span>${escape(statLabels[key])}</span><strong>${['crit','lifeSteal','cooldown','dodgeCooldown'].includes(key)?percent(stats[key]):Number(stats[key] || 0).toLocaleString('de-DE',{maximumFractionDigits:1})}</strong></div>`).join('')}</div><h3 class="section-title">Was du mit dir trägst</h3><div class="character-equipment">${this.equipmentSlots()}</div><p class="panel-note">${completed} von ${QUESTS.length} Questen abgeschlossen · ${(this.game.discovered || []).length} von ${REGIONS.length} Regionen entdeckt.<br>Mit jeder neuen Stufe erhältst du Talentpunkte. Neue Klassenpfade öffnen sich auf Stufe 12, 25, 40, 60 und 80.</p>`;
+    return `<div class="character-banner"><div class="character-seal" style="color:${currentClass.color}">${icon(classIcons[currentClass.id])}</div><div><h3>${escape(player.name || 'Aren')}</h3><p>${escape(currentClass.name)} · ${escape(currentClass.role)} · Stufe ${player.level || 1} / ${MAX_LEVEL}<br>${player.level>=MAX_LEVEL?'Höchste Stufe erreicht':`${format(player.xp)} / ${format(xpNeeded)} Erfahrung`} · ${format(player.skillPoints)} freie Talentpunkte</p></div></div><p class="panel-note">${escape(currentClass.description)}</p><div class="class-abilities">${Object.entries(currentClass.abilities).map(([key,ability])=>`<div>${icon(abilityIcon(ability,currentClass.id))}<strong>${escape(ability.name)}</strong><span>${key==='attack'?'J / Klick':key==='bolt'?'Q / 1':'F / 2'}${ability.cost?` · ${ability.cost} Mana`:''} · ${ability.cooldown} Sek.</span></div>`).join('')}</div><div class="stats-grid">${values.map(key=>`<div class="summary-stat"><span>${escape(statLabels[key])}</span><strong>${['crit','lifeSteal','cooldown','dodgeCooldown'].includes(key)?percent(stats[key]):Number(stats[key] || 0).toLocaleString('de-DE',{maximumFractionDigits:1})}</strong></div>`).join('')}</div><p class="panel-note"><button class="small-button" data-panel="talents">${icon('tree')}Neue Fähigkeiten lernen · ${getLearnedAbilities(this.game).length} / 3 erlernt</button></p><h3 class="section-title">Was du mit dir trägst</h3><div class="character-equipment">${this.equipmentSlots()}</div><p class="panel-note">${completed} von ${QUESTS.length} Questen abgeschlossen · ${(this.game.discovered || []).length} von ${REGIONS.length} Regionen entdeckt.<br>Mit jeder neuen Stufe erhältst du Talentpunkte. Neue Klassenpfade öffnen sich auf Stufe 12, 25, 40, 60 und 80.</p>`;
   }
 
   talents() {
@@ -321,7 +385,10 @@ export class GameUI {
     const currentClass=getClass(this.game.player.classId);
     const branches = [...new Set(skills.map(skill=>skill.branch))];
     const points = this.game.player?.skillPoints || 0;
-    return `<div class="talent-header"><span>${escape(currentClass.name)} · Verbinde die Pfade deiner Klasse.</span><strong>${points} Talentpunkt${points===1?'':'e'} verfügbar</strong></div><div class="talent-trees" style="--tree-columns:${Math.min(3,branches.length)}">${branches.map(branch=>`<section class="talent-tree"><h3>${escape(branch)}</h3><p>${escape(branchDescriptions[branch] || `Ein Weg der Klasse ${currentClass.name}.`)}</p>${skills.filter(skill=>skill.branch===branch).map(skill=> {
+    const tabs=`<div class="panel-tabs"><button data-talent-tab="abilities" class="${this.talentTab==='abilities'?'active':''}">Aktive Fähigkeiten</button><button data-talent-tab="passives" class="${this.talentTab==='passives'?'active':''}">Talentpfade</button></div>`;
+    const header=`<div class="talent-header"><span>${escape(currentClass.name)} · Stufe ${this.game.player.level}</span><strong>${points} Talentpunkt${points===1?'':'e'} verfügbar</strong></div>`;
+    if(this.talentTab==='abilities')return `${tabs}${header}${this.activeAbilities()}`;
+    return `${tabs}${header}<div class="talent-trees" style="--tree-columns:${Math.min(3,branches.length)}">${branches.map(branch=>`<section class="talent-tree"><h3>${escape(branch)}</h3><p>${escape(branchDescriptions[branch] || `Ein Weg der Klasse ${currentClass.name}.`)}</p>${skills.filter(skill=>skill.branch===branch).map(skill=> {
       const rank = Number(this.game.skills?.[skill.id]) || 0;
       const requires=skill.requires;
       const requirements=!requires?[]:Array.isArray(requires)?requires:[requires];
@@ -331,6 +398,15 @@ export class GameUI {
       const prerequisiteNames=requirements.map(requirement=>skills.find(entry=>entry.id===(typeof requirement==='string'?requirement:requirement.id))?.name || '').filter(Boolean);
       return `<div class="talent-node ${!requirementMet || !levelMet?'unavailable':''} ${rank?'learned':''}"><div class="talent-node-top"><div class="item-icon">${icon(branchIcons[branch] || classIcons[currentClass.id])}</div><div><h4>${escape(skill.name)}</h4><span class="talent-node-rank">RANG ${rank} / ${skill.maxRank} · STUFE ${skill.minLevel || 1}</span></div></div><p>${escape(skill.description)}</p><button class="small-button" data-command="learn" data-id="${escape(skill.id)}" ${canLearn?'':'disabled'}>${rank>=skill.maxRank?'Meisterhaft':`Lernen · ${skill.cost} Punkt${skill.cost===1?'':'e'}`}</button>${!levelMet?`<span class="talent-requirement">Benötigt Stufe ${skill.minLevel}</span>`:''}${!requirementMet?`<span class="talent-requirement">Benötigt ${escape(prerequisiteNames.join(', '))}</span>`:''}</div>`;
     }).join('')}</section>`).join('')}</div>`;
+  }
+
+  activeAbilities() {
+    const learned=getLearnedAbilities(this.game),abilities=ABILITIES.filter(ability=>ability.classId===this.game.player.classId);
+    return `<p class="panel-note">Deine Basisfähigkeiten bleiben auf Q und F. Lerne neue Techniken ab Stufe 4, 12 und 25 und belege zwei Zusatzplätze. Lernen verbraucht Talentpunkte; Belegen ist kostenlos.</p><div class="ability-loadout">${[0,1].map(slot=>`<label class="loadout-slot"><span>PLATZ ${slot+3} · ${this.game.abilityLoadout?.[slot]?'BELEGT':'FREI'}</span><select class="game-input" data-ability-loadout="${slot}" aria-label="Fähigkeit auf Platz ${slot+3}"><option value="">Keine Fähigkeit</option>${learned.map(ability=>`<option value="${ability.id}" ${this.game.abilityLoadout?.[slot]===ability.id?'selected':''}>${escape(ability.name)}</option>`).join('')}</select></label>`).join('')}</div><div class="learnable-abilities">${abilities.map(ability=>{
+      const known=Boolean(this.game.learnedAbilities?.[ability.id]),check=canLearnAbility(this.game,ability.id),required=ability.requires?getAbility(ability.requires):null;
+      const occupied=(this.game.abilityLoadout||[]).findIndex(id=>id===ability.id);
+      return `<article class="learnable-ability ${known?'learned':check.ok?'learnable':'locked'}"><div class="learnable-heading"><div class="item-icon">${icon(learnedIcon(ability))}</div><div><h3>${escape(ability.name)}</h3><span class="ability-state">${known?occupied>=0?`ERLERNT · AUF PLATZ ${occupied+3}`:'ERLERNT':check.ok?'LERNBAR':this.game.player.level<ability.level?`AB STUFE ${ability.level}`:'VORAUSSETZUNG FEHLT'}</span></div></div><p>${escape(ability.description)}</p><div class="ability-facts"><span>Stufe ${ability.level}</span><span>${ability.cost} Mana</span><span>${ability.cooldown} Sek. Abklingzeit</span>${required?`<span>Benötigt ${escape(required.name)}</span>`:''}</div>${known?`<div class="ability-equip-actions">${[0,1].map(slot=>`<button class="small-button ${occupied===slot?'subtle-button':''}" data-command="assign-ability" data-id="${ability.id}" data-slot="${slot}" ${occupied===slot?'disabled':''}>${occupied===slot?`Auf ${slot+3} belegt`:`Auf ${slot+3} belegen`}</button>`).join('')}</div>`:`<button class="small-button" data-command="learnAbility" data-id="${ability.id}" ${check.ok?'':'disabled'}>Lernen · ${ability.talentCost} Talentpunkt${ability.talentCost===1?'':'e'}</button>${!check.ok?`<p class="talent-requirement">${escape(check.reason)}</p>`:''}`}</article>`;
+    }).join('')}</div>`;
   }
 
   craft() {
@@ -449,7 +525,8 @@ export class GameUI {
 
   settings() {
     const abilities=getClass(this.game.player.classId).abilities;
-    return `<div class="settings-row"><div><h3>Klänge der Welt</h3><p>Musik und Klang geben deiner Reise eine Stimme. Der Ton beginnt nach deiner ersten Eingabe.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="sound" ${this.game.settings?.sound!==false?'checked':''}/>Ton an</label></div><div class="settings-row"><div><h3>Weniger Bewegung</h3><p>Reduziert Kamerabewegungen und Animationen in der Oberfläche.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="reducedMotion" ${this.game.settings?.reducedMotion?'checked':''}/>Aktiv</label></div><h3 class="section-title">Dein Spielstand</h3><p class="panel-note">Emberfall speichert deine Einzelspieler-Reise in diesem Browser und deine Gruppenreise auf dem Spielserver. Exportiere deinen Einzelspieler-Spielstand, um ihn zu sichern oder auf einem anderen Gerät weiterzuspielen.</p><div class="settings-actions"><button class="small-button" data-command="save">${icon('save')}Jetzt speichern</button><button class="small-button" data-command="export">Spielstand exportieren</button><button class="small-button" data-command="import">Spielstand laden</button><button class="small-button danger-button" data-panel="reset">Neue Reise</button></div><h3 class="section-title">Deine Hände, deine Fähigkeiten</h3><div class="settings-controls"><div class="summary-stat"><span>Bewegen</span><strong>WASD / Pfeiltasten</strong></div><div class="summary-stat"><span>${escape(abilities.attack.name)} / Ausweichen</span><strong>J oder Klick / Leertaste</strong></div><div class="summary-stat"><span>${escape(abilities.nova.name)} / ${escape(abilities.bolt.name)} / Heiltrank</span><strong>F / Q / R</strong></div><div class="summary-stat"><span>Sprechen, sammeln, pflanzen & ernten</span><strong>E</strong></div><div class="summary-stat"><span>Inventar / Talente / Handwerk / Questen</span><strong>I / T / B / L</strong></div><div class="summary-stat"><span>Weltkarte / Charakter / Gruppe</span><strong>M / C / P</strong></div></div>`;
+    const mobileMenu=`<div class="mobile-menu-shortcuts">${[["map","map","Weltkarte"],["character","shield","Charakter"],["inventory","bag","Inventar"],["talents","tree","Talente"],["craft","craft","Handwerk"],["journal","book","Questen"],["dungeons","portal","Dungeons"],["party","group","Gruppe"]].map(([panel,glyph,label])=>`<button class="small-button" data-panel="${panel}">${icon(glyph)}${label}</button>`).join("")}</div>`;
+    return `${mobileMenu}<div class="settings-row"><div><h3>Klänge der Welt</h3><p>Musik und Klang geben deiner Reise eine Stimme. Der Ton beginnt nach deiner ersten Eingabe.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="sound" ${this.game.settings?.sound!==false?'checked':''}/>Ton an</label></div><div class="settings-row"><div><h3>Weniger Bewegung</h3><p>Reduziert Kamerabewegungen und Animationen in der Oberfläche.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="reducedMotion" ${this.game.settings?.reducedMotion?'checked':''}/>Aktiv</label></div><h3 class="section-title">Dein Spielstand</h3><p class="panel-note">Emberfall speichert deine Einzelspieler-Reise in diesem Browser und deine Gruppenreise auf dem Spielserver. Exportiere deinen Einzelspieler-Spielstand, um ihn zu sichern oder auf einem anderen Gerät weiterzuspielen.</p><div class="settings-actions"><button class="small-button" data-command="save">${icon('save')}Jetzt speichern</button><button class="small-button" data-command="export">Spielstand exportieren</button><button class="small-button" data-command="import">Spielstand laden</button><button class="small-button danger-button" data-panel="reset">Neue Reise</button></div><h3 class="section-title">Deine Hände, deine Fähigkeiten</h3><p class="panel-note">Auf dem Handy: Joystick für acht Richtungen ziehen, Angriff für automatische Wiederholung halten. Bewegung, Angriff und eine weitere Aktion funktionieren gleichzeitig. Angriffe zielen auf den nächsten sichtbaren Gegner.</p><div class="settings-controls"><div class="summary-stat"><span>Bewegen</span><strong>WASD / Pfeiltasten</strong></div><div class="summary-stat"><span>${escape(abilities.attack.name)} / Ausweichen</span><strong>J oder Klick / Leertaste</strong></div><div class="summary-stat"><span>${escape(abilities.nova.name)} / ${escape(abilities.bolt.name)} / Heiltrank</span><strong>F / Q / R</strong></div><div class="summary-stat"><span>Erlernte Zusatzfähigkeiten</span><strong>3 / 4 · Im Talentfenster belegen</strong></div><div class="summary-stat"><span>Sprechen, sammeln, pflanzen & ernten</span><strong>E</strong></div><div class="summary-stat"><span>Inventar / Talente / Handwerk / Questen</span><strong>I / T / B / L</strong></div><div class="summary-stat"><span>Weltkarte / Charakter / Gruppe</span><strong>M / C / P</strong></div></div>`;
   }
 
   contractBoard() {
@@ -506,6 +583,9 @@ export class GameUI {
   showVictory() { if (this.activePanel==='victory') return; this.togglePanel('victory'); }
 
   async command(name, id, button) {
+    if(name==='inventory-page'){this.inventoryPage=Math.max(0,Number(id)||0);this.renderPanel();return;}
+    if(name==='open-equipment'){this.inventoryTab='equipment';this.inventoryPage=0;if(this.activePanel!=='inventory')this.togglePanel('inventory');else this.renderPanel();return;}
+    if(name==='assign-ability'){await this.assignAbility(Number(button.dataset.slot),id);return;}
     if(name==='open-contracts') {this.questTab='contracts';this.contractRegion=id;this.togglePanel('journal');return;}
     if (name==='resume') { this.closePanel(); return; }
     if (name==='selectClass') { if(this.game.selectClass(id)) {this.pendingClass=id;this.syncWelcome();this.update(true);this.elements['welcome-classes'].querySelector(`[data-id="${id}"]`)?.focus({preventScroll:true});}return; }

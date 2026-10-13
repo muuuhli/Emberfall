@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { startServer } from '../server.mjs';
 import { DUNGEONS, DUNGEON_ENEMIES } from '../src/dungeons.js';
 import { getClass } from '../src/classes.js';
+import { classPowerMultiplier } from '../src/balance.js';
 
 async function groupFixture(classes) {
   const running=await startServer({port:0,host:'127.0.0.1',storagePath:null,autoTick:false});
@@ -185,7 +186,7 @@ test('HTTP class ability authority heals nearby party members, rejects forged sp
     assert.equal((await fixture.command(0,{type:'action',name:'bolt',heal:999999,cost:0})).status,400);assert.equal(near.player.hp,100);assert.equal(healer.player.mana,mana);
     assert.equal((await fixture.command(0,{type:'method',name:'damagePlayer',args:[0]})).status,400);
     assert.equal((await fixture.command(0,{type:'action',name:'bolt'})).data.accepted,true);
-    const expectedHeal=healer.stats().spellDamage*skill.healMultiplier;
+    const expectedHeal=healer.stats().spellDamage*skill.healMultiplier*classPowerMultiplier('paladin','heal');
     assert.equal(near.player.hp,Math.min(near.stats().maxHp,100+expectedHeal));assert.equal(far.player.hp,100);
     assert.equal(healer.player.mana,mana-skill.cost);assert.equal(healer.cooldowns.bolt,skill.cooldown);
     assert.equal((await fixture.read(fixture.players[1])).player.hp,near.player.hp);

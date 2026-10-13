@@ -1,5 +1,6 @@
 import { getClass } from './classes.js';
 import { MAX_LEVEL } from './progression.js';
+import { BALANCE_VERSION } from './balance.js';
 
 export const RARITIES = {
   common: { name: 'Gewöhnlich', color: '#bdc3b0', weight: 0.62, bossWeight: 0, statMultiplier: 1, affixCount: 0, socketCount: 0 },
@@ -102,10 +103,11 @@ const addStats = (target, source = {}, multiplier = 1) => {
   return target;
 };
 const STAT_CAPS = { maxHp: 4000, mana: 2000, damage: 1200, armor: 150, crit: 0.3, speed: 100, spellDamage: 1600, manaRegen: 30, cooldown: 0.3, dodgeCooldown: 0.35, gatherYield: 8, lifeSteal: 0.2 };
+export const GEAR_STAT_CAPS = Object.freeze({...STAT_CAPS,crit:.12,lifeSteal:.08,cooldown:.14,dodgeCooldown:.2});
 const percentageStats = new Set(['crit', 'lifeSteal', 'cooldown', 'dodgeCooldown']);
 const labels = { maxHp: 'Leben', mana: 'Mana', damage: 'Waffenschaden', armor: 'Rüstung', crit: 'Kritische Treffer', speed: 'Tempo', spellDamage: 'Zauberkraft', manaRegen: 'Mana / Sek.', cooldown: 'Abklingzeitverkürzung', dodgeCooldown: 'Ausweichverkürzung', gatherYield: 'Sammelertrag', lifeSteal: 'Lebensraub' };
 
-function baseStats(itemBase, level, rarity) {
+function legacyBaseStats(itemBase, level, rarity) {
   const delta = level - 1;
   const stats = {};
   for (const [key, value] of Object.entries(itemBase.stats)) {
@@ -122,11 +124,66 @@ function baseStats(itemBase, level, rarity) {
   return stats;
 }
 
-function affixStats(affix, level, rarity, quality = 1) {
+/** Preserve serialized version-one values while deriving stronger version-two gear. */
+function baseStats(itemBase, level, rarity, version = BALANCE_VERSION) {
+  if(version===1)return legacyBaseStats(itemBase,level,rarity);
+  const delta=level-1,stats={};
+  const seed={...itemBase.stats};
+  if(itemBase.type==='armor'){
+    // Every armor body offers actual protection. Cloth trades some rating and
+    // health for mana, leather for mobility, plate for a larger defensive budget.
+    seed.maxHp??=10;seed.armor??=1;
+  }
+  const offenseSlot=itemBase.type==='weapon'?1:itemBase.type==='armor'?.18:.25;
+  const healthSlot=itemBase.type==='armor'?1:itemBase.type==='weapon'?.22:.30;
+  const armorSlot=itemBase.type==='armor'?1:itemBase.type==='weapon'?.14:.28;
+  const manaSlot=itemBase.type==='armor'?.7:itemBase.type==='weapon'?.5:.35;
+  for(const [key,value] of Object.entries(seed)){
+    let scaled=value;
+    if(key==='damage')scaled=value*(1+delta*.045)+delta*1.25*offenseSlot;
+    else if(key==='spellDamage')scaled=value*(1+delta*.045)+delta*1.9*offenseSlot+(itemBase.type==='weapon'?20:0);
+    else if(key==='maxHp')scaled=value*(1+delta*.045)+delta*3.1*healthSlot;
+    else if(key==='armor')scaled=value*(1+delta*.035)+delta*.45*armorSlot;
+    else if(key==='mana')scaled=value*(1+delta*.022)+delta*.85*manaSlot;
+    else if(key==='manaRegen')scaled=value*(1+delta*.012)+delta*.006*(itemBase.type==='charm'?.5:1);
+    else if(key==='speed')scaled=value*(1+delta*.002);
+    stats[key]=round(scaled*RARITIES[rarity].statMultiplier);
+  }
+  return stats;
+}
+
+const newAffixGrowth={power:{damage:.42},sorcery:{spellDamage:.55},vitality:{maxHp:2.3},ward:{armor:.1},mind:{mana:.8},renewal:{manaRegen:.021}};
+function affixStats(affix, level, rarity, quality = 1, version = BALANCE_VERSION) {
   const result = {};
   const rarityFactor = rarity === 'legendary' ? 1.4 : rarity === 'epic' ? 1.2 : 1;
-  for (const [stat, value] of Object.entries(affix.stats)) result[stat] = round((value + (level - 1) * (affix.perLevel[stat] || 0)) * quality * rarityFactor);
+  const growth=version===1?affix.perLevel:newAffixGrowth[affix.id]||affix.perLevel;
+  for (const [stat, value] of Object.entries(affix.stats)) result[stat] = round((value + (level - 1) * (growth[stat] || 0)) * quality * rarityFactor);
   return result;
+}
+
+function smartAffix(affixes,roll,characterClass,type,index){
+  const magic=characterClass.abilities.attack.stat==='spellDamage',hybrid=characterClass.id==='paladin';
+  const primary=magic?'sorcery':'power';
+  const weights=affixes.map(affix=>{
+    if(type==='weapon'&&index===0&&affix.id===primary)return 14;
+    if(affix.id===primary)return 5;
+    if(affix.id==='power'&&magic)return 0;
+    if(affix.id==='sorcery'&&!magic)return hybrid?4:.3;
+    if(affix.id==='harvester')return .4;
+    if(affix.id==='ward'||affix.id==='vitality')return type==='armor'?3:1;
+    return 1;
+  });
+  let target=roll()*weights.reduce((total,value)=>total+value,0);
+  for(let index=0;index<affixes.length;index++){target-=weights[index];if(target<0)return affixes[index];}
+  return affixes.at(-1);
+}
+
+function derivedAffix(affix,item){
+  const definition=AFFIXES.find(entry=>entry.id===affix?.id);
+  if(item.balanceVersion===BALANCE_VERSION||!definition)return affix?.stats;
+  const stat=Object.keys(definition.stats)[0],atQualityOne=affixStats(definition,item.level,item.rarity,1,1)[stat];
+  const quality=clamp((affix.stats?.[stat]||0)/atQualityOne,.85,1.15);
+  return affixStats(definition,item.level,item.rarity,quality,BALANCE_VERSION);
 }
 
 let fallbackSerial = 0;
@@ -162,13 +219,15 @@ export function generateLoot({ level = 1, tier = 1, boss = false, classId = 'gua
   };
   if (requestedRarity && !Object.hasOwn(RARITIES, requestedRarity)) throw new RangeError('Unknown loot rarity.');
   const rarity = requestedRarity || rollRarity(roll, boss, pity);
-  const eligible = ITEM_BASES.filter(item => item.minLevel <= currentLevel && (!item.classIds || item.classIds.includes(characterClass.id)));
+  const primaryStat=characterClass.abilities.attack.stat||'damage';
+  const eligible = ITEM_BASES.filter(item => item.minLevel <= currentLevel && (!item.classIds || item.classIds.includes(characterClass.id))&&
+    (baseId||item.type!=='weapon'||item.stats[primaryStat]>0));
   const itemBase = baseId ? eligible.find(item => item.id === baseId) : pick(eligible, roll);
   if (!itemBase) throw new RangeError('The requested loot base is unavailable for this class and level.');
   const candidates = AFFIXES.filter(affix => affix.types.includes(itemBase.type));
   const affixes = [];
   for (let index = 0; index < RARITIES[rarity].affixCount; index++) {
-    const affix = pick(candidates, roll);
+    const affix = smartAffix(candidates,roll,characterClass,itemBase.type,index);
     candidates.splice(candidates.indexOf(affix), 1);
     affixes.push({ id: affix.id, name: affix.name, stats: affixStats(affix, currentLevel, rarity, 0.85 + roll() * 0.3) });
   }
@@ -185,6 +244,7 @@ export function generateLoot({ level = 1, tier = 1, boss = false, classId = 'gua
     price: Math.round(itemBase.price * (1 + currentLevel * 0.06) * RARITIES[rarity].statMultiplier * (1 + RARITIES[rarity].affixCount * 0.3)),
     affixes, sockets: Array(RARITIES[rarity].socketCount).fill(null), setId: set?.id || null,
     source: String(source || 'world').slice(0, 80), power: 0, upgrade: 0, dungeonTier:tier,
+    balanceVersion:BALANCE_VERSION,classId:characterClass.id,
   };
   item.power = itemPower(item);
   if (pity && typeof pity === 'object') {
@@ -203,8 +263,14 @@ function gemData(gem) {
 
 /** item.stats is ONLY the base roll. Do not cache this combined result back into item.stats. */
 export function computeItemStats(item) {
-  const stats = addStats({}, item?.stats);
-  for (const affix of Array.isArray(item?.affixes) ? item.affixes : []) addStats(stats, affix?.stats);
+  const itemBase=ITEM_BASES.find(entry=>entry.id===item?.baseId);
+  // Legacy serialized rolls are still checked against their original formula.
+  // Only their runtime modifier layer uses the new canonical budget.
+  const rebalanceLegacy=itemBase&&item?.balanceVersion!==BALANCE_VERSION&&
+    Object.hasOwn(RARITIES,item.rarity)&&Number.isInteger(item.level)&&
+    statsMatch(item.stats,baseStats(itemBase,item.level,item.rarity,1));
+  const stats = addStats({},rebalanceLegacy?baseStats(itemBase,item.level,item.rarity):item?.stats);
+  for (const affix of Array.isArray(item?.affixes) ? item.affixes : []) addStats(stats,rebalanceLegacy?derivedAffix(affix,item):affix?.stats);
   const upgrade = Number.isInteger(item?.upgrade) ? clamp(item.upgrade, 0, 10) : 0;
   const dungeonTier=Number.isInteger(item?.dungeonTier)?clamp(item.dungeonTier,1,30):1;
   const upgradeFactor = 1.06 ** upgrade * (1+(dungeonTier-1)*.035);
@@ -213,6 +279,7 @@ export function computeItemStats(item) {
     const data = gemData(socket);
     if (data) addStats(stats, data.gem.stats, data.tier);
   }
+  for(const stat of Object.keys(stats))stats[stat]=round(clamp(stats[stat],0,GEAR_STAT_CAPS[stat]));
   return stats;
 }
 
@@ -248,12 +315,16 @@ export function validateLootItem(item) {
   const itemBase = ITEM_BASES.find(entry => entry.id === item.baseId);
   if (!itemBase || item.type !== itemBase.type || !Object.hasOwn(RARITIES, item.rarity)) return false;
   if (!Number.isInteger(item.level) || item.level < itemBase.minLevel || item.level > MAX_LEVEL) return false;
+  if(item.balanceVersion!=null&&item.balanceVersion!==1&&item.balanceVersion!==BALANCE_VERSION)return false;
+  if(item.balanceVersion===BALANCE_VERSION&&
+    (typeof item.classId!=='string'||getClass(item.classId).id!==item.classId||itemBase.classIds&&!itemBase.classIds.includes(item.classId)))return false;
+  const version=item.balanceVersion===BALANCE_VERSION?BALANCE_VERSION:1;
   if (item.upgrade != null && (!Number.isInteger(item.upgrade) || item.upgrade < 0 || item.upgrade > 10)) return false;
   if (item.dungeonTier != null && (!Number.isInteger(item.dungeonTier) || item.dungeonTier < 1 || item.dungeonTier > 30)) return false;
   if (typeof item.name !== 'string' || !item.name.length || item.name.length > 150 || typeof item.description !== 'string' || item.description.length > 500) return false;
   if (typeof item.icon !== 'string' || item.icon.length > 12 || !Number.isFinite(item.price) || item.price < 0 || item.price > 1e7) return false;
   if (!Number.isFinite(item.power) || item.power < 0 || item.power > 1e6) return false;
-  if (!statsMatch(item.stats, baseStats(itemBase, item.level, item.rarity))) return false;
+  if (!statsMatch(item.stats, baseStats(itemBase, item.level, item.rarity,version))) return false;
   const rarity = RARITIES[item.rarity];
   if (!Array.isArray(item.affixes) || item.affixes.length !== rarity.affixCount + (item.rarity === 'legendary' ? 1 : 0)) return false;
   const seen = new Set();
@@ -264,12 +335,13 @@ export function validateLootItem(item) {
     const normal = AFFIXES.find(entry => entry.id === affix.id);
     if (normal) {
       if (!normal.types.includes(item.type)) return false;
-      const minimum = affixStats(normal, item.level, item.rarity, 0.85);
-      const maximum = affixStats(normal, item.level, item.rarity, 1.15);
+      const minimum = affixStats(normal, item.level, item.rarity, 0.85,version);
+      const maximum = affixStats(normal, item.level, item.rarity, 1.15,version);
       if (Object.keys(affix.stats).length !== Object.keys(normal.stats).length || !Object.keys(normal.stats).every(key => Number.isFinite(affix.stats[key]) && affix.stats[key] >= minimum[key] - 0.00011 && affix.stats[key] <= maximum[key] + 0.00011)) return false;
     } else {
       const legendary = Object.values(LEGENDARY_AFFIXES).find(entry => entry.id === affix.id);
-      if (item.rarity !== 'legendary' || !legendary || !statsMatch(affix.stats, legendary.stats)) return false;
+      if (item.rarity !== 'legendary' || !legendary || !statsMatch(affix.stats, legendary.stats)||
+        version===BALANCE_VERSION&&legendary.id!==LEGENDARY_AFFIXES[item.classId].id) return false;
       legendaryCount++;
     }
   }
