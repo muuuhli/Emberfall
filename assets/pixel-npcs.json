@@ -1,0 +1,231 @@
+{
+  "file": "pixel-npcs.png",
+  "tileWidth": 32,
+  "tileHeight": 48,
+  "columns": 32,
+  "rows": 18,
+  "directions": [
+    "south",
+    "east",
+    "north",
+    "west"
+  ],
+  "poses": [
+    "idle",
+    "walk1",
+    "walk2",
+    "walk3",
+    "walk4",
+    "attack1",
+    "attack2",
+    "downed"
+  ],
+  "pivot": [
+    16,
+    40
+  ],
+  "pixelRatio": 1,
+  "normalized": true,
+  "filter": "nearest",
+  "source": "original authored integer-grid pixel clusters",
+  "generator": "../tools/build_pixel_characters.py",
+  "palette": [
+    {
+      "index": 0,
+      "name": "clear",
+      "hex": "#000000"
+    },
+    {
+      "index": 1,
+      "name": "ink",
+      "hex": "#252a2b"
+    },
+    {
+      "index": 2,
+      "name": "slate",
+      "hex": "#3c4145"
+    },
+    {
+      "index": 3,
+      "name": "barkdark",
+      "hex": "#594139"
+    },
+    {
+      "index": 4,
+      "name": "bark",
+      "hex": "#815a40"
+    },
+    {
+      "index": 5,
+      "name": "skinshade",
+      "hex": "#b17c52"
+    },
+    {
+      "index": 6,
+      "name": "skin",
+      "hex": "#dcad79"
+    },
+    {
+      "index": 7,
+      "name": "skinlight",
+      "hex": "#f0d29a"
+    },
+    {
+      "index": 8,
+      "name": "linen",
+      "hex": "#f4e4ba"
+    },
+    {
+      "index": 9,
+      "name": "ochreshade",
+      "hex": "#997443"
+    },
+    {
+      "index": 10,
+      "name": "ochre",
+      "hex": "#c5a45b"
+    },
+    {
+      "index": 11,
+      "name": "gold",
+      "hex": "#efd086"
+    },
+    {
+      "index": 12,
+      "name": "steelshade",
+      "hex": "#51626b"
+    },
+    {
+      "index": 13,
+      "name": "steel",
+      "hex": "#829797"
+    },
+    {
+      "index": 14,
+      "name": "silver",
+      "hex": "#b8c9bf"
+    },
+    {
+      "index": 15,
+      "name": "mossshade",
+      "hex": "#3f593e"
+    },
+    {
+      "index": 16,
+      "name": "moss",
+      "hex": "#668253"
+    },
+    {
+      "index": 17,
+      "name": "leaf",
+      "hex": "#9fa76b"
+    },
+    {
+      "index": 18,
+      "name": "redshade",
+      "hex": "#703a3c"
+    },
+    {
+      "index": 19,
+      "name": "scarlet",
+      "hex": "#ab5145"
+    },
+    {
+      "index": 20,
+      "name": "ember",
+      "hex": "#d47b52"
+    },
+    {
+      "index": 21,
+      "name": "iceshade",
+      "hex": "#396777"
+    },
+    {
+      "index": 22,
+      "name": "ice",
+      "hex": "#76a2ac"
+    },
+    {
+      "index": 23,
+      "name": "night",
+      "hex": "#514565"
+    },
+    {
+      "index": 24,
+      "name": "violet",
+      "hex": "#8c759c"
+    }
+  ],
+  "transparencyIndex": 0,
+  "license": "Original project artwork; repository owner may use, modify and distribute.",
+  "npcNames": {
+    "mira": "Mira",
+    "elin": "Elin",
+    "toma": "Toma",
+    "sera": "Sera",
+    "rowan": "Rowan",
+    "oren": "Oren",
+    "lys": "Lys",
+    "nami": "Nami",
+    "ivar": "Ivar",
+    "branna": "Branna",
+    "borin": "Borin",
+    "aelia": "Aelia",
+    "siv": "Siv",
+    "samir": "Samir",
+    "rhea": "Rhea",
+    "kael": "Kael",
+    "astra": "Astra",
+    "eos": "Eos"
+  },
+  "npcs": [
+    "mira",
+    "elin",
+    "toma",
+    "sera",
+    "rowan",
+    "oren",
+    "lys",
+    "nami",
+    "ivar",
+    "branna",
+    "borin",
+    "aelia",
+    "siv",
+    "samir",
+    "rhea",
+    "kael",
+    "astra",
+    "eos"
+  ],
+  "frameLayout": "column = directionIndex * 8 + poseIndex; row = actorIndex",
+  "frameCount": 576,
+  "nativeSize": [
+    1024,
+    864
+  ],
+  "animation": {
+    "walkFps": 8,
+    "walkPoseIndices": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "attackPoseIndices": [
+      5,
+      6
+    ],
+    "downedPoseIndex": 7
+  },
+  "sha256": "17f8303e2ec981c6d61adff2d96db1d969788f07b6e005558f50736f99fb3723",
+  "checks": {
+    "indexedPalette": true,
+    "colorsUsed": 25,
+    "binaryAlpha": true,
+    "allFramesNonempty": true,
+    "tileEdgesClear": true,
+    "stableGroundPivot": true,
+    "nearest2xAvailable": "pixel-npcs-2x.png"
+  }
+}
