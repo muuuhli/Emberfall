@@ -4,6 +4,7 @@ import { GameUI } from './ui.js';
 import { GameAudio } from './audio.js';
 import { NetworkClient } from './network.js';
 import { MobileInput, bindMobileControls, nearestVisibleEnemy } from './mobile-input.js';
+import { ENEMY_TYPES } from './catalog.js';
 
 const game=new Game();
 const network=new NetworkClient(game);game.networkClient=network;
@@ -14,7 +15,7 @@ game.onNotice=(text,tone)=>ui.showNotice(text,tone);
 game.onDialogue=npc=>ui.showDialogue(npc);
 game.onDeath=()=>ui.showDeath();
 game.onVictory=()=>ui.showVictory();
-game.onSound=event=>audio.play(event);
+game.onSound=(event,details)=>audio.play(event,details);
 
 const canvas=document.getElementById('world');
 const keyboardKeys=new Set(),touch=new MobileInput();
@@ -24,11 +25,14 @@ let attackRepeat=0;
 const syncKeys=()=>{game.keys.clear();for(const key of keyboardKeys)game.keys.add(key);for(const key of touch.keys())game.keys.add(key);};
 const clearInput=()=>{keyboardKeys.clear();touchControls.clear();game.keys.clear();game.aim=null;attackRepeat=0;};
 ui.onInputReset=clearInput;
+network.onWorldChange=clearInput;
 function performAction(action,autoAim=false) {
   if(blocked())return;
+  if(game.worldMode==='pvp'&&!['attack','bolt','nova','dash'].includes(action))return;
   audio.unlock();
   if(autoAim&&['attack','bolt','nova','skill0','skill1'].includes(action)) {
-    const target=nearestVisibleEnemy(game.player,game.world.enemies,renderer.bounds);
+    const targets=game.worldMode==='pvp'?(game.otherPlayers||[]).map(p=>({...p,alive:!p.dead})):game.world.enemies;
+    const target=nearestVisibleEnemy(game.player,targets,renderer.bounds);
     game.aim=target?{x:target.x,y:target.y}:null;
     if(target)game.player.face=Math.atan2(target.y-game.player.y,target.x-game.player.x);
     else {const move=touch.movement();if(move.x||move.y)game.player.face=Math.atan2(move.y,move.x);}
@@ -68,7 +72,7 @@ canvas.addEventListener('contextmenu',event=>event.preventDefault());
 document.addEventListener('pointerdown',()=>audio.unlock(),{once:true});
 window.addEventListener('resize',()=>{clearInput();renderer.resize();});
 window.visualViewport?.addEventListener('resize',()=>renderer.resize());
-window.addEventListener('beforeunload',()=>{if(game.started)game.save(false);});
+window.addEventListener('beforeunload',()=>{if(game.started)game.save(false);audio.dispose?.();});
 
 let last=performance.now(),hudTimer=0;
 function frame(now) {
@@ -87,6 +91,7 @@ function frame(now) {
     const angle=game.aim?Math.atan2(game.aim.y-game.player.y,game.aim.x-game.player.x):dx||dy?Math.atan2(dy,dx):game.player.face;
     network.sendInput(ui.currentPanel?[]:game.keys,angle);
   } else game.update(dt);
+  audio.update?.({regionId:game.regionAt().id,dungeonId:game.dungeonInstance?.id||null,boss:!!game.dungeonInstance?.bossEngaged&&!game.dungeonInstance?.bossDefeated||game.world.enemies.some(e=>e.alive&&e.aggro&&(ENEMY_TYPES[e.type]?.boss||e.boss||e.bossVariant)&&Math.hypot(e.x-game.player.x,e.y-game.player.y)<650),pvp:game.worldMode==='pvp'});
   renderer.draw(game,dt);
   hudTimer+=dt;
   if(hudTimer>.1||game.dirty) { ui.update();hudTimer=0;game.dirty=false; }

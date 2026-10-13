@@ -139,3 +139,26 @@ test('the ten journey companions have distinct unclipped native artwork and stab
     assert.equal(bounds.pivotX,102);assert.equal(bounds.pivotY,206);
   }
 });
+
+test('gothic props and class accents are original bounded native sprites in every direction', async()=>{
+  const {PIXEL_PROP_TYPES,PIXEL_CLASS_IDS}=await import('../src/pixel-world.js');const props=new Set(),classes=new Set();
+  assert.equal(PIXEL_PROP_TYPES.length,13);
+  for(const variant of PIXEL_PROP_TYPES){const s=getPixelSprite('prop',{variant},0);assert.equal(s.clippedPixels,0,variant);assert.ok(s.runs.length>25,variant);assert.ok(!props.has(digest(s)),variant);props.add(digest(s));}
+  for(const classId of PIXEL_CLASS_IDS){
+    const s=getPixelSprite('classAccent',{classId,accentPhase:'strike'});assert.ok(!classes.has(digest(s)),classId);classes.add(digest(s));
+    for(const accentPhase of ['strike','cast','dash'])for(const face of [0,Math.PI/2,Math.PI,Math.PI*1.5])for(const accentFrame of [0,1]){
+      const sprite=getPixelSprite('classAccent',{classId,accentPhase,face,accentFrame});assert.equal(sprite.clippedPixels,0,`${classId}/${accentPhase}/${face}`);assert.ok(sprite.pixels.every(p=>p<PIXEL_WORLD_PALETTE.length));
+    }
+  }
+  assert.notEqual(digest(getPixelSprite('classAccent',{classId:'flamecaller',accentPhase:'cast',accentFrame:0})),digest(getPixelSprite('classAccent',{classId:'flamecaller',accentPhase:'cast',accentFrame:1})));
+});
+
+test('pixel projectiles preserve an anchored core and hard 2x edges at all sixteen bearings',async()=>{
+  const {drawPixelProjectile}=await import('../src/pixel-world.js');
+  for(const variant of ['arrow','fire','frost','nature','holy','void','hostile'])for(let i=0;i<16;i++){
+    const sprite=getPixelSprite('projectile',{variant,angle:i*Math.PI/8});assert.equal(sprite.clippedPixels,0,`${variant}/${i}`);
+    const c=recordingContext(),bounds=drawPixelProjectile(c,{variant,angle:i*Math.PI/8,x:103.1,y:205.7});assert.equal(bounds.pivotX,104);assert.equal(bounds.pivotY,206);
+    assert.ok(c.calls.every(r=>[r.x,r.y,r.w,r.h].every(n=>n%2===0)));
+  }
+  assert.ok(pixelWorldCacheInfo().sprites<=192);
+});

@@ -576,6 +576,102 @@ function buildEnemy(type, frame, mirror, objectiveName = '') {
   return b.finish(`enemy:${type}:${frame}:${mirror?1:0}:${objectiveName}`, mirror);
 }
 
+export const PIXEL_PROP_TYPES=Object.freeze(['tombstone','bone_pile','skull_pike','banner','broken_pillar','raven_perch','cart_wreck','stone_lantern','reeds','frost_shards','ash_vent','drowned_marker','fungal_patch']);
+function worldProp(variant,frame,detail,key) {
+  const b=new Brush(48,58,[24,54]);b.shadow(variant==='cart_wreck'?21:14);
+  if(variant==='tombstone'){
+    b.poly([[-14,1],[-13,-28],[-7,-39],[4,-42],[13,-34],[14,1]],C.ink);b.poly([[-11,-1],[-10,-27],[-5,-36],[4,-38],[10,-32],[11,-1]],C.stone);b.line(-7,-30,-7,-6,C.grey,2);b.rect(-2,-29,4,18,C.dust);b.rect(-7,-24,14,3,C.dust);b.line(6,-19,2,-12,C.ink);b.line(2,-12,6,-6,C.ink);b.rect(-12,-4,6,2,C.leafDark);b.rect(4,-2,8,2,C.leaf);
+  }else if(variant==='bone_pile'){
+    for(const [x,y,a] of [[-14,-5,1],[-5,-9,-1],[4,-5,1],[11,-8,-1]]){b.line(x-4,y-a*3,x+6,y+a*3,C.dust,2);b.dot(x-4,y-a*3,C.ivory);b.dot(x+6,y+a*3,C.ivory);}
+    b.oval(0,-13,6,6,C.ink);b.oval(0,-14,5,4,C.ivory);b.rect(-4,-14,3,2,C.ironDark);b.rect(2,-14,3,2,C.ironDark);b.rect(-1,-11,2,2,C.woodDark);b.rect(-3,-8,7,2,C.grey);b.line(-6,-21,-14,-18,C.dust,2);b.line(7,-19,16,-16,C.ivory,2);
+  }else if(variant==='skull_pike'){
+    b.line(-1,1,0,-47,C.ink,5);b.line(-1,-1,0,-45,C.wood,3);b.oval(0,-41,7,7,C.ink);b.oval(0,-42,6,5,C.ivory);b.rect(-5,-43,3,3,C.woodDark);b.rect(2,-43,3,3,C.woodDark);b.rect(-1,-40,2,3,C.grey);b.rect(-4,-36,9,2,C.dust);b.poly([[0,-30],[12,-29],[8,-15],[2,-20]],C.emberDark);b.line(-5,-10,5,-10,C.barkLight);
+  }else if(variant==='banner'){
+    b.line(-12,1,-12,-48,C.ink,4);b.line(-12,0,-12,-47,C.bark,2);b.diamond(-12,-50,3,3,C.silver);b.line(-14,-44,20,-44,C.iron,2);const sway=frame?2:0;
+    b.poly([[-9,-43],[19,-43+sway],[16,-17+sway],[11,-20],[5,-13],[1,-19],[-7,-14]],C.ink);b.poly([[-8,-41],[16,-41+sway],[14,-21+sway],[10,-23],[5,-17],[0,-21],[-5,-18]],C.emberDark);b.line(-5,-36,13,-35+sway,C.barkLight);b.diamond(5,-30,4,6,C.dust);b.line(5,-34,5,-26,C.ash,2);b.rect(11,-25,3,4,C.clear);b.rect(-5,-20,2,3,C.clear);
+  }else if(variant==='broken_pillar'){
+    b.rect(-18,-6,37,8,C.ink);b.rect(-16,-5,33,5,C.iron);b.poly([[-11,-6],[-12,-31],[-7,-44],[0,-40],[6,-45],[12,-33],[11,-6]],C.ink);b.poly([[-8,-7],[-9,-30],[-5,-40],[0,-36],[6,-40],[9,-32],[8,-7]],C.stone);b.line(-5,-31,-5,-10,C.grey,2);b.line(3,-32,4,-10,C.dark,2);b.rect(-11,-27,23,4,C.dust);b.line(-2,-24,2,-17,C.ink);b.line(2,-17,-1,-13,C.ink);b.rect(13,-7,7,4,C.grey);
+  }else if(variant==='raven_perch'){
+    b.line(-3,1,-3,-32,C.woodDark,5);b.line(-3,-10,10,-24,C.bark,3);b.line(-3,-20,-15,-28,C.bark,2);b.line(0,-31,13,-32,C.woodDark,3);b.oval(9,-38,5,7,C.ink);b.poly([[5,-35],[0,-31],[6,-32]],C.ironDark);b.oval(10,-43,4,4,C.voidDark);b.dot(12,-44,C.pink);b.poly([[13,-43],[19,-41],[13,-40]],C.sand);b.line(7,-34,7,-31,C.grey);b.line(11,-34,11,-31,C.grey);
+  }else if(variant==='cart_wreck'){
+    for(const x of [-15,15]){b.oval(x,-6,7,8,C.ink);b.oval(x,-6,5,6,C.wood);b.line(x-4,-6,x+4,-6,C.barkLight);b.line(x,-11,x,-1,C.barkLight);}
+    b.rect(-20,-17,39,7,C.woodDark);b.line(-19,-22,17,-18,C.bark,4);for(let x=-17;x<18;x+=7)b.line(x,-17,x+2,-28+detail*2,C.barkLight,3);b.line(-18,-29,15,-24,C.wood,3);b.line(13,-13,22,-1,C.bark,3);b.rect(-8,-23,15,7,C.ironDark);b.rect(-7,-22,13,3,C.iron);
+  }else if(variant==='stone_lantern'){
+    b.rect(-13,-3,27,5,C.ink);b.rect(-11,-2,23,3,C.stone);b.rect(-4,-29,9,27,C.ink);b.rect(-2,-27,5,24,C.iron);b.poly([[-13,-27],[-13,-44],[0,-51],[13,-44],[13,-27]],C.ink);b.rect(-10,-41,21,13,C.ironDark);b.rect(-7,-39,15,10,C.emberDark);b.diamond(0,-35,3,5,frame?C.fire:C.flame);for(const x of [-9,-1,8])b.rect(x,-42,2,15,C.steel);b.line(-12,-27,12,-27,C.grey,2);b.poly([[-14,-43],[0,-51],[14,-43]],C.stone);
+  }else if(variant==='reeds'){
+    for(let i=0;i<7;i++){const x=-18+i*6,y=-15-(i%3)*7;b.line(x,0,x+(frame&&i%2?2:-1),y,C.iceDark,2);b.line(x,y+8,x+5,y+3,C.leafDark);b.rect(x-2,y-7,4,8,i%2?C.bark:C.sand);b.rect(x-1,y-6,2,3,C.dust);}
+    b.rect(-21,-2,40,3,C.forest);
+  }else if(variant==='frost_shards'){
+    for(const [x,y,h] of [[-13,-1,22],[0,1,36],[13,-2,25]]){b.poly([[x-6,y],[x-7,y-h+8],[x,y-h],[x+6,y-h+8],[x+5,y]],C.ink);b.poly([[x-4,y-1],[x-5,y-h+9],[x,y-h+3],[x+4,y-h+9],[x+3,y-1]],C.ice);b.line(x-1,y-h+5,x-2,y-3,C.iceLight,2);b.dot(x-2,y-h+7,C.snow);}
+  }else if(variant==='ash_vent'){
+    b.poly([[-23,0],[-15,-8],[-7,-15],[4,-17],[17,-9],[23,0],[10,3],[-12,3]],C.ink);b.poly([[-19,-1],[-12,-7],[-5,-12],[4,-14],[13,-7],[19,-1]],C.ash);b.line(-10,-4,-3,-7,C.emberDark,2);b.line(-3,-7,2,-4,frame?C.fire:C.ember,2);b.line(2,-4,11,-8,C.emberDark,2);b.dot(0,-6,C.flame);
+  }else if(variant==='drowned_marker'){
+    b.line(-1,1,-4,-45,C.ink,5);b.line(-1,0,-4,-43,C.wood,3);b.line(-14,-35,11,-37,C.bark,4);b.line(-14,-35,11,-36,C.dust);b.poly([[-11,-34],[10,-35],[7,-23],[-1,-26],[-10,-19]],C.iceDark);b.rect(-2,-32,3,10,C.grey);b.line(-16,-2,-13,-18,C.leafDark,2);b.line(15,0,16,-13,C.leaf,2);b.oval(3,-3,4,2,C.sand);
+  }else {
+    for(const [x,y,h] of [[-13,-1,11],[0,0,20],[14,1,13]]){b.rect(x-2,y-h+3,4,h-2,C.woodDark);b.rect(x-1,y-h+3,2,h-3,C.dust);b.poly([[x-8,y-h+4],[x-5,y-h-3],[x,y-h-6],[x+6,y-h-2],[x+8,y-h+4]],C.ink);b.poly([[x-6,y-h+2],[x-3,y-h-2],[x,y-h-4],[x+4,y-h-1],[x+6,y-h+2]],C.violet);b.dot(x-2,y-h-1,C.lilac);}
+  }
+  return b.finish(key);
+}
+
+export const PIXEL_CLASS_IDS=Object.freeze(['guardian','paladin','ranger','nightblade','flamecaller','frostweaver','druid','shadowbinder']);
+function classAccent(classId,phase,direction,frame,key) {
+  const b=new Brush(64,96,[32,70]),dx=[1,0,-1,0][direction],dy=[0,1,0,-1][direction];
+  const palettes={guardian:[C.ironDark,C.silver,C.fire],paladin:[C.woodDark,C.ivory,C.flame],ranger:[C.leafDark,C.lime,C.pollen],nightblade:[C.voidDark,C.lilac,C.pink],flamecaller:[C.emberDark,C.fire,C.flame],frostweaver:[C.iceDark,C.iceLight,C.snow],druid:[C.leafDark,C.leafLight,C.pollen],shadowbinder:[C.voidDark,C.violet,C.pink]};
+  const [dark,light,bright]=palettes[classId],ax=dx*12,ay=-16+dy*4,shift=frame?3:0;
+  if(phase==='dash'){
+    for(let i=0;i<5;i++){const x=-dx*(10+i*4)+(i%2?dy*4:-dy*4),y=-12-dy*(10+i*4)+(i%2?-dx*4:dx*4);b.diamond(x,y,i<2?3:2,i<2?4:2,i%2?light:dark);}
+    if(classId==='nightblade'||classId==='shadowbinder')b.poly([[-10,-30],[-19,-26],[-26,-14],[-15,-20]],light);
+    if(classId==='flamecaller')for(let i=0;i<4;i++)b.poly([[-12+i*7,-5],[-14+i*7,-14-shift],[-9+i*7,-10]],i%2?C.ember:C.fire);
+    if(classId==='frostweaver')for(let i=0;i<4;i++)b.diamond(-11+i*7,-7,2,5,C.iceLight);
+    if(classId==='druid'||classId==='ranger')for(let i=0;i<3;i++)b.poly([[-14+i*12,-5],[-18+i*12,-10],[-11+i*12,-12]],light);
+    if(classId==='guardian'||classId==='paladin'){b.line(-11,-3,11,-3,light,2);b.line(-6,-6,6,-6,bright);}
+  }else if(classId==='guardian'){
+    b.poly([[ax-5,ay+7],[ax-7,ay-9],[ax,ay-17],[ax+7,ay-9],[ax+5,ay+7],[ax,ay+10]],C.ink);b.poly([[ax-3,ay+5],[ax-5,ay-8],[ax,ay-13],[ax+5,ay-8],[ax+3,ay+5],[ax,ay+7]],dark);b.line(ax,ay-10,ax,ay+5,light,2);b.line(ax-3,ay-4,ax+3,ay-4,bright);
+  }else if(classId==='paladin'){
+    b.line(ax,ay+11,ax,ay-11,C.wood,3);b.rect(ax-9,ay-17-shift,18,8,C.ink);b.rect(ax-7,ay-15-shift,14,5,light);b.line(ax,ay-17-shift,ax,ay-9-shift,bright,2);b.line(ax-12,ay-12-shift,ax-9,ay-12-shift,bright);b.line(ax+10,ay-12-shift,ax+13,ay-12-shift,bright);
+  }else if(classId==='ranger'){
+    b.line(ax-5,ay-12,ax+3,ay,C.ink,3);b.line(ax+3,ay,ax-5,ay+12,C.ink,3);b.line(ax-4,ay-10,ax+1,ay,C.sand);b.line(ax+1,ay,ax-4,ay+10,C.sand);b.line(ax-4,ay-10,ax-4,ay+10,light);b.line(ax-11,ay,ax+10+shift,ay,C.ivory);b.poly([[ax+12+shift,ay],[ax+7+shift,ay-3],[ax+7+shift,ay+3]],bright);b.line(ax-10,ay,ax-14,ay-3,light);
+  }else if(classId==='nightblade'){
+    for(const side of [-1,1]){b.line(ax+side*6,ay+8,ax+side*10,ay-8,C.ink,4);b.line(ax+side*6,ay+5,ax+side*10,ay-6,light,2);b.dot(ax+side*10,ay-9-shift,bright);b.line(ax+side*4,ay+4,ax+side*9,ay+5,C.iron,2);}
+  }else if(classId==='flamecaller'){
+    b.line(ax,ay+12,ax,ay-16,C.wood,3);b.poly([[ax-8,ay-8],[ax-9,ay-18],[ax-3,ay-27-shift],[ax,ay-17],[ax+5,ay-25],[ax+9,ay-15],[ax+5,ay-8]],dark);b.poly([[ax-5,ay-11],[ax-5,ay-18],[ax-1,ay-23-shift],[ax+2,ay-16],[ax+5,ay-18],[ax+5,ay-11]],light);b.rect(ax-2,ay-17,4,5,bright);
+  }else if(classId==='frostweaver'){
+    b.line(ax,ay+12,ax,ay-17,C.iron,2);b.diamond(ax,ay-19,7,11,C.ink);b.diamond(ax,ay-19,5,9,light);b.line(ax,ay-25,ax,ay-12,bright,2);b.line(ax-12,ay-19,ax-8,ay-19,light);b.line(ax+9,ay-19,ax+12,ay-19,light);
+  }else if(classId==='druid'){
+    b.line(ax,ay+13,ax,ay-14,C.bark,3);b.line(ax,ay-7,ax-8,ay-20,dark,3);b.line(ax,ay-8,ax+8,ay-21,dark,3);for(const [x,y] of [[ax-8,ay-22],[ax+8,ay-23],[ax,ay-15]]){b.poly([[x-4,y],[x-2,y-5],[x+4,y-2],[x+2,y+2]],light);b.dot(x,y-2,bright);}
+  }else {
+    b.line(ax,ay+12,ax,ay-12,C.void,3);b.oval(ax,ay-18,9,11,C.ink);b.oval(ax,ay-19,7,9,dark);b.oval(ax,ay-19,5,3,light);b.rect(ax,ay-22,2,6,C.ink);b.dot(ax,ay-22,bright);for(const side of [-1,1])b.line(ax+side*8,ay-16,ax+side*14,ay-24-shift,light,2);
+  }
+  if(phase==='cast')for(let i=0;i<4;i++){const a=i*Math.PI/2+frame*.4,x=Math.round(Math.cos(a)*16),y=-5+Math.round(Math.sin(a)*6);b.diamond(x,y,2,3,i%2?bright:light);}
+  return b.finish(key);
+}
+
+function projectile(variant,direction,frame,key) {
+  const b=new Brush(40,40,[20,20]),a=direction*Math.PI/8,dx=Math.cos(a),dy=Math.sin(a),dot=(x,y,c)=>b.dot(dx*x-dy*y,dy*x+dx*y,c);
+  const colors=variant==='frost'?[C.iceDark,C.iceLight,C.snow]:variant==='fire'?[C.emberDark,C.fire,C.flame]:variant==='nature'?[C.leafDark,C.lime,C.pollen]:variant==='holy'?[C.bark,C.sand,C.flame]:variant==='hostile'?[C.ash,C.ember,C.pink]:[C.voidDark,C.lilac,C.pink];
+  const [dark,light,bright]=colors;
+  if(variant==='arrow'){
+    for(let x=-16;x<3;x++)dot(x,0,C.ivory);for(let x=-15;x<-10;x++){dot(x,-2,C.grey);dot(x,2,C.grey);}for(let x=0;x<6;x++)for(let y=-3+Math.floor(x/2);y<=3-Math.floor(x/2);y++)dot(x,y,C.silver);dot(5,0,C.ivory);
+  }else {
+    for(let x=-16;x<-3;x++){const width=Math.max(1,Math.floor((x+17)/5));for(let y=-width;y<=width;y++)if((x+y+frame)%3)dot(x,y,dark);}
+    for(let x=-4;x<=5;x++)for(let y=-4;y<=4;y++)if(Math.abs(x)+Math.abs(y)<7)dot(x,y,light);
+    for(let x=-2;x<=3;x++)for(let y=-2;y<=2;y++)if(Math.abs(x)+Math.abs(y)<4)dot(x,y,bright);
+    if(variant==='frost'){for(let x=-11;x<3;x++)dot(x,-2,C.snow);for(const [x,y] of [[-9,4],[-13,-3],[-4,-5]])dot(x,y,C.iceLight);}
+    if(variant==='fire')for(const [x,y] of [[-14,-4],[-10,4],[-6,-5]]){dot(x+frame,y,C.fire);dot(x+frame-1,y,C.emberDark);}
+    if(variant==='void'){dot(1,-2,C.ink);dot(1,2,C.ink);dot(0,0,C.white);}
+    if(variant==='nature')for(const [x,y] of [[-10,-3],[-7,4],[-3,-4]]){dot(x,y,C.leafLight);dot(x+1,y,C.pollen);}
+  }
+  return b.finish(key);
+}
+
+function impact(variant,frame,key) {
+  const b=new Brush(40,40,[20,20]),colors=variant==='frost'?[C.ice,C.iceLight,C.snow]:variant==='void'?[C.void,C.lilac,C.pink]:variant==='nature'?[C.leafDark,C.lime,C.pollen]:variant==='fire'?[C.emberDark,C.fire,C.flame]:[C.emberDark,C.ivory,C.flame];
+  const [dark,light,bright]=colors,reach=frame===0?7:frame===1?12:16;
+  for(let i=0;i<8;i++){const a=i*Math.PI/4,x=Math.round(Math.cos(a)*reach),y=Math.round(Math.sin(a)*reach);b.line(Math.round(x*.45),Math.round(y*.45),x,y,i%2?light:dark,2);b.dot(x,y,bright);}
+  if(frame<2){b.diamond(0,0,frame?4:6,frame?6:8,dark);b.line(-3,0,3,0,bright,2);b.line(0,-3,0,3,light,2);}
+  return b.finish(key);
+}
+
 export const PIXEL_COMPANION_TYPES = Object.freeze(['cinder_moth','ossuary_hound','root_wisp','rime_lynx','gloam_raven','tide_lantern','iron_beetle','moon_eidolon','blood_weasel','abyss_sentinel']);
 function companion(type,frame,mirror,key) {
   const quadruped=['ossuary_hound','rime_lynx','blood_weasel'].includes(type),b=new Brush(quadruped?48:40,42,[quadruped?24:20,37]);
@@ -673,6 +769,22 @@ function rock(variant, detail, key) {
 
 /** Inspectable native sprite. kind is 'enemy', 'companion', 'tree' or 'rock'. */
 export function getPixelSprite(kind, subject = {}, time = 0) {
+  if(kind==='prop'){
+    const variant=PIXEL_PROP_TYPES.includes(subject.variant)?subject.variant:'tombstone',detail=Math.abs(Math.floor((subject.x||0)*.07+(subject.y||0)*.03))%2,frame=['banner','reeds','stone_lantern','ash_vent'].includes(variant)?Math.floor(Math.max(0,time)*3)%2:0,key=`prop:${variant}:${frame}:${detail}`;
+    return remember(key,()=>worldProp(variant,frame,detail,key));
+  }
+  if(kind==='classAccent'){
+    const classId=PIXEL_CLASS_IDS.includes(subject.classId)?subject.classId:'guardian',phase=['cast','dash','strike'].includes(subject.accentPhase)?subject.accentPhase:'strike',face=subject.face||0,direction=((Math.round(face/(Math.PI/2))%4)+4)%4,frame=subject.accentFrame===1?1:0,key=`classAccent:${classId}:${phase}:${direction}:${frame}`;
+    return remember(key,()=>classAccent(classId,phase,direction,frame,key));
+  }
+  if(kind==='projectile'){
+    const variant=['arrow','fire','frost','nature','holy','void','hostile'].includes(subject.variant)?subject.variant:'void',direction=((Math.round((subject.angle||0)/(Math.PI/8))%16)+16)%16,frame=subject.projectileFrame===1?1:0,key=`projectile:${variant}:${direction}:${frame}`;
+    return remember(key,()=>projectile(variant,direction,frame,key));
+  }
+  if(kind==='impact'){
+    const variant=['frost','void','nature','fire','physical'].includes(subject.variant)?subject.variant:'physical',frame=Math.max(0,Math.min(2,subject.impactFrame||0)),key=`impact:${variant}:${frame}`;
+    return remember(key,()=>impact(variant,frame,key));
+  }
   if(kind==='companion'){
     const type=PIXEL_COMPANION_TYPES.includes(subject.visualType||subject.type)?subject.visualType||subject.type:'root_wisp',frame=frameFor({...subject,moving:subject.walking??subject.moving??true},time),mirror=Math.cos(subject.face||0)<-.25,key=`companion:${type}:${frame}:${mirror?1:0}`;
     return remember(key,()=>companion(type,frame,mirror,key));
@@ -717,6 +829,10 @@ function draw(c,sprite,x,y) {
   return {x:left,y:top,w:sprite.width*2,h:sprite.height*2,pivotX:left+sprite.pivot[0]*2,pivotY:top+sprite.pivot[1]*2};
 }
 
+export function drawPixelProp(c,p,time=0){return draw(c,getPixelSprite('prop',p,time),p.x,p.y);}
+export function drawPixelClassAccent(c,p){return draw(c,getPixelSprite('classAccent',p),p.x,p.y);}
+export function drawPixelProjectile(c,p){return draw(c,getPixelSprite('projectile',p),p.x,p.y);}
+export function drawPixelImpact(c,p){return draw(c,getPixelSprite('impact',p),p.x,p.y);}
 export function drawPixelTree(c,t,time=0) {return draw(c,getPixelSprite('tree',t,time),t.x,t.y);}
 export function drawPixelRock(c,r) {return draw(c,getPixelSprite('rock',r),r.x,r.y);}
 export function drawPixelCompanion(c,p,time=0){return draw(c,getPixelSprite('companion',p,time),p.x,p.y);}

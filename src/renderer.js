@@ -1,6 +1,7 @@
 import { ENEMY_TYPES, QUESTS } from './catalog.js';
 import { CLASSES, getClass } from './classes.js';
-import { drawPixelTree, drawPixelRock, drawPixelEnemy, drawPixelCompanion, pixelEnemyHeight } from './pixel-world.js';
+import { getRelic } from './relics.js';
+import { drawPixelTree, drawPixelRock, drawPixelEnemy, drawPixelCompanion, drawPixelProp, drawPixelClassAccent, drawPixelImpact, drawPixelProjectile, pixelEnemyHeight } from './pixel-world.js';
 
 export const TERRAIN_CHUNK_SIZE = 512;
 export const TERRAIN_CACHE_LIMIT = 64;
@@ -26,7 +27,7 @@ export class Renderer {
     this.lightCanvas=document.createElement('canvas');this.lightCtx=this.lightCanvas.getContext('2d');
     this.camera={x:520,y:1250};this.viewport={width:1000,height:700,dpr:1};this.scale=1;
     this.elapsed=0;this.terrainChunks=new Map();this.legacyBackground=null;this.background=null;
-    this.enemyPixelHeights=new Map();
+    this.enemyPixelHeights=new Map();this.decorationChunks=new Map();
     this.terrainStats={hits:0,misses:0,evictions:0,bytes:0,maxBytes:TERRAIN_CACHE_BYTES};
     this.setWorld(world);this.loadCharacterAtlas();
     this.resize();
@@ -51,9 +52,9 @@ export class Renderer {
   intersects(box,margin=40) {return box.x+box.w>this.bounds.x-margin&&box.x<this.bounds.x+this.bounds.w+margin&&box.y+box.h>this.bounds.y-margin&&box.y<this.bounds.y+this.bounds.h+margin;}
   setWorld(world) {
     for(const chunk of this.terrainChunks.values()){chunk.width=0;chunk.height=0;}
-    this.terrainChunks.clear();this.terrainStats.bytes=0;this.world=world;this.terrainWorldRef=world;
-    if(!world.isDungeon&&!this.legacyBackground)this.legacyBackground=this.createTerrain();
-    this.background=world.isDungeon?null:this.legacyBackground;
+    this.terrainChunks.clear();this.decorationChunks.clear();this.terrainStats.bytes=0;this.world=world;this.terrainWorldRef=world;
+    if(!world.isDungeon&&!world.isPvp&&!this.legacyBackground)this.legacyBackground=this.createTerrain();
+    this.background=world.isDungeon||world.isPvp?null:this.legacyBackground;
   }
   loadCharacterAtlas() {
     this.characterAtlas=null;this.npcAtlas=null;
@@ -85,11 +86,12 @@ export class Renderer {
     return canvas;
   }
   paintTerrainChunk(c,x0,y0) {
-    const world=this.world,size=TERRAIN_CHUNK_SIZE;
-    c.save();c.translate(-x0,-y0);rect(c,x0,y0,size,size,world.isDungeon?'#191923':'#24302d');
+    const world=this.world,size=TERRAIN_CHUNK_SIZE,interior=world.isDungeon||world.isPvp;
+    c.save();c.translate(-x0,-y0);rect(c,x0,y0,size,size,interior?'#191923':'#24302d');
     const inside=(x,y)=>x>=x0-120&&x<=x0+size+120&&y>=y0-120&&y<=y0+size+120;
-    const regionAt=(x,y)=>world.regions.find(r=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h)||world.regions[0];
-    if(world.isDungeon){
+    const regionAt=(x,y)=>(world.regions||[]).find(r=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h)||world.regions?.[0]||{id:'void',color:'#897688'};
+    if(interior){
+      if(world.isPvp){ellipse(c,world.width/2,world.height/2,world.width*.34,world.height*.35,'#79394615');line(c,[[world.width/2,40],[world.width/2,world.height-40]],'#baa3b317',2);}
       for(const room of world.rooms||[])rect(c,room.x,room.y,room.w,room.h,room.color||'#393b48');
       for(let y=Math.floor(y0/64)*64;y<y0+size;y+=64)for(let x=Math.floor(x0/64)*64;x<x0+size;x+=64){
         const n=noise(x*.3+y*.7);rounded(c,x+2,y+2,60,60,3,n>.5?'#78758014':'#14192530','#a19bb519');
@@ -102,7 +104,7 @@ export class Renderer {
         if(room.id==='boss')for(let i=0;i<8;i++){const a=i*TAU/8;poly(c,[[x+Math.cos(a)*132,y+Math.sin(a)*132],[x+Math.cos(a+.1)*102,y+Math.sin(a+.1)*102],[x+Math.cos(a-.1)*102,y+Math.sin(a-.1)*102]],'#c0a3d323');}
       }
     }else{
-      for(const region of world.regions){if(region.x+region.w<x0||region.x>x0+size||region.y+region.h<y0||region.y>y0+size)continue;rect(c,region.x,region.y,region.w,region.h,region.ground||'#2b3932');}
+      for(const region of world.regions||[]){if(region.x+region.w<x0||region.x>x0+size||region.y+region.h<y0||region.y>y0+size)continue;rect(c,region.x,region.y,region.w,region.h,region.ground||'#2b3932');}
       const seed=x0*17+y0*43+(world.seed||0);
       for(let i=0;i<360;i++){
         const x=x0+noise(seed+i*17)*size,y=y0+noise(seed+i*31)*size,region=regionAt(x,y),n=noise(seed+i*47);
@@ -115,7 +117,7 @@ export class Renderer {
         else if(n>.45)line(c,[[x-2,y],[x,y-4-n*4],[x,y],[x+3,y-5]],region.id==='sonnensteppe'?'#c5b77850':region.id==='jadeauen'?'#86b87b55':'#88a67b38',1);
         else ellipse(c,x,y,1.4,1.2,n>.2?'#162f3b44':'#e9ce8b39');
       }
-      for(const region of world.regions){
+      for(const region of world.regions||[]){
         if(region.id==='sturmkueste'&&y0<region.y+230&&x0+size>region.x&&x0<region.x+region.w){
           rect(c,region.x,region.y,region.w,155,'#365c6899');
           for(let y=region.y+20;y<region.y+170;y+=25)line(c,[[x0,y],[x0+size,y+Math.sin(y)*5]],'#c5dfd633',2);
@@ -219,12 +221,14 @@ export class Renderer {
     if(w!==this.terrainWorldRef)this.setWorld(w);
     const camera=game.camera||(game.camera={x:p.x,y:p.y});
     const halfW=this.viewport.width/(2*this.scale),halfH=this.viewport.height/(2*this.scale);
-    const targetX=clamp(p.x,halfW,w.width-halfW),targetY=clamp(p.y,halfH,w.height-halfH);
-    const ease=1-Math.exp(-Math.max(.001,Math.min(dt,.1))*7);camera.x+=(targetX-camera.x)*ease;camera.y+=(targetY-camera.y)*ease;
+    const smallX=w.width<=halfW*2,smallY=w.height<=halfH*2,targetX=smallX?w.width/2:clamp(p.x,halfW,w.width-halfW),targetY=smallY?w.height/2:clamp(p.y,halfH,w.height-halfH);
+    const ease=1-Math.exp(-Math.max(.001,Math.min(dt,.1))*7);camera.x=smallX?targetX:camera.x+(targetX-camera.x)*ease;camera.y=smallY?targetY:camera.y+(targetY-camera.y)*ease;
     this.camera={x:Math.round(camera.x/2)*2,y:Math.round(camera.y/2)*2};
     this.bounds={x:this.camera.x-halfW,y:this.camera.y-halfH,w:halfW*2,h:halfH*2};
     this.worldLabels=[];this.eventWarnings=new Set();
-    const waypoint=typeof game.waypointTarget==='function'?game.waypointTarget():game.waypoint;
+    const pvp=w.isPvp||game.worldMode==='pvp';
+    const opponent=pvp?[...(game.otherPlayers||[]),...(game.partyPlayers||[])].map(raw=>raw.player||raw).filter(other=>other!==p&&other.id!==p.id&&!other.dead&&!other.downed&&other.hp>0&&Number.isFinite(other.x)&&Number.isFinite(other.y)).sort((a,b)=>Math.hypot(a.x-p.x,a.y-p.y)-Math.hypot(b.x-p.x,b.y-p.y))[0]:null;
+    const waypoint=pvp?(opponent?{x:opponent.x,y:opponent.y,id:opponent.id,kind:'pvpOpponent',label:'Gegner',distance:Math.hypot(opponent.x-p.x,opponent.y-p.y)}:null):typeof game.waypointTarget==='function'?game.waypointTarget():game.waypoint;
     this.activeWaypoint=Number.isFinite(waypoint?.x)&&Number.isFinite(waypoint?.y)?waypoint:null;
     c.setTransform(1,0,0,1,0,0);rect(c,0,0,this.worldCanvas.width,this.worldCanvas.height,'#151c21');
     c.save();c.translate(this.screenOrigin.x/2,this.screenOrigin.y/2);c.scale(.5,.5);
@@ -232,29 +236,30 @@ export class Renderer {
     const amplitude=game.shake*16;
     const shakeX=shaking?Math.round(Math.sin(this.elapsed*71)*amplitude/2)*2:0,shakeY=shaking?Math.round(Math.cos(this.elapsed*59)*amplitude*.55/2)*2:0;
     c.translate(shakeX-this.camera.x,shakeY-this.camera.y);
-    this.drawTerrain(c);
-    if(this.activeWaypoint&&this.visible(this.activeWaypoint.x,this.activeWaypoint.y,60))this.waypointBeacon(c,this.activeWaypoint,game);
+    this.drawTerrain(c);this.waterDetails(c,game);
+    if(this.activeWaypoint&&this.activeWaypoint.kind!=='pvpOpponent'&&this.visible(this.activeWaypoint.x,this.activeWaypoint.y,60))this.waypointBeacon(c,this.activeWaypoint,game);
     for(const hazard of game.hazards||[])if(this.visible(hazard.x,hazard.y,(hazard.radius||80)+20))this.hazard(c,hazard,game);
     for(const portal of w.dungeonEntrances||[])if(this.visible(portal.x,portal.y,150))this.portal(c,portal,game);
     if(w.dungeonExit&&this.visible(w.dungeonExit.x,w.dungeonExit.y,140))this.portal(c,{...w.dungeonExit,exit:true},game);
-    for(const plot of w.plots)if(this.visible(plot.x,plot.y))this.plot(c,plot,game.time);
-    for(const s of w.shrines)if(this.visible(s.x,s.y))this.shrine(c,s,game);
+    for(const plot of w.plots||[])if(this.visible(plot.x,plot.y))this.plot(c,plot,game.time);
+    for(const s of w.shrines||[])if(this.visible(s.x,s.y))this.shrine(c,s,game);
     for(const object of w.puzzleObjects||[])if(this.visible(object.x,object.y,150))this.puzzleObject(c,object,game);
-    for(const e of w.enemies)if(e.alive&&e.phase==='windup'&&this.visible(e.telegraphX??e.x,e.telegraphY??e.y,Math.max(100,e.telegraphRange||0,e.telegraphChargeDistance||0,e.telegraphExtraFan?.range||0)))this.telegraph(c,e,game);
+    for(const e of w.enemies||[])if(e.alive&&e.phase==='windup'&&this.visible(e.telegraphX??e.x,e.telegraphY??e.y,Math.max(100,e.telegraphRange||0,e.telegraphChargeDistance||0,e.telegraphExtraFan?.range||0)))this.telegraph(c,e,game);
     for(const d of game.drops||[])if(this.visible(d.x,d.y))this.drop(c,d,game);
     const actors=[];
     this.interactionFocusGame=game;this.interactionFocus=typeof game.nearby==='function'?game.nearby()?.object?.id:null;
-    const objects=game.worldObjects||w.worldObjects||w.interactions||[];
+    const objects=w.isPvp?[]:game.worldObjects||w.worldObjects||w.interactions||[];
+    for(const ornament of this.worldDecorations())if(this.visible(ornament.x,ornament.y,100))actors.push({y:ornament.y,draw:()=>this.decoration(c,ornament,game)});
     for(const object of w.eventObjects||[])if(!object.hidden&&this.visible(object.x,object.y,180))actors.push({y:object.y,draw:()=>this.worldEventObject(c,object,game)});
     for(const object of objects)if(!object.removed&&this.visible(object.x,object.y,130))actors.push({y:object.y,draw:()=>this.worldObject(c,object,game)});
-    for(const r of w.rocks)if(this.visible(r.x,r.y))actors.push({y:r.y,draw:()=>this.rock(c,r)});
-    for(const s of w.structures)if(this.intersects(s,80))actors.push({y:s.type?.startsWith('dungeon_')?s.y+s.h:s.y+s.h*.87,draw:()=>this.structure(c,s,game)});
-    for(const s of w.walls||[])if(!w.structures.some(other=>other.id===s.id)&&this.intersects(s,80))actors.push({y:s.y+s.h,draw:()=>this.structure(c,{...s,type:'dungeon_wall'},game)});
-    for(const t of w.trees)if(this.visible(t.x,t.y,180))actors.push({y:t.y,draw:()=>this.tree(c,t,p)});
-    for(const n of w.nodes)if(this.visible(n.x,n.y))actors.push({y:n.y,draw:()=>this.node(c,n,game)});
-    for(const ch of w.chests)if(this.visible(ch.x,ch.y))actors.push({y:ch.y,draw:()=>this.chest(c,ch)});
+    for(const r of w.rocks||[])if(this.visible(r.x,r.y))actors.push({y:r.y,draw:()=>this.rock(c,r)});
+    for(const s of w.structures||[])if(this.intersects(s,80))actors.push({y:s.type?.startsWith('dungeon_')?s.y+s.h:s.y+s.h*.87,draw:()=>this.structure(c,s,game)});
+    for(const s of w.walls||[])if(!(w.structures||[]).some(other=>other.id===s.id)&&this.intersects(s,80))actors.push({y:s.y+s.h,draw:()=>this.structure(c,{...s,type:'dungeon_wall'},game)});
+    for(const t of w.trees||[])if(this.visible(t.x,t.y,180))actors.push({y:t.y,draw:()=>this.tree(c,t,p)});
+    for(const n of w.nodes||[])if(this.visible(n.x,n.y))actors.push({y:n.y,draw:()=>this.node(c,n,game)});
+    for(const ch of w.chests||[])if(this.visible(ch.x,ch.y))actors.push({y:ch.y,draw:()=>this.chest(c,ch)});
     for(const npc of game.npcs||w.npcs||[])if(this.visible(npc.x,npc.y))actors.push({y:npc.y,draw:()=>this.person(c,npc,game,false)});
-    for(const e of w.enemies)if(e.alive&&this.visible(e.x,e.y,190))actors.push({y:e.y,draw:()=>this.enemy(c,e,game)});
+    for(const e of w.enemies||[])if(e.alive&&this.visible(e.x,e.y,190))actors.push({y:e.y,draw:()=>this.enemy(c,e,game)});
     for(const summon of game.summons||[])if(this.visible(summon.x,summon.y))actors.push({y:summon.y,draw:()=>this.summon(c,summon,game)});
     const teammates=game.partyPlayers||game.otherPlayers||[];
     const seen=new Set([p.id]);
@@ -271,6 +276,49 @@ export class Renderer {
     display.restore();this.worldLabels=null;
     this.waypointIndicator(display,game);
 
+  }
+  worldDecorations() {
+    if(this.world.isPvp)return [];
+    const size=TERRAIN_CHUNK_SIZE,b=this.bounds,w=this.world,result=[];
+    const themes={daemmerhain:['tombstone','raven_perch','bone_pile','stone_lantern'],frostgrat:['frost_shards','broken_pillar','skull_pike'],aschenmoor:['drowned_marker','tombstone','reeds'],glutoede:['ash_vent','skull_pike','banner'],sonnensteppe:['cart_wreck','banner','broken_pillar'],jadeauen:['reeds','fungal_patch','bone_pile'],sturmkueste:['drowned_marker','cart_wreck','reeds'],dornwildnis:['fungal_patch','skull_pike','banner'],obsidianpass:['broken_pillar','ash_vent','stone_lantern'],mondbruch:['broken_pillar','stone_lantern','tombstone'],permafrost:['frost_shards','cart_wreck','broken_pillar'],sandsenke:['bone_pile','broken_pillar','banner'],traumsenke:['fungal_patch','tombstone','raven_perch'],blutmark:['banner','skull_pike','cart_wreck'],sternensund:['broken_pillar','drowned_marker','stone_lantern'],nexusriss:['skull_pike','ash_vent','broken_pillar']};
+    const clear=(x,y)=>!(w.structures||[]).some(o=>o.blocking!==false&&x>o.x-30&&x<o.x+o.w+30&&y>o.y-30&&y<o.y+o.h+30)&&
+      ![...(w.nodes||[]),...(w.plots||[]),...(w.chests||[]),...(w.shrines||[]),...(w.npcs||[]),...(w.interactions||[]),...(w.eventObjects||[])].some(o=>Math.hypot(x-o.x,y-o.y)<(w.shrines?.includes(o)?120:50))&&
+      !(w.enemies||[]).some(o=>Math.hypot(x-(o.homeX??o.x),y-(o.homeY??o.y))<50)&&!(w.trees||[]).some(o=>Math.hypot(x-o.x,y-o.y)<45*(o.scale||1))&&
+      !(w.paths||[]).some(path=>(path.points||[]).slice(1).some((v,i)=>{const a=path.points[i],dx=v[0]-a[0],dy=v[1]-a[1],t=clamp(((x-a[0])*dx+(y-a[1])*dy)/(dx*dx+dy*dy||1),0,1);return Math.hypot(x-a[0]-t*dx,y-a[1]-t*dy)<(path.width||40)/2+16;}));
+    const x0=Math.max(0,Math.floor((b.x-80)/size)),x1=Math.min(Math.ceil(w.width/size)-1,Math.floor((b.x+b.w+80)/size)),y0=Math.max(0,Math.floor((b.y-80)/size)),y1=Math.min(Math.ceil(w.height/size)-1,Math.floor((b.y+b.h+80)/size));
+    for(let row=y0;row<=y1;row++)for(let column=x0;column<=x1;column++){
+      const key=`${column}:${row}`;let props=this.decorationChunks.get(key);
+      if(!props){props=[];const seed=(w.seed||0)+column*7717+row*14591;
+        for(let i=0;i<16&&props.length<3;i++){
+          const x=Math.round((column*size+32+noise(seed+i*131)*448)/2)*2,y=Math.round((row*size+32+noise(seed+i*197)*448)/2)*2;
+          if(x>w.width-30||y>w.height-30||!clear(x,y)||w.isDungeon&&!(w.rooms||[]).some(r=>x>r.x+25&&x<r.x+r.w-25&&y>r.y+25&&y<r.y+r.h-25))continue;
+          const region=(w.regions||[]).find(r=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h),choices=w.isDungeon?['bone_pile','tombstone','broken_pillar','stone_lantern']:themes[region?.id]||['bone_pile','broken_pillar','banner'];
+          props.push({x,y,variant:choices[Math.floor(noise(seed+i*283)*choices.length)]});
+        }
+        if(this.decorationChunks.size>=TERRAIN_CACHE_LIMIT)this.decorationChunks.delete(this.decorationChunks.keys().next().value);
+      }else this.decorationChunks.delete(key);
+      this.decorationChunks.set(key,props);result.push(...props);
+    }
+    return result;
+  }
+  decoration(c,prop,game) {
+    c.save();if(game.player.y<prop.y&&Math.hypot(game.player.x-prop.x,game.player.y-prop.y+30)<42)c.globalAlpha=.5;
+    drawPixelProp(c,prop,game.settings?.reducedMotion?0:game.time);
+    if(prop.variant==='stone_lantern')glow(c,prop.x,prop.y-68,55,'#dba66d1c');c.restore();
+  }
+  waterDetails(c,game) {
+    if(this.world.isPvp)return;
+    const phase=game.settings?.reducedMotion?0:Math.floor(game.time*3)%4,river=this.world.river||[];let budget=30;
+    const ripple=(x,y,width)=>{if(budget<=0||!this.visible(x,y,40))return;budget--;x=Math.round(x/2)*2;y=Math.round(y/2)*2;rect(c,x-width/2+phase*2,y,width,2,'#7797a050');rect(c,x-width/2+4,y+4,width-8,2,'#adbbbf25');};
+    for(let i=1;i<river.length;i++){const a=river[i-1],b=river[i];for(let j=0;j<6&&budget>0;j++){const t=(j+.5)/6;ripple(a[0]+(b[0]-a[0])*t-15+(j%2)*20,a[1]+(b[1]-a[1])*t,28);}}
+    for(const pond of this.world.landmarks||[])if(pond.type==='pond'&&this.visible(pond.x,pond.y,(pond.r||100)+40))for(let i=0;i<8&&budget>0;i++){const a=i*2.4,r=(pond.r||100)*(.22+(i%3)*.17);ripple(pond.x+Math.cos(a)*r,pond.y+Math.sin(a)*r*.45,24);}
+  }
+  relicAura(c,p,relic,game) {
+    const angle=p.face||0,x=Math.round((p.x+Math.cos(angle)*20)/2)*2,y=Math.round((p.y-39+Math.sin(angle)*6)/2)*2,color=relic.color,t=game.settings?.reducedMotion?0:game.time;
+    glow(c,x,y,23,`${color}20`);
+    if(relic.aura==='moon'){c.beginPath();c.arc(x,y,9,.28*Math.PI,1.72*Math.PI);c.strokeStyle=color;c.lineWidth=2;c.stroke();rect(c,x+4,y-4,2,2,'#d9edf4');}
+    else {for(const [dx,dy] of [[0,-8],[8,0],[0,8],[-8,0]])poly(c,[[x+dx,y+dy],[x+dx*.45-dy*.18,y+dy*.45+dx*.18],[x+dx*.45+dy*.18,y+dy*.45-dx*.18]],color);}
+    for(let i=0;i<2;i++){const a=t*.8+i*Math.PI;rect(c,Math.round((x+Math.cos(a)*13)/2)*2,Math.round((y+Math.sin(a)*9)/2)*2,2,2,color);}
   }
   gothicGround(c,x0,y0,size) {
     const world=this.world,seed=(world.seed||0)+x0*13+y0*37;
@@ -296,7 +344,7 @@ export class Renderer {
       }
     }
     // Small relic fields: repeatable, sparse silhouettes, never collision walls.
-    const region=world.regions.find(r=>x0+size/2>=r.x&&x0+size/2<r.x+r.w&&y0+size/2>=r.y&&y0+size/2<r.y+r.h);
+    const region=(world.regions||[]).find(r=>x0+size/2>=r.x&&x0+size/2<r.x+r.w&&y0+size/2>=r.y&&y0+size/2<r.y+r.h);
     if(!world.isDungeon&&region&&!['daemmerhain','jadeauen','sonnensteppe'].includes(region.id))for(let i=0;i<4;i++){
       const x=x0+noise(seed+i*373)*size,y=y0+noise(seed+i*509)*size;
       ellipse(c,x+4,y+3,15,5,'#050b174a');rect(c,x-3,y-13,6,14,'#6e6e6b88');rect(c,x-9,y-9,18,4,'#8c8b7d88');line(c,[[x,y-11],[x,y]],'#bfbaa13b',1);
@@ -318,7 +366,8 @@ export class Renderer {
   waypointIndicator(c,game) {
     const target=this.activeWaypoint;if(!target)return;
     const targetScreen=this.worldToScreen(target.x,target.y),w=this.viewport.width,h=this.viewport.height;
-    if(targetScreen.x>26&&targetScreen.x<w-26&&targetScreen.y>65&&targetScreen.y<h-90)return;
+    const hostile=target.kind==='pvpOpponent';
+    if(hostile?targetScreen.x>=0&&targetScreen.x<=w&&targetScreen.y>=0&&targetScreen.y<=h:targetScreen.x>26&&targetScreen.x<w-26&&targetScreen.y>65&&targetScreen.y<h-90)return;
     const playerScreen=this.worldToScreen(game.player.x,game.player.y),angle=Math.atan2(targetScreen.y-playerScreen.y,targetScreen.x-playerScreen.x),dx=Math.cos(angle),dy=Math.sin(angle);
     const mobile=w<700,left=mobile?26:32,right=w-(mobile?24:36),top=mobile?86:80,bottom=h-(mobile?172:110);
     const usableBottom=Math.max(top+35,bottom),cx=clamp(playerScreen.x,left,right),cy=clamp(playerScreen.y,top,usableBottom);
@@ -328,8 +377,9 @@ export class Renderer {
     // small bearing marker on a clear edge of the playable world.
     if(mobile){if(x>w-115&&y<240)y=240;if(x>w-115&&y>240&&y<365)y=dy<0?240:375;if(x<190&&y<215)y=215;}
     else {if(x>w-270&&y<220)y=220;else if(x>w-270&&y>230&&y<610)y=dy<0?220:620;if(x<340&&y<155)y=165;}
-    c.save();c.translate(x,y);ellipse(c,0,0,17,17,'#15121dee');c.beginPath();c.arc(0,0,16,0,TAU);c.strokeStyle='#ae8b58';c.lineWidth=1;c.stroke();c.rotate(angle);
-    poly(c,[[9,0],[-3,-6],[-1,0],[-3,6]],'#e8c992');line(c,[[-8,-4],[-5,0],[-8,4]],'#a78961',1.5);c.restore();
+    c.save();c.translate(x,y);ellipse(c,0,0,17,17,'#15121dee');c.beginPath();c.arc(0,0,16,0,TAU);c.strokeStyle=hostile?'#c57582':'#ae8b58';c.lineWidth=1;c.stroke();c.rotate(angle);
+    poly(c,[[9,0],[-3,-6],[-1,0],[-3,6]],hostile?'#f0a0ac':'#e8c992');line(c,[[-8,-4],[-5,0],[-8,4]],hostile?'#be6f80':'#a78961',1.5);c.restore();
+    if(hostile){c.font='10px "Inter",system-ui,sans-serif';const caption=`Gegner · ${Math.round(target.distance)} Schritte`,rightEdge=x>w/2,captionX=x+(rightEdge?-24:24),captionWidth=c.measureText(caption).width+12;rounded(c,rightEdge?captionX-captionWidth:captionX,y-10,captionWidth,20,3,'#15121dee');text(c,caption,captionX+(rightEdge?-6:6),y,10,'#efa0ac',rightEdge?'right':'left');}
     // The HUD already names the destination; the bearing stays one small icon.
   }
   worldEventObject(c,o,game) {
@@ -421,7 +471,7 @@ export class Renderer {
     const mask=this.lightCtx,p=game.player,b=this.bounds;
     mask.setTransform(1,0,0,1,0,0);mask.clearRect(0,0,this.lightCanvas.width,this.lightCanvas.height);
     const contrast=game.settings?.highContrast||game.settings?.contrast==='high';
-    rect(mask,0,0,this.lightCanvas.width,this.lightCanvas.height,this.world.isDungeon?(contrast?'#07081222':'#07081265'):(contrast?'#080d1620':'#080d1652'));
+    rect(mask,0,0,this.lightCanvas.width,this.lightCanvas.height,this.world.isPvp?'#08081224':this.world.isDungeon?(contrast?'#07081222':'#07081265'):(contrast?'#080d1620':'#080d1652'));
     mask.save();mask.translate(this.screenOrigin.x/2,this.screenOrigin.y/2);mask.scale(.5,.5);mask.translate(shakeX-this.camera.x,shakeY-this.camera.y);mask.globalCompositeOperation='destination-out';
     const sources=[{x:p.x,y:p.y-22,r:230,a:.88}];
     if(this.activeWaypoint&&this.visible(this.activeWaypoint.x,this.activeWaypoint.y,100))sources.push({x:this.activeWaypoint.x,y:this.activeWaypoint.y,r:80,a:.7});
@@ -439,7 +489,7 @@ export class Renderer {
     c.save();c.setTransform(1,0,0,1,0,0);c.drawImage(this.lightCanvas,0,0);c.restore();
     // A few broad, slow mist ribbons preserve enemy and floor-edge visibility.
     const still=game.settings?.reducedMotion,phase=still?0:this.elapsed*.06;
-    for(let i=0;i<3;i++){
+    for(let i=0;i<(this.world.isPvp?1:3);i++){
       const x=b.x+b.w*(.15+i*.39)+Math.sin(phase+i)*65,y=b.y+b.h*(.28+i*.28)+Math.cos(phase*.8+i)*23;
       const mist=c.createRadialGradient(x,y,0,x,y,b.w*.5);mist.addColorStop(0,this.world.isDungeon?'#b5a5cb08':'#afbbc70b');mist.addColorStop(1,'transparent');ellipse(c,x,y,b.w*.5,35+i*8,mist);
     }
@@ -490,6 +540,12 @@ export class Renderer {
   }
   hazard(c,h,game) {
     const radius=h.radius||100,color=h.color||'#df7568',pending=(h.windup||0)>0||h.pending;
+    if(h.pvp&&['line','cone'].includes(h.shape)){
+      const angle=h.angle||0,length=h.length||85,progress=clamp(1-(h.life||0)/(h.maxLife||1),0,1);
+      if(h.shape==='line'){const dx=Math.cos(angle),dy=Math.sin(angle),half=(h.width||30)/2,x=h.x+dx*length,y=h.y+dy*length;poly(c,[[h.x-dy*half,h.y+dx*half],[x-dy*half,y+dx*half],[x+dy*half,y-dx*half],[h.x+dy*half,h.y-dx*half]],`${color}28`,`${color}d8`,2);line(c,[[h.x,h.y],[h.x+dx*length*progress,h.y+dy*length*progress]],`${color}80`,2);}
+      else {const arc=h.arc||1.9;c.beginPath();c.moveTo(h.x,h.y);c.arc(h.x,h.y,length,angle-arc/2,angle+arc/2);c.closePath();c.fillStyle=`${color}28`;c.fill();c.strokeStyle=`${color}d8`;c.lineWidth=2;c.stroke();}
+      return;
+    }
     const alpha=pending ? .11 : .2;ellipse(c,h.x,h.y,radius,radius,`${color}${Math.round(alpha*255).toString(16).padStart(2,'0')}`);
     c.beginPath();c.arc(h.x,h.y,radius,0,TAU);c.strokeStyle=`${color}b0`;c.lineWidth=2;c.stroke();
     if(!game.settings?.reducedMotion)for(let i=0;i<6;i++){const a=i*TAU/6+game.time*.2;ellipse(c,h.x+Math.cos(a)*radius*.72,h.y+Math.sin(a)*radius*.72,3,3,color);}
@@ -612,17 +668,19 @@ export class Renderer {
   }
   person(c,p,game,hero) {
     c.save();c.translate(Math.round(p.x/2)*2,Math.round(p.y/2)*2);
-    const facing=typeof p.face==='number'?p.face:Math.PI/2,walking=p.walking&&!game.settings?.reducedMotion;
+    const dashing=(p.dashUntil||0)>game.time,facing=dashing?(p.dashAngle??p.face??Math.PI/2):typeof p.face==='number'?p.face:Math.PI/2,walking=p.walking&&!game.settings?.reducedMotion;
     rect(c,-16,2,32,6,'#142c2c80');rect(c,-10,0,20,10,'#142c2c80');
-    if(hero&&((p.invulnerable||0)>0||(p.hitUntil||0)>game.time)&&Math.floor(game.time*16)%2)c.globalAlpha=.48;
+    if(hero&&!game.settings?.reducedMotion&&(p.invulnerable||0)>0&&Math.floor(game.time*12)%2)c.globalAlpha=.72;
     const meta=hero?this.atlasMetadata:this.npcMetadata,atlas=hero?this.characterAtlas:this.npcAtlas;
     const row=hero?meta.classes.indexOf(getClass(p.classId).id):meta.npcs.indexOf(p.id);
     if(atlas&&row>=0&&atlas.naturalWidth===1024&&atlas.naturalHeight>=(row+1)*48){
       const direction=Math.abs(Math.cos(facing))>Math.abs(Math.sin(facing))?(Math.cos(facing)>0?1:3):(Math.sin(facing)>0?0:2);
       const attackEnd=Math.max(p.attackUntil||0,p.castUntil||0),attacking=attackEnd>game.time;
-      const pose=p.downed||p.dead?7:attacking?(attackEnd-game.time>.11?5:6):walking?1+Math.floor(game.time*9)%4:0;
+      const pose=p.downed||p.dead?7:dashing?(game.settings?.reducedMotion?2:(p.dashUntil-game.time>.09?2:4)):attacking?(attackEnd-game.time>.11?5:6):walking?1+Math.floor(game.time*9)%4:0;
       const [px,py]=meta.pivot||[16,40];
-      c.imageSmoothingEnabled=false;c.drawImage(atlas,(direction*8+pose)*32,row*48,32,48,-px*2,-py*2,64,96);
+      c.imageSmoothingEnabled=false;
+      if(hero&&dashing&&!game.settings?.reducedMotion){const alpha=c.globalAlpha;for(let i=2;i>=1;i--){c.globalAlpha=.1/i;c.drawImage(atlas,(direction*8+pose)*32,row*48,32,48,-px*2-Math.round(Math.cos(facing)*i*16/2)*2,-py*2-Math.round(Math.sin(facing)*i*16/2)*2,64,96);}c.globalAlpha=alpha;}
+      c.drawImage(atlas,(direction*8+pose)*32,row*48,32,48,-px*2,-py*2,64,96);
     }else{
       // A small native-pixel silhouette is visible while the atlas is loading.
       const color=hero?getClass(p.classId).color:p.color||'#8d9c78';
@@ -630,6 +688,7 @@ export class Renderer {
       rect(c,-8,-58,16,20,'#e2b989');rect(c,-10,-62,20,8,'#5b4636');rect(c,-8,-6,6,12,'#25323a');rect(c,2,-6,6,12,'#25323a');
       if(Math.sin(facing)>=0){rect(c,-4,-50,2,4,'#182d34');rect(c,4,-50,2,4,'#182d34');}
     }
+    if(hero&&!p.dead&&!p.downed){const phase=dashing?'dash':(p.castUntil||0)>game.time?'cast':(p.attackUntil||0)>game.time?'strike':null;if(phase)drawPixelClassAccent(c,{x:0,y:0,classId:p.classId,face:facing,accentPhase:phase,accentFrame:game.settings?.reducedMotion?0:Math.floor(game.time*12)%2});}
     c.restore();
     if(hero)this.heroStatus(c,p,game);else this.npcStatus(c,p,game);
   }
@@ -642,10 +701,13 @@ export class Renderer {
     this.label(c,p.name,p.x,p.y-73,'#d7d5af',10);
   }
   heroStatus(c,p,game) {
-    const color=getClass(p.classId).color;
+    const hostile=!!((game.world?.isPvp||game.worldMode==='pvp')&&p.remote),color=hostile?'#e7939f':getClass(p.classId).color;
+    if(hostile){c.beginPath();c.ellipse(p.x,p.y+2,23,9,0,0,TAU);c.strokeStyle='#d77989b0';c.lineWidth=2;c.stroke();}
+    if(p===game.player&&!game.world?.isPvp&&game.worldMode!=='pvp'){const relic=getRelic(game.item?.(game.equipment?.weapon));if(relic)this.relicAura(c,p,relic,game);}
+    if((p.hitUntil||0)>game.time)drawPixelImpact(c,{x:p.x,y:p.y-32,variant:'physical',impactFrame:game.settings?.reducedMotion?0:p.hitUntil-game.time>.12?0:p.hitUntil-game.time>.06?1:2});
     if(p.shield>0&&(p.shieldUntil||Infinity)>game.time){c.beginPath();c.ellipse(p.x,p.y-23,29,43,0,0,TAU);c.strokeStyle=`${color}90`;c.lineWidth=2;c.stroke();glow(c,p.x,p.y-24,43,`${color}14`);}
     if(p.downed||p.dead){c.beginPath();c.ellipse(p.x,p.y,25,15,0,0,TAU);c.strokeStyle='#e19b887a';c.lineWidth=2;c.stroke();this.label(c,`${p.name||'Gefährte'} · Am Boden`,p.x,p.y-35,'#ebaf9c',10);}
-    else if(p.remote){this.label(c,p.name||getClass(p.classId).name,p.x,p.y-76,color,10);const fraction=p.maxHp?p.hp/p.maxHp:p.hpRatio??1;rounded(c,p.x-22,p.y-63,44,4,2,'#192a37');rounded(c,p.x-22,p.y-63,44*clamp(fraction,0,1),4,2,'#91c39b');}
+    else if(p.remote){this.label(c,p.name||getClass(p.classId).name,p.x,p.y-76,color,10);const fraction=p.maxHp?p.hp/p.maxHp:p.hpRatio??1;rounded(c,p.x-22,p.y-63,44,4,2,'#192a37');rounded(c,p.x-22,p.y-63,44*clamp(fraction,0,1),4,2,hostile?'#d77989':'#91c39b');}
     if((p.castUntil||0)>game.time){for(let i=0;i<3;i++){const a=game.time*4+i*TAU/3;ellipse(c,p.x+Math.cos(a)*26,p.y-23+Math.sin(a)*16,3,3,color);}}
   }
   label(c,value,x,y,color='#e4dab8',size=11) {
@@ -659,8 +721,8 @@ export class Renderer {
   enemy(c,e,game) {
     const def=ENEMY_TYPES[e.type]||{},boss=!!(e.boss||e.bossVariant||def.boss);
     if(boss){ellipse(c,e.x,e.y+2,39,15,'#240c1880');c.beginPath();c.ellipse(e.x,e.y+2,35,13,0,0,TAU);c.strokeStyle='#d0784d88';c.lineWidth=2;c.stroke();}
-    c.save();if((e.hitUntil||0)>game.time)c.globalAlpha=.65;
-    drawPixelEnemy(c,e,game.settings?.reducedMotion?0:game.time);c.restore();
+    drawPixelEnemy(c,e,game.settings?.reducedMotion?0:game.time);
+    if((e.hitUntil||0)>game.time)drawPixelImpact(c,{x:e.x,y:e.y-28,variant:'physical',impactFrame:game.settings?.reducedMotion?0:e.hitUntil-game.time>.08?0:e.hitUntil-game.time>.04?1:2});
     if(!this.enemyPixelHeights.has(e.type))this.enemyPixelHeights.set(e.type,pixelEnemyHeight(e.type));
     if(e.shielded){glow(c,e.x,e.y-38,78,'#b5b3ee12');c.beginPath();c.ellipse(e.x,e.y-34,61,75,0,0,TAU);c.strokeStyle='#c4b5eeaa';c.lineWidth=3;c.stroke();for(let i=0;i<4;i++){const a=game.time*.3+i*TAU/4;text(c,'◈',e.x+Math.cos(a)*61,e.y-34+Math.sin(a)*75,13,'#ded0f0');}}
     const dist=Math.hypot(e.x-game.player.x,e.y-game.player.y);
@@ -722,20 +784,23 @@ export class Renderer {
     if(item?.name&&Math.hypot(d.x-game.player.x,d.y-game.player.y)<180)this.label(c,item.name,d.x,d.y-(tall?91:50),color,10);
   }
   projectile(c,p,game) {
-    const hostile=p.hostile||p.owner==='enemy'||p.type==='enemy',color=p.color||(hostile?'#b396db':'#edb963');c.save();c.translate(p.x,p.y);c.rotate(p.angle||0);glow(c,0,0,28,`${color}40`);poly(c,[[-28,0],[-10,-6],[4,-4],[9,0],[4,4],[-10,6]],`${color}9b`);ellipse(c,0,0,6,4,hostile?'#e0c7ef':'#ffedb2');c.restore();
+    const hostile=p.hostile||p.owner==='enemy'||p.type==='enemy',actor=(game.partyPlayers||[]).find(a=>(a.player||a).id===p.actorId),classId=(actor?.player||actor)?.classId||game.player.classId;
+    const variant=hostile?'hostile':this.world.isPvp?'void':({ranger:'arrow',flamecaller:'fire',frostweaver:'frost',druid:'nature',paladin:'holy',shadowbinder:'void'})[classId]||'void',color=p.color||(hostile?'#d48b99':getClass(classId).color);
+    if(variant!=='arrow')glow(c,p.x,p.y,18,`${color}30`);
+    drawPixelProjectile(c,{...p,variant,projectileFrame:game.settings?.reducedMotion?0:Math.floor(game.time*12)%2});
   }
   effect(c,e,game) {
     const ratio=clamp(e.life/(e.maxLife||1),0,1),color=e.color||'#edca86',radius=e.radius||e.size||65;c.save();c.globalAlpha=Math.min(1,ratio*2);
     if(e.kind==='text'){c.font=`700 ${e.crit?21:15}px "Inter",system-ui,sans-serif`;c.textAlign='center';c.lineWidth=3;c.strokeStyle='#213331';const y=e.y-22-(1-ratio)*28;c.strokeText(e.text||'',e.x,y);c.fillStyle=color;c.fillText(e.text||'',e.x,y);}
     else if(e.kind==='slash') {c.translate(e.x,e.y);c.rotate(e.angle||0);c.beginPath();c.arc(0,0,radius,-.95,.95);c.strokeStyle=color;c.lineWidth=9*ratio;c.stroke();c.beginPath();c.arc(0,0,radius+5,-.7,.9);c.strokeStyle='#f8eccc';c.lineWidth=2*ratio;c.stroke();}
     else if(e.kind==='ring'){c.beginPath();c.ellipse(e.x,e.y,radius*(1-ratio*.6),radius*(1-ratio*.6),0,0,TAU);c.strokeStyle=color;c.lineWidth=4*ratio;c.stroke();glow(c,e.x,e.y,radius,`${color}15`);}
-    else {for(let i=0;i<12;i++){const a=i*2.4,r=radius*(1-ratio)*(i%3*.2+.5);ellipse(c,e.x+Math.cos(a)*r,e.y+Math.sin(a)*r*.7-12*(1-ratio),2+ratio*2,1+ratio*2,color);}if(e.kind==='heal')glow(c,e.x,e.y-20,45,'#b4d79044');}c.restore();
+    else {drawPixelImpact(c,{x:e.x,y:e.y-10,variant:e.element||e.impactType||(e.kind==='heal'?'nature':e.aura==='moon'?'frost':e.aura==='star'?'fire':'physical'),impactFrame:game.settings?.reducedMotion?0:Math.min(2,Math.floor((1-ratio)*3))});for(let i=0;i<8;i++){const a=i*2.4,r=radius*(1-ratio)*(i%3*.2+.5);const x=Math.round((e.x+Math.cos(a)*r)/2)*2,y=Math.round((e.y+Math.sin(a)*r*.7-12*(1-ratio))/2)*2;rect(c,x,y,2+2*Math.round(ratio),2,color);}if(e.kind==='heal')glow(c,e.x,e.y-20,45,'#b4d79044');}c.restore();
   }
   flame(c,x,y,time,size=13) {
     glow(c,x,y-10,size*3,'#f6b65c35');ellipse(c,x,y,9,4,'#4c4332');poly(c,[[x-size*.45,y],[x-size*.5,y-12],[x-2,y-size*1.5-Math.sin(time*9)*4],[x+size*.25,y-13],[x+size*.5,y-6],[x+size*.3,y]],'#d99148');poly(c,[[x-3,y],[x-4,y-8],[x+1,y-size*.95],[x+5,y-5],[x+3,y]],'#ead390');
   }
   ambient(c,game) {
-    const region=this.world.regions.find(r=>game.player.x>=r.x&&game.player.x<r.x+r.w&&game.player.y>=r.y&&game.player.y<r.y+r.h)||this.world.regions[0];
+    const region=(this.world.regions||[]).find(r=>game.player.x>=r.x&&game.player.x<r.x+r.w&&game.player.y>=r.y&&game.player.y<r.y+r.h)||this.world.regions?.[0]||{id:'void'};
     const time=game.settings?.reducedMotion?0:game.time,elapsed=game.settings?.reducedMotion?0:this.elapsed;
     const winter=['frostgrat','permafrost'].includes(region.id),ash=['glutoede','obsidianpass','blutmark'].includes(region.id),cosmic=['mondbruch','sternensund','nexusriss'].includes(region.id);
     for(let i=0;i<30;i++){const x=this.bounds.x+noise(i*9+41)*this.bounds.w+Math.sin(elapsed*.35+i)*18,y=this.bounds.y+((noise(i*9+66)*this.bounds.h+elapsed*(winter?12:5)*(1+noise(i)))%this.bounds.h);ellipse(c,x,y,winter?1.6:ash?1.3:1,winter?1.5:ash?1.2:.7,winter?'#bbc9d85c':ash?'#ed946866':cosmic?'#ae96cd47':'#b2bab333');}

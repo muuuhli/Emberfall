@@ -1,13 +1,13 @@
 const SESSION_KEY='emberfall.network.v1';
 const INPUT_KEYS=new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
-const REMOTE_METHODS=['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent'];
-const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey'];
+const REMOTE_METHODS=['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward'];
+const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame'];
 
 /** Browser transport; the server owns combat, progression, drops and movement. */
 export class NetworkClient {
   constructor(game,{baseUrl=globalThis.location?.origin||'',fetchImpl=globalThis.fetch,EventSourceImpl=globalThis.EventSource,storage=globalThis.localStorage,clock=()=>globalThis.performance?.now()??Date.now()}={}) {
     this.game=game;this.baseUrl=baseUrl.replace(/\/$/,'');this.fetchImpl=fetchImpl===globalThis.fetch?fetchImpl.bind(globalThis):fetchImpl;this.EventSourceImpl=EventSourceImpl;this.storage=storage;this.clock=clock;
-    this.status='offline';this.roomCode=null;this.players=[];this.token=null;this.active=false;this.onStatus=()=>{};this.onSnapshot=()=>{};
+    this.status='offline';this.roomCode=null;this.players=[];this.token=null;this.active=false;this.onStatus=()=>{};this.onSnapshot=()=>{};this.onWorldChange=()=>{};
     this.serverAvailable=null;
     this._methods=new Map();this._lastInputAt=-Infinity;this._inputPending=null;this._inputSending=false;this._lastEventId=0;this._sequence=-1;this._actionQueue=Promise.resolve();
     this._targetPlayer=null;this._targets=new Map();this._enemyTargets=new Map();
@@ -49,7 +49,7 @@ export class NetworkClient {
     if(!this._offlineSave){this._offlineSave=JSON.parse(JSON.stringify(this.game.capture()));this._offlineStarted=this.game.started;}
     this.token=token;this.roomCode=roomCode;this.active=true;this.serverAvailable=true;this._lastEventId=0;this._sequence=-1;
     try{this.storage?.setItem(SESSION_KEY,JSON.stringify({token,roomCode,baseUrl:this.baseUrl}));}catch{}
-    this._install();this.game.network=this;this.game.networkActive=true;this.game.started=true;this.game.paused=false;this.game.keys.clear();
+    this._install();this.game.network=this;this.game.networkActive=true;this.game.started=true;this.game.paused=false;this.game.keys.clear();this.game.aim=null;
     if(snapshot)this.applySnapshot(snapshot);
     this._status('connecting');
     const source=new this.EventSourceImpl(`${this.baseUrl}/api/session/${token}/events`);this.source=source;
@@ -83,11 +83,23 @@ export class NetworkClient {
     if(snapshot.protocol!==1||!snapshot.player||!snapshot.world)throw new Error('Unbekannte Spielserver-Antwort.');
     if(Number.isFinite(snapshot.sequence)&&snapshot.sequence<this._sequence)return;
     this._sequence=snapshot.sequence;
-    const game=this.game,previous={x:game.player.x,y:game.player.y};
+    const game=this.game,previous={x:game.player.x,y:game.player.y},isPvp=snapshot.worldMode==='pvp';
+    const arenaId=snapshot.pvp?.duel?.id||snapshot.layout?.pvpArenaId||snapshot.world.pvpArenaId;
+    const context=isPvp?`pvp:${arenaId}`:snapshot.dungeonInstance?`dungeon:${snapshot.dungeonInstance.id}:${snapshot.dungeonInstance.seed}:${snapshot.dungeonInstance.tier}`:'overworld';
+    const worldChanged=this._hasSnapshot&&context!==this._worldContext;
+    if(isPvp&&!game._pvpTravelSave)game._pvpTravelSave=JSON.parse(JSON.stringify(snapshot.pvpTravelSave||game.capture()));
+    if(worldChanged){game.keys.clear();game.aim=null;this._inputPending=null;this.onWorldChange();}
+    // Keep the player reference stable, but remove arena-only fields on return.
+    if(worldChanged)for(const key of Object.keys(game.player))if(!Object.hasOwn(snapshot.player,key))delete game.player[key];
     this._targetPlayer={x:snapshot.player.x,y:snapshot.player.y};Object.assign(game.player,snapshot.player);
-    if(this._hasSnapshot&&Math.hypot(previous.x-game.player.x,previous.y-game.player.y)<250){game.player.x=previous.x;game.player.y=previous.y;}
-    const previousEnemies=new Map(game.world.enemies.map(e=>[e.id,e]));
-    if(snapshot.layout)game.world={...snapshot.layout};
+    if(this._hasSnapshot&&!worldChanged&&Math.hypot(previous.x-game.player.x,previous.y-game.player.y)<250){game.player.x=previous.x;game.player.y=previous.y;}
+    const previousEnemies=new Map((worldChanged?[]:game.world.enemies).map(e=>[e.id,e]));
+    if(snapshot.layout) {
+      // PvP sends a full layout every frame. Reuse its object so the renderer
+      // retains static terrain chunks throughout one isolated duel.
+      if(isPvp&&!worldChanged&&game.world.isPvp&&game.world.pvpArenaId===arenaId)Object.assign(game.world,snapshot.layout);
+      else game.world={...snapshot.layout};
+    }
     Object.assign(game.world,snapshot.world);
     this._enemyTargets.clear();
     for(const enemy of game.world.enemies) {
@@ -97,7 +109,8 @@ export class NetworkClient {
     for(const key of PERSONAL_FIELDS)if(snapshot[key]!==undefined)game[key]=snapshot[key];
     game.time=snapshot.time;game.effects=snapshot.effects||[];game.projectiles=snapshot.projectiles||[];game.drops=snapshot.drops||[];game.hazards=snapshot.hazards||[];game.summons=snapshot.summons||[];
     game.dungeonInstance=snapshot.dungeonInstance?{...snapshot.dungeonInstance,world:game.world}:null;
-    if(!game.dungeonInstance)game.overworld=game.world;
+    if(!game.dungeonInstance&&!isPvp)game.overworld=game.world;
+    game.pvp=snapshot.pvp||null;game.pvpStats=isPvp?snapshot.pvpStats||null:null;
     game.networkInteractionSummary=snapshot.authoritativeInteractionSummary||null;
     game.networkWorldEventSummary=snapshot.authoritativeWorldEventSummary||null;
     game.worldMode=snapshot.worldMode;game.activeDungeon=snapshot.activeDungeon;game.paused=!!game.dead;
@@ -105,10 +118,10 @@ export class NetworkClient {
     const previousParty=new Map(this.players.map(p=>[p.id,p]));this._targets.clear();
     this.players=(snapshot.party||[]).map(player=>{
       this._targets.set(player.id,{x:player.x,y:player.y});const old=previousParty.get(player.id);
-      return old&&Math.hypot(old.x-player.x,old.y-player.y)<250?{...player,x:old.x,y:old.y}:player;
+      return !worldChanged&&old&&Math.hypot(old.x-player.x,old.y-player.y)<250?{...player,x:old.x,y:old.y}:player;
     });
     game.partyPlayers=this.players.filter(p=>p.id!==snapshot.playerId);game.otherPlayers=game.partyPlayers;game.party=this.players;game.networkRoomCode=snapshot.roomCode;
-    this.roomCode=snapshot.roomCode;this.playerId=snapshot.playerId;this._hasSnapshot=true;
+    this.roomCode=snapshot.roomCode;this.playerId=snapshot.playerId;this._hasSnapshot=true;this._worldContext=context;
     for(const event of snapshot.events||[]) {
       if(event.id<=this._lastEventId)continue;this._lastEventId=event.id;
       if(event.kind==='notice')game.onNotice(event.text,event.tone);
@@ -117,6 +130,7 @@ export class NetworkClient {
       if(event.kind==='death')game.onDeath();
       if(event.kind==='victory')game.onVictory();
     }
+    if(!isPvp)game._pvpTravelSave=null;
     game.change();this.onSnapshot(snapshot);
   }
   /** Render interpolation only; it never resolves gameplay or grants progress. */
@@ -163,11 +177,12 @@ export class NetworkClient {
     // a late movement POST must not accidentally reactivate a departed player.
     await Promise.allSettled([this._actionQueue,this._inputFlight]);
     if(this.token&&leave)try{await this._request(`/api/session/${this.token}/leave`,{});}catch{}
-    this.token=null;this.roomCode=null;this.players=[];this._targetPlayer=null;this._hasSnapshot=false;
+    this.token=null;this.roomCode=null;this.players=[];this._targetPlayer=null;this._hasSnapshot=false;this._worldContext=null;
     for(const [name,original]of this._methods)this.game[name]=original;this._methods.clear();
     this.game.network=null;this.game.networkActive=false;this.game.partyPlayers=[];this.game.otherPlayers=[];this.game.party=[];
     this.game.networkInteractionSummary=null;
     this.game.networkWorldEventSummary=null;
+    this.game.pvp=null;this.game.pvpStats=null;this.game._pvpTravelSave=null;this.game.worldMode='overworld';
     if(this._offlineSave){this.game.applySave(this._offlineSave);this.game.started=this._offlineStarted;this.game.paused=false;this._offlineSave=null;}
     if(forget)try{this.storage?.removeItem(SESSION_KEY);}catch{}
     this._disconnecting=false;

@@ -136,7 +136,7 @@ export function updateBestiaryEnemy(game,enemy,definition,dt,living) {
   }
   const radius=definition.boss?22:10;
   if(!enemy.alive) {
-    if(!definition.boss && !enemy.challengeId && !enemy.rewardless && enemy.respawnAt<game.time && living.every(g=>distance(g.player,enemy)>500)) {
+    if((!definition.boss||definition.baseType) && !enemy.challengeId && !enemy.rewardless && enemy.respawnAt<game.time && living.every(g=>distance(g.player,enemy)>500)) {
       Object.assign(enemy,{alive:true,hp:enemy.maxHp,x:enemy.homeX,y:enemy.homeY,phase:'idle',aggro:false,attackTimer:0});
     }
     return true;

@@ -3,6 +3,7 @@ import { MAX_LEVEL } from './progression.js';
 import { BALANCE_VERSION } from './balance.js';
 import { ARSENAL_BASES, gearBaseStats } from './arsenal.js';
 import { EQUIPMENT_BASES, equipmentSlot, equipmentBudget, scaleEquipmentStats, equipmentStatCaps, EQUIPMENT_SLOT_IDS } from './equipment-system.js';
+import { rollRelic, getRelic, validateRelicItem, relicPresentation } from './relics.js';
 
 export const RARITIES = {
   common: { name: 'Gewöhnlich', color: '#bdc3b0', weight: 0.62, bossWeight: 0, statMultiplier: 1, affixCount: 0, socketCount: 0 },
@@ -219,7 +220,7 @@ function rollRarity(roll, boss, pity) {
 }
 
 /** Pity is mutable save state owned by the caller. All item values remain serializable data. */
-export function generateLoot({ level = 1, tier = 1, boss = false, classId = 'guardian', rng = Math.random, source = 'world', uid, pity, rarity: requestedRarity, baseId, traits = [], slot: requestedSlot } = {}) {
+export function generateLoot({ level = 1, tier = 1, boss = false, classId = 'guardian', rng = Math.random, source = 'world', uid, pity, rarity: requestedRarity, baseId, traits = [], slot: requestedSlot, relicOrigin } = {}) {
   if(!Number.isInteger(tier)||tier<1||tier>30) throw new RangeError('Loot dungeon tier must be between 1 and 30.');
   if(requestedSlot!==undefined&&!EQUIPMENT_SLOT_IDS.includes(requestedSlot))throw new RangeError('Unknown equipment slot.');
   const currentLevel = levelValue(level);
@@ -261,6 +262,13 @@ export function generateLoot({ level = 1, tier = 1, boss = false, classId = 'gua
     ...(itemBase.slot ? { slot: itemBase.slot } : {}),
   };
   item.power = itemPower(item);
+  const relic=rollRelic(item,relicOrigin,roll);
+  if(relic){
+    item.relic=relic;
+    const definition=getRelic(item),presentation=relicPresentation(item);
+    item.name=`${definition.prefix}: ${item.name}`.slice(0,150);
+    item.description=`${item.description} ${definition.description} ${presentation.originText}.`.slice(0,500);
+  }
   if (pity && typeof pity === 'object') {
     pity.legendaryMisses = rarity === 'legendary' ? 0 : clamp((Number.isFinite(pity.legendaryMisses) ? pity.legendaryMisses : 0) + 1, 0, 499);
     if (boss) pity.bossMisses = rarity === 'legendary' ? 0 : clamp((Number.isFinite(pity.bossMisses) ? pity.bossMisses : 0) + 1, 0, 33);
@@ -341,6 +349,7 @@ export function validateLootItem(item) {
   if (item.dungeonTier != null && (!Number.isInteger(item.dungeonTier) || item.dungeonTier < 1 || item.dungeonTier > 30)) return false;
   if (typeof item.name !== 'string' || !item.name.length || item.name.length > 150 || typeof item.description !== 'string' || item.description.length > 500) return false;
   if (typeof item.icon !== 'string' || item.icon.length > 12 || !Number.isFinite(item.price) || item.price < 0 || item.price > 1e7) return false;
+  if(!validateRelicItem(item))return false;
   if (!Number.isFinite(item.power) || item.power < 0 || item.power > 1e6) return false;
   if (!statsMatch(item.stats, baseStats(itemBase, item.level, item.rarity,version))) return false;
   const rarity = RARITIES[item.rarity];

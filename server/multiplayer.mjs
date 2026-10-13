@@ -7,16 +7,18 @@ import { CLASSES } from '../src/classes.js';
 import { getArsenalShopStock } from '../src/arsenal.js';
 import { EQUIPMENT_SLOT_IDS, getEquipmentShopStock } from '../src/equipment-system.js';
 import { captureWorldEvents, restoreWorldEvents } from '../src/world-events.js';
+import { PvpArena } from '../src/pvp.js';
 
 const KEYS = new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
 const ACTIONS = new Set(['attack','dash','bolt','nova','potion','interact','primary','secondary','ultimate']);
-const METHODS = new Set(['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent']);
+const METHODS = new Set(['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward','setSetting']);
+const PVP_METHODS = new Set(['pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn']);
 const SHOP_STOCK = {
   elin:new Set(['forest_blade','sentinel_mail']),
   sera:new Set(['heal_potion','mana_potion']),
   oren:new Set(['heal_potion','mana_potion','leather_armor','forest_blade','seed']),
 };
-const PERSONAL_FIELDS = ['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey'];
+const PERSONAL_FIELDS = ['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame'];
 const SHARED_FIELDS = ['effects','projectiles','drops','hazards','summons','dungeonInstance','overworld','activeDungeon','worldMode'];
 const MUTABLE_WORLD = ['enemies','nodes','plots','shrines','chests','puzzles','puzzleObjects','gates','portals','dungeonPortals','dungeonState','dungeonExit','interactions','worldEvents','eventObjects'];
 const LAYOUT_FIELDS = ['seed','width','height','regions','paths','river','bridges','structures','trees','rocks','landmarks','dungeons','walls','floors','entrance','exit','rooms','isDungeon','dungeonId','tier'];
@@ -47,6 +49,7 @@ export class MultiplayerHub {
     this.createGame=createGame;this.clock=clock;this.random=random;this.storage=storage;this.allowedOrigin=allowedOrigin;
     this.maxRooms=maxRooms;this.maxPlayers=Math.max(2,Math.min(8,maxPlayers));this.disconnectMs=disconnectMs;this.roomExpiryMs=roomExpiryMs;
     this.rooms=new Map();this.sessions=new Map();this.creations=new Map();this.frames=0;this.lastPersist=this.clock();
+    this.pvp=new PvpArena({clock:this.clock,id:()=>randomUUID(),notice:(member,text,tone='info')=>this._event(member,{kind:'notice',text,tone}),sound:(member,name)=>this._event(member,{kind:'sound',name})});
     this.restore();
     if(autoStart)this.start();
   }
@@ -98,7 +101,7 @@ export class MultiplayerHub {
   }
   _syncRoom(room,source) {
     room.world=source.world;
-    const party=[...room.members.values()].filter(m=>m.active).map(m=>m.game);
+    const party=[...room.members.values()].filter(m=>m.active&&!this.pvp.occupied(m)).map(m=>m.game);
     for(const member of room.members.values()) {
       const game=member.game;
       if(!member.active&&game.world!==room.world)member.needsTeleport=true;
@@ -110,9 +113,10 @@ export class MultiplayerHub {
     dt=Math.max(0,Math.min(.04,dt));const now=this.clock();this.frames++;
     for(const room of this.rooms.values()) {
       for(const member of [...room.members.values()]) {
-        if(!member.streams.size&&now-member.lastSeen>this.disconnectMs){member.active=false;member.game.keys.clear();}
-        else if(now-member.lastInput>650)member.game.keys.clear();
+        if(!member.streams.size&&now-member.lastSeen>this.disconnectMs){member.active=false;member.game.keys.clear();this.pvp.disconnect(member);}
+        else if(now-member.lastInput>650){member.game.keys.clear();this.pvp.clearInput(member);}
       }
+      this.pvp.tick(dt,room);
       const active=[...room.members.values()].filter(m=>m.active);
       if(!active.length) {
         // A dormant server character is retained with its token, rather than
@@ -121,7 +125,8 @@ export class MultiplayerHub {
         continue;
       }
       room.lastActive=now;
-      const games=active.map(m=>m.game);
+      const games=active.filter(m=>!this.pvp.occupied(m)).map(m=>m.game);
+      if(!games.length){if(this.frames%2===0)for(const member of room.members.values())this._broadcast(member);continue;}
       const authority=games.find(g=>!g.dead)||games[0];this._syncRoom(room,authority);
       for(const game of games) {
         // Menus are client UI only. One player's pause or defeat cannot freeze a group.
@@ -147,6 +152,9 @@ export class MultiplayerHub {
     data.authoritativeWorldEventSummary=game.worldEventSummary?.()||[];
     data.dungeonInstance=game.dungeonInstance?Object.fromEntries(['id','definition','tier','seed','partySize','spawn','exit','puzzles','elapsed','bossDefeated','gateOpened','shieldHold','vulnerabilityUntil'].map(key=>[key,game.dungeonInstance[key]])):null;
     for(const key of PERSONAL_FIELDS)if(game[key]!==undefined)data[key]=game[key];
+    data.pvp=this.pvp.summary(member);data.pvpStats=null;
+    const arena=this.pvp.snapshot(member);
+    if(arena)return {...data,...arena,...(includeLayout?{pvpTravelSave:game.capture()}:{})};
     for(const key of MUTABLE_WORLD)if(world[key]!==undefined)data.world[key]=Array.isArray(world[key])?world[key].filter(near):world[key];
     // Doors and collision rectangles may change as a party solves a dungeon.
     if(world.structures)data.world.structures=world.structures.filter(near);
@@ -167,6 +175,7 @@ export class MultiplayerHub {
     }
   }
   _remove(member) {
+    this.pvp.disconnect(member);
     for(const stream of member.streams)stream.end();member.streams.clear();member.game.keys.clear();
     member.room.members.delete(member.id);this.sessions.delete(member.token);
     member.room.lastActive=this.clock();
@@ -212,6 +221,13 @@ export class MultiplayerHub {
       // keep their remaining duration after a server restart.
       room.time=Number.isFinite(saved.time)?Math.max(0,saved.time):leader.time;
       for(const member of room.members.values())member.game.time=room.time;
+      // The raw shared-world overlay must not bypass the portable boss-rest
+      // ledger or turn old JSON-null Infinity timers into immediate respawns.
+      const leaderSave=saved.members.find(entry=>entry.id===leader.player.id)?.save;
+      for(const enemy of leader.world.enemies)if(!enemy.alive&&Catalog.ENEMY_TYPES[enemy.type]?.boss&&Catalog.ENEMY_TYPES[enemy.type]?.baseType&&!enemy.challengeId&&!enemy.eventId) {
+        const remaining=leaderSave?.world?.championRespawns?.find(rest=>rest.id===enemy.id)?.remaining;
+        enemy.respawnAt=room.time+(Number.isFinite(remaining)?Math.max(0,Math.min(360,remaining)):360);
+      }
       // Canonical event restoration also applies after the shared-world overlay:
       // an interrupted run fails safely and its combat actors cannot revive.
       if(Array.isArray(leader.world.worldEvents))restoreWorldEvents(leader.world,captureWorldEvents(leader.world),room.time);
@@ -265,6 +281,7 @@ export class MultiplayerHub {
         return true;
       }
       if(req.method==='POST'&&session[2]==='leave') {
+        this.pvp.disconnect(member);
         member.active=false;member.game.keys.clear();member.lastSeen=this.clock()-this.disconnectMs-1;
         for(const stream of member.streams)stream.end();member.streams.clear();
         const leader=[...member.room.members.values()].find(m=>m.active)?.game;
@@ -287,6 +304,7 @@ export class MultiplayerHub {
     if(!command||typeof command!=='object'||Array.isArray(command))throw new HttpError(400,'Ungültiger Spielbefehl.');
     if(command.type==='input') {
       if(Object.keys(command).some(k=>!['type','keys','angle'].includes(k))||!Array.isArray(command.keys)||command.keys.length>8||command.keys.some(k=>!KEYS.has(k))||!Number.isFinite(command.angle))throw new HttpError(400,'Nur Bewegungstasten und Blickrichtung werden angenommen.');
+      if(this.pvp.occupied(member)){member.lastInput=this.clock();return this.pvp.input(member,command.keys,command.angle);}
       game.keys=new Set(command.keys);game.player.face=Math.atan2(Math.sin(command.angle),Math.cos(command.angle));
       member.aimAngle=game.player.face;
       game.aim={x:game.player.x+Math.cos(game.player.face)*100,y:game.player.y+Math.sin(game.player.face)*100};
@@ -294,13 +312,30 @@ export class MultiplayerHub {
     }
     if(command.type==='action') {
       if(Object.keys(command).some(k=>!['type','name'].includes(k))||!ACTIONS.has(command.name))throw new HttpError(400,'Ungültige Fähigkeit.');
+      if(this.pvp.occupied(member))return this.pvp.action(member,command.name);
+      if(command.name==='interact'&&['dungeon','exit'].includes(game.nearby()?.kind)&&[...member.room.members.values()].some(m=>this.pvp.occupied(m))) {
+        this._event(member,{kind:'notice',text:'Warte mit dem Gruppenwechsel, bis alle Duellanten zurückgekehrt sind.',tone:'info'});return false;
+      }
       return !!game.action(command.name);
     }
     if(command.type==='method') {
-      if(Object.keys(command).some(k=>!['type','name','args'].includes(k))||!METHODS.has(command.name)||!Array.isArray(command.args)||command.args.length>2||command.args.some((v,i)=>typeof v!=='string'&&!Number.isFinite(v)&&!(v===null&&(command.name==='setAbilityLoadout'&&i===1||command.name==='selectCompanion'&&i===0)))||command.args.some(v=>typeof v==='string'&&v.length>120))throw new HttpError(400,'Ungültiger Spielbefehl.');
+      if(Object.keys(command).some(k=>!['type','name','args'].includes(k))||!METHODS.has(command.name)||!Array.isArray(command.args)||command.args.length>2||command.args.some((v,i)=>typeof v!=='string'&&!Number.isFinite(v)&&!(typeof v==='boolean'&&command.name==='setSetting'&&i===1)&&!(v===null&&(command.name==='setAbilityLoadout'&&i===1||command.name==='selectCompanion'&&i===0)))||command.args.some(v=>typeof v==='string'&&v.length>120))throw new HttpError(400,'Ungültiger Spielbefehl.');
+      if(PVP_METHODS.has(command.name)) {
+        const withId=['pvpInvite','pvpAccept','pvpDecline'].includes(command.name);
+        if(command.args.length!==(withId?1:0)||withId&&typeof command.args[0]!=='string')throw new HttpError(400,'Ungültige Duellparameter.');
+        const name=command.name.slice(3).toLowerCase();return this.pvp[name](member,...command.args);
+      }
+      if(this.pvp.occupied(member)&&command.name!=='setSetting'){this._event(member,{kind:'notice',text:'Diese Reiseaktion ist während eines Duells gesperrt.',tone:'info'});return false;}
+      if(['enterDungeon','exitDungeon','leaveDungeon'].includes(command.name)&&[...member.room.members.values()].some(m=>this.pvp.occupied(m))) {
+        this._event(member,{kind:'notice',text:'Warte mit dem Gruppenwechsel, bis alle Duellanten zurückgekehrt sind.',tone:'info'});return false;
+      }
       if(typeof game[command.name]!=='function')throw new HttpError(400,'Diese Aktion ist noch nicht verfügbar.');
+      if(command.name==='setSetting') {
+        const [key,value]=command.args;
+        if(command.args.length!==2||typeof key!=='string'||(!(['sound','shake','reducedMotion'].includes(key)&&typeof value==='boolean')&&!(['masterVolume','musicVolume','effectsVolume'].includes(key)&&Number.isFinite(value)&&value>=0&&value<=1)))throw new HttpError(400,'Ungültige Audio- oder Darstellungsoption.');
+      }
       if(['learn','interactWorldObject'].includes(command.name)&&(command.args.length!==1||typeof command.args[0]!=='string'))throw new HttpError(400,'Diese Aktion benötigt eine bekannte Kennung.');
-      if(['depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','trackQuest','claimAchievement','chooseMastery','claimWorldEvent'].includes(command.name)&&(command.args.length!==1||typeof command.args[0]!=='string'))throw new HttpError(400,'Diese Aktion benötigt eine bekannte Kennung.');
+      if(['depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','trackQuest','claimAchievement','chooseMastery','claimWorldEvent','startHunt','abandonHunt','claimHunt','redeemHuntReward'].includes(command.name)&&(command.args.length!==1||typeof command.args[0]!=='string'))throw new HttpError(400,'Diese Aktion benötigt eine bekannte Kennung.');
       if(command.name==='selectCompanion'&&(command.args.length!==1||command.args[0]!==null&&typeof command.args[0]!=='string')||command.name==='respecTalents'&&command.args.length!==0||['setItemFlag','setWaypoint'].includes(command.name)&&(command.args.length!==2||command.args.some(value=>typeof value!=='string'))||command.name==='interactWorldEvent'&&(command.args.length<1||command.args.some(value=>typeof value!=='string')))throw new HttpError(400,'Ungültige Parameter für diese Reiseaktion.');
       if(command.name==='setItemFlag'&&!['favorite','locked'].includes(command.args[1])||command.name==='setWaypoint'&&!['npc','shrine','quest','event','interaction','dungeon','region','clear'].includes(command.args[0]))throw new HttpError(400,'Unbekannte Markierung.');
       if(command.name==='learnAbility'&&(command.args.length!==1||typeof command.args[0]!=='string')||command.name==='useLearnedAbility'&&(command.args.length!==1||!Number.isInteger(command.args[0])||command.args[0]<0||command.args[0]>1)||command.name==='setAbilityLoadout'&&(command.args.length!==2||!Number.isInteger(command.args[0])||command.args[0]<0||command.args[0]>1||command.args[1]!==null&&typeof command.args[1]!=='string')||command.name==='unequip'&&(command.args.length!==1||!EQUIPMENT_SLOT_IDS.includes(command.args[0])))throw new HttpError(400,'Ungültige Fähigkeiten- oder Ausrüstungsparameter.');

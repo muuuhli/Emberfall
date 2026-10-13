@@ -268,3 +268,49 @@ test('fan warnings use the projectile spread frozen at windup instead of the cat
   const tips=projectileEndpoints(view.context.calls,center,range);assert.equal(tips.length,3);
   for(const a of [angle-.6,angle,angle+.6])assert.ok(tips.some(([x,y])=>Math.abs(x-center.x-Math.cos(a)*range)<1e-6&&Math.abs(y-center.y-Math.sin(a)*range)<1e-6));
 }));
+
+test('dash sprites follow the actual dash direction while reduced motion disables afterimages',()=>environment(({canvas})=>{
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld());renderer.characterAtlas={naturalWidth:1024,naturalHeight:384};
+  const p={...game.player,classId:'guardian',face:0,dashAngle:Math.PI,dashUntil:10.16};view.context.calls.length=0;renderer.person(view.context,p,game,true);
+  const atlasDraws=view.context.calls.filter(call=>call.method==='drawImage'&&call.args[0]===renderer.characterAtlas);
+  assert.equal(atlasDraws.length,1);assert.equal(atlasDraws[0].args[1],26*32,'West dash uses the west-facing walk pose');
+  game.settings.reducedMotion=false;view.context.calls.length=0;renderer.person(view.context,p,game,true);
+  assert.equal(view.context.calls.filter(call=>call.method==='drawImage'&&call.args[0]===renderer.characterAtlas).length,3,'Motion-enabled dash has only two bounded afterimages');
+}));
+
+test('PvP line and cone warnings preserve the authoritative arena attack geometry',()=>environment(({canvas})=>{
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld());view.context.calls.length=0;
+  renderer.hazard(view.context,{pvp:true,shape:'line',x:100,y:200,length:690,width:30,angle:Math.PI/2,life:.4,maxLife:.4,pending:true,color:'#d77989'},game);
+  assert.ok(view.context.calls.some(call=>call.method==='moveTo'&&Math.abs(call.args[0]-85)<1e-6&&call.args[1]===200));
+  assert.ok(view.context.calls.some(call=>call.method==='lineTo'&&Math.abs(call.args[0]-85)<1e-6&&call.args[1]===890));
+  view.context.calls.length=0;renderer.hazard(view.context,{pvp:true,shape:'cone',x:100,y:200,length:85,arc:1.9,angle:.6,pending:true,color:'#d77989'},game);
+  assert.ok(view.context.calls.some(call=>call.method==='arc'&&call.args[2]===85&&Math.abs(call.args[3]-(.6-.95))<1e-6&&Math.abs(call.args[4]-(.6+.95))<1e-6));
+}));
+
+test('arena players use hostile markers and an interior floor without overworld props',()=>environment(({canvas})=>{
+  const world={...makeWorld(),isPvp:true,isDungeon:false,width:900,height:640,regions:[],rooms:[],paths:[],river:[],landmarks:[],structures:[],trees:[],rocks:[],nodes:[],plots:[],shrines:[],chests:[],enemies:[]},view=canvas(),renderer=new Renderer(view,world),game=gameFor(world);
+  game.player.x=450;game.player.y=320;game.partyPlayers=[{id:'opponent',remote:true,classId:'nightblade',x:520,y:320,hp:150,maxHp:300}];renderer.draw(game);
+  assert.equal(renderer.background,null);assert.equal(renderer.worldDecorations().length,0);
+  assert.deepEqual(renderer.camera,{x:450,y:320},'An arena smaller than the viewport remains centred without inverted camera bounds');
+  renderer.heroStatus(view.context,game.partyPlayers[0],game);assert.equal(view.context.fillStyle,'#d77989','Opponent health is hostile red');
+}));
+
+test('a mobile duel bearing follows the living offscreen opponent instead of a saved PvE waypoint',()=>environment(({canvas})=>{
+  const world={...makeWorld(),isPvp:true,isDungeon:true,width:900,height:640,regions:[],rooms:[],paths:[],river:[],landmarks:[],structures:[],trees:[],rocks:[],nodes:[],plots:[],shrines:[],chests:[],enemies:[]},view=canvas(),renderer=new Renderer(view,world),game=gameFor(world);
+  view.getBoundingClientRect=()=>({width:390,height:710,left:0,top:0});renderer.resize();game.worldMode='pvp';game.player.x=225;game.player.y=320;
+  const savedWaypoint={kind:'npc',id:'mira',x:560,y:320,label:'Mira'},opponent={id:'duel-enemy',classId:'nightblade',x:675,y:320,hp:300,maxHp:300};
+  game.waypoint=savedWaypoint;game.waypointTarget=()=>{throw new Error('PvP must not resolve an overworld waypoint');};game.otherPlayers=[{player:opponent}];game.partyPlayers=[{id:'fallen',x:800,y:320,hp:0,dead:true}];renderer.draw(game);
+  assert.equal(game.waypoint,savedWaypoint,'Rendering preserves the saved exploration route');assert.equal(renderer.activeWaypoint.id,opponent.id);assert.equal(renderer.activeWaypoint.distance,450);
+  assert.ok(view.context.calls.some(call=>call.method==='fillText'&&call.args[0]==='Gegner · 450 Schritte'));assert.ok(view.context.calls.some(call=>call.method==='rotate'));
+  assert.ok(!view.context.calls.some(call=>call.method==='fillText'&&String(call.args[0]).includes('Mira')));
+  view.context.calls.length=0;opponent.x=300;renderer.draw(game);assert.ok(!view.context.calls.some(call=>call.method==='rotate'||call.method==='fillText'&&String(call.args[0]).startsWith('Gegner ·')),'A visible opponent needs no extra bearing');
+  opponent.dead=true;opponent.hp=0;renderer.draw(game);assert.equal(renderer.activeWaypoint,null,'A defeated opponent does not leave a stale bearing');
+}));
+
+test('decorative chunks are reused, bounded, and keep interactive locations clear',()=>environment(({canvas})=>{
+  const world=expandWorld(makeWorld()),renderer=new Renderer(canvas(),world);renderer.bounds={x:6000,y:1200,w:1000,h:700};
+  const first=renderer.worldDecorations(),again=renderer.worldDecorations();assert.deepEqual(first,again);
+  assert.ok(first.every(p=>!(world.nodes||[]).some(n=>Math.hypot(p.x-n.x,p.y-n.y)<50)));
+  for(let i=0;i<80;i++){renderer.bounds={x:(i%15)*512,y:Math.floor(i/15)*512,w:512,h:512};renderer.worldDecorations();}
+  assert.ok(renderer.decorationChunks.size<=TERRAIN_CACHE_LIMIT);assert.ok([...renderer.decorationChunks.values()].every(props=>props.length<=3));
+}));

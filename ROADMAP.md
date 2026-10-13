@@ -2,6 +2,15 @@
 
 Ein großes kooperatives 2D-Action-RPG mit acht unterschiedlichen Klassen, Fortschritt bis Level 100, Rätseldungeons, schweren Gruppenbossen, tiefem Loot, mehr Quests, besserer Grafik/Animation und mindestens 200 Stunden sinnvoller Spielentwicklung. Das Ziel bleibt aktiv. Eine externe 5/5-Bewertung und 200 Stunden Spielqualität werden nicht behauptet.
 
+## Version 5.0: Schwarzer Horizont
+
+- Geschichtete originale Musik für Regionen, Dungeons, Bosse und Duelle; acht Klassenklänge, Raumklang, begrenzte Stimmen und getrennte gespeicherte Lautstärken.
+- Dreizehn native Requisitenarten, Wasserreflexe, Klassenakzente, Ausweichnachbilder, Siegelwaffen-Auren und detailliertere Karten aus echten Weltobjekten; feste Cache- und Animationsbudgets.
+- Zwei seltene originale Siegelwaffenvarianten mit dokumentierten quellengebundenen Chancen, kanonischer Herkunft und kleinen PvE-Effekten. Gemeinsame Erholung überdauert Waffenwechsel und Speichern; PvP normalisiert diese Vorteile vollständig.
+- Elf wiederholbare Jagdrouten, höchstens zwei aktive, garantierte Jagdsiegel und gezielte Ausrüstung. Beutestufe erfordert passende abgeschlossene Jagden. Verdiente Fortschritte verfallen nicht. Optionale regionale Champions kehren nach sechs aktiven Spielminuten mit sicherem Abstand zurück.
+- Echte freiwillige Zweispieler-Duelle im autoritativen Node-Gruppenserver: Einladung, Zustimmung, separate Arena, normalisierte Kampfwerte, native Aktionen, Warnungen, Countdown, Zeitlimit, Ergebnis, Aufgabe und sichere Rückkehr. Die gespeicherte Reise bleibt getrennt; es gibt keine farmbaren Duellbelohnungen.
+- [Qualitätsbericht der V5-Erweiterung](docs/ashen-horizon-quality.md). Die statische Sites-Fassung braucht weiterhin einen separaten erreichbaren Spielserver für Koop/PvP. Langzeitspaß, Wettbewerbsgüte und Verkaufserfolg benötigen menschliche Abnahme und werden nicht behauptet.
+
 ## Version 4.0: Ausrüstung, Reiseentwicklung und Abenteuer
 
 - Sieben eigenständige Ausrüstungsplätze: Helm, Handschuhe, Stiefel und Ring ergänzen Waffe, Körperrüstung und Amulett. 48 zusätzliche Basen verwenden kleinere Budgets für Grundwerte, Affixe, legendäre Eigenschaften und Sockel. Insgesamt sind 191 feste Gegenstände, 198 Beutebasen und 104 Rezepte vorhanden; Körperrüstungsrezepte wählen weiterhin tatsächlich den Körperplatz.
