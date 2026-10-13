@@ -8,6 +8,7 @@ Browserprüfung am 13. Oktober 2026 gegen einen separaten lokalen Testserver. Di
 - Alle acht Menüs lassen sich auf kleinen Handys auch über die Einstellungen öffnen. Der Weg Einstellungen → Gruppe wurde direkt im Browser geprüft.
 - Flammenrufer auf Stufe 12: Brandlanze für einen und Meteorruf für zwei Talentpunkte gelernt, automatisch auf 3/4 gelegt. Glutphönix bleibt mit der Voraussetzung Stufe 25 gesperrt.
 - Beide gelernten Fähigkeiten über ihre Touchbuttons ausgeführt: Mana wird verbraucht und der Button zeigt seine Abklingzeit. Joystick und Halteangriff wurden über Browser-Eingaben bedient.
+- Die Skillbeschreibung verwendet die wirksamen Klassenwerte: Meteorruf zeigt 242 % Zauberkraft. Der ausgerüstete Stab verkürzt die angezeigte Abklingzeit von 15 auf 14,65 Sekunden; eine Regression vergleicht die Anzeige mit einem tatsächlichen Cast.
 - Epischen Stufe-12-Zauberstab im Inventar angelegt: Zauberkraft 88,2 → 163,35. Mit seltener Rüstung und Amulett: Zauberkraft 174,44, maximale Lebenspunkte 230,4 → 372,02. Der Vergleich zeigt die tatsächlichen Gesamtwerte einschließlich negativer Änderungen.
 - Waffe in der Charakteransicht abgelegt und denselben Gegenstand wieder im Inventar angelegt. Der Gegenstand bleibt erhalten; Ablegen entfernt seine Werte. Das Anlegen zusätzlicher Lebenspunkte füllt das aktuelle Leben nicht auf.
 - Ein Stufe-40-Stab bleibt auf Stufe 12 gesperrt. Lernen, Skillplätze und Ausrüstung sind nach Neuladen und „Gespeicherte Reise fortsetzen“ erhalten.

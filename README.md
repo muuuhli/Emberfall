@@ -69,6 +69,8 @@ Auf dem Handy ziehst du den **Joystick in acht Richtungen**. Acht Aktionsfläche
 
 Abgebrochene Berührungen, verlorene Pointer-Captures, Appwechsel und geöffnete Menüs setzen die Touch-Eingaben zurück. Die Oberfläche hat mindestens 44 Pixel hohe Aktionstasten, scrollbare Menüs und eigene Layouts für Hoch- und Querformat. Dynamische Viewporthöhe und Safe Areas berücksichtigen Browserleisten und Bildschirmränder. Geräteübergreifende Bildraten und langfristige Ergonomie müssen weiter auf echten Smartphones geprüft werden.
 
+Über die Einstellungen erreichst du auf dem Handy alle acht Menüs direkt, einschließlich der Gruppe. Die [mobile Browserprüfung](docs/mobile-qa.md) dokumentiert die getesteten Ansichten und Aktionen.
+
 ## Acht Klassen
 
 | Klasse | Rolle und Fähigkeiten |
@@ -87,6 +89,8 @@ Die Klasse wird für die jeweilige Reise gewählt. Eigene Talentpfade öffnen si
 ## Neue aktive Fähigkeiten lernen
 
 Öffne **Talente → Aktive Fähigkeiten** mit T oder über das Menü. Jede Klasse erhält drei zusätzliche Techniken ab **Stufe 4, 12 und 25**, für **1, 2 und 3 Talentpunkte**. Die zweite Technik setzt die erste voraus, die dritte die zweite. Die Anzeige erklärt Stufe, Lernvoraussetzung, Mana, Abklingzeit und verfügbare Punkte. Die bisherigen Grundfähigkeiten auf Q/F und die passiven Talentpfade bleiben verfügbar.
+
+Die Prozentangaben berücksichtigen die Klassenbalance. Die angezeigten Abklingzeiten beziehen Ausrüstung und Talente ein; passende Ausrüstung verkürzt auch die Abklingzeitanzeige der Aktionsbuttons.
 
 | Klasse | Stufe 4 · 1 Punkt | Stufe 12 · 2 Punkte | Stufe 25 · 3 Punkte |
 | --- | --- | --- | --- |

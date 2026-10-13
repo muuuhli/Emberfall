@@ -8,6 +8,7 @@ import { MAX_LEVEL } from './progression.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const icon = (name, classes = '') => `<svg class="${classes}" aria-hidden="true"><use href="#i-${name}" /></svg>`;
 const format = value => Math.round(Number(value) || 0).toLocaleString('de-DE');
+const seconds = value => Number(value).toLocaleString("de-DE",{maximumFractionDigits:2});
 const percent = value => `${((Number(value) || 0) * 100).toLocaleString('de-DE',{maximumFractionDigits:2})} %`;
 const statValue = (key,value) => ['crit','lifeSteal','cooldown','dodgeCooldown'].includes(key) ? percent(value) : (Number(value)||0).toLocaleString('de-DE',{maximumFractionDigits:2});
 const clamp = (value, min, max) => Math.max(min, Math.min(max, Number(value) || 0));
@@ -197,16 +198,17 @@ export class GameUI {
     const minutes = Math.floor((8 * 60 + seconds / 3) % (24 * 60));
     this.setText('world-time', `${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`);
     this.setText('world-weather', minutes < 600 ? 'Morgenlicht' : minutes < 1020 ? 'Tageslicht' : minutes < 1200 ? 'Abendglut' : 'Sternennacht');
-    this.updateCooldowns();
+    this.updateCooldowns(stats);
     const blocked=!game.started||Boolean(this.activePanel)||game.paused;
     document.querySelector('.touch-controls').hidden=blocked;
     document.querySelector('.touch-controls').inert=blocked;
     document.body.classList.toggle('gameplay-blocked',blocked);
   }
 
-  updateCooldowns() {
+  updateCooldowns(stats=this.game.stats()) {
     const currentClass = getClass(this.game.player?.classId);
-    const maxCooldown = {attack:currentClass.abilities.attack.cooldown,dash:1.35,nova:currentClass.abilities.nova.cooldown,bolt:currentClass.abilities.bolt.cooldown,potion:3};
+    const factor=1-(stats.cooldown||0);
+    const maxCooldown = {attack:currentClass.abilities.attack.cooldown,dash:Math.max(.4,1.35*(1-(stats.dodgeCooldown||0))),nova:currentClass.abilities.nova.cooldown*factor,bolt:currentClass.abilities.bolt.cooldown*factor,potion:3};
     if(this.lastAbilityClass!==currentClass.id) {
       this.lastAbilityClass=currentClass.id;
       for(const [action, ability] of Object.entries(currentClass.abilities)) {
@@ -219,6 +221,7 @@ export class GameUI {
       }
     }
     for(const [action,ability] of Object.entries(currentClass.abilities)) {
+      for(const control of document.querySelectorAll(`.ability[data-action="${action}"],[data-touch-action="${action}"]`))control.title=`${ability.name}${ability.cost?` · ${ability.cost} Mana`:""} · ${seconds(maxCooldown[action])} Sek. Abklingzeit`;
       const button=document.querySelector(`[data-touch-action="${action}"]`);if(!button)continue;
       button.querySelector('use').setAttribute('href',`#i-${abilityIcon(ability,currentClass.id)}`);button.setAttribute('aria-label',ability.name);
       if(action==='attack')button.querySelector('span').textContent='Angriff halten';
@@ -234,12 +237,12 @@ export class GameUI {
         button.querySelector('span').textContent=learned?learned.name:`Lernen ${Number(slot)+3}`;
         button.querySelector('use').setAttribute('href',`#i-${learnedIcon(learned)}`);
         button.setAttribute('aria-label',learned?`${learned.name}, Platz ${Number(slot)+3}`:`Fähigkeit für Platz ${Number(slot)+3} lernen`);
-        button.title=learned?`${learned.name} · ${learned.cost} Mana · ${learned.cooldown} Sek. Abklingzeit`:'Neue aktive Fähigkeiten lernen und auf 3 oder 4 belegen';
+        button.title=learned?`${learned.name} · ${learned.cost} Mana · ${seconds(learned.cooldown*factor)} Sek. Abklingzeit`:'Neue aktive Fähigkeiten lernen und auf 3 oder 4 belegen';
         button.classList.toggle('empty-slot',!learned);
       }
       button.classList.toggle('is-cooling', value > 0);
       const cover = button.querySelector('.cooldown-cover');
-      if (cover) cover.style.height = `${clamp(value / (learned?.cooldown || maxCooldown[action] || 1) * 100,0,100)}%`;
+      if (cover) cover.style.height = `${clamp(value / (learned?learned.cooldown*factor:maxCooldown[action]||1) * 100,0,100)}%`;
     }
   }
 
@@ -377,7 +380,7 @@ export class GameUI {
     const completed = Object.values(this.game.questState || {}).filter(state=>state.status==='done').length;
     const currentClass = getClass(player.classId);
     const values = ['damage','spellDamage','maxHp','mana','armor','crit','speed','manaRegen','lifeSteal','gatherYield','cooldown','dodgeCooldown'];
-    return `<div class="character-banner"><div class="character-seal" style="color:${currentClass.color}">${icon(classIcons[currentClass.id])}</div><div><h3>${escape(player.name || 'Aren')}</h3><p>${escape(currentClass.name)} · ${escape(currentClass.role)} · Stufe ${player.level || 1} / ${MAX_LEVEL}<br>${player.level>=MAX_LEVEL?'Höchste Stufe erreicht':`${format(player.xp)} / ${format(xpNeeded)} Erfahrung`} · ${format(player.skillPoints)} freie Talentpunkte</p></div></div><p class="panel-note">${escape(currentClass.description)}</p><div class="class-abilities">${Object.entries(currentClass.abilities).map(([key,ability])=>`<div>${icon(abilityIcon(ability,currentClass.id))}<strong>${escape(ability.name)}</strong><span>${key==='attack'?'J / Klick':key==='bolt'?'Q / 1':'F / 2'}${ability.cost?` · ${ability.cost} Mana`:''} · ${ability.cooldown} Sek.</span></div>`).join('')}</div><div class="stats-grid">${values.map(key=>`<div class="summary-stat"><span>${escape(statLabels[key])}</span><strong>${['crit','lifeSteal','cooldown','dodgeCooldown'].includes(key)?percent(stats[key]):Number(stats[key] || 0).toLocaleString('de-DE',{maximumFractionDigits:1})}</strong></div>`).join('')}</div><p class="panel-note"><button class="small-button" data-panel="talents">${icon('tree')}Neue Fähigkeiten lernen · ${getLearnedAbilities(this.game).length} / 3 erlernt</button></p><h3 class="section-title">Was du mit dir trägst</h3><div class="character-equipment">${this.equipmentSlots()}</div><p class="panel-note">${completed} von ${QUESTS.length} Questen abgeschlossen · ${(this.game.discovered || []).length} von ${REGIONS.length} Regionen entdeckt.<br>Mit jeder neuen Stufe erhältst du Talentpunkte. Neue Klassenpfade öffnen sich auf Stufe 12, 25, 40, 60 und 80.</p>`;
+    return `<div class="character-banner"><div class="character-seal" style="color:${currentClass.color}">${icon(classIcons[currentClass.id])}</div><div><h3>${escape(player.name || 'Aren')}</h3><p>${escape(currentClass.name)} · ${escape(currentClass.role)} · Stufe ${player.level || 1} / ${MAX_LEVEL}<br>${player.level>=MAX_LEVEL?'Höchste Stufe erreicht':`${format(player.xp)} / ${format(xpNeeded)} Erfahrung`} · ${format(player.skillPoints)} freie Talentpunkte</p></div></div><p class="panel-note">${escape(currentClass.description)}</p><div class="class-abilities">${Object.entries(currentClass.abilities).map(([key,ability])=>`<div>${icon(abilityIcon(ability,currentClass.id))}<strong>${escape(ability.name)}</strong><span>${key==='attack'?'J / Klick':key==='bolt'?'Q / 1':'F / 2'}${ability.cost?` · ${ability.cost} Mana`:''} · ${seconds(ability.cooldown*(key==="attack"?1:1-stats.cooldown))} Sek.</span></div>`).join('')}</div><div class="stats-grid">${values.map(key=>`<div class="summary-stat"><span>${escape(statLabels[key])}</span><strong>${['crit','lifeSteal','cooldown','dodgeCooldown'].includes(key)?percent(stats[key]):Number(stats[key] || 0).toLocaleString('de-DE',{maximumFractionDigits:1})}</strong></div>`).join('')}</div><p class="panel-note"><button class="small-button" data-panel="talents">${icon('tree')}Neue Fähigkeiten lernen · ${getLearnedAbilities(this.game).length} / 3 erlernt</button></p><h3 class="section-title">Was du mit dir trägst</h3><div class="character-equipment">${this.equipmentSlots()}</div><p class="panel-note">${completed} von ${QUESTS.length} Questen abgeschlossen · ${(this.game.discovered || []).length} von ${REGIONS.length} Regionen entdeckt.<br>Mit jeder neuen Stufe erhältst du Talentpunkte. Neue Klassenpfade öffnen sich auf Stufe 12, 25, 40, 60 und 80.</p>`;
   }
 
   talents() {
@@ -401,11 +404,11 @@ export class GameUI {
   }
 
   activeAbilities() {
-    const learned=getLearnedAbilities(this.game),abilities=ABILITIES.filter(ability=>ability.classId===this.game.player.classId);
+    const stats=this.game.stats(),learned=getLearnedAbilities(this.game),abilities=ABILITIES.filter(ability=>ability.classId===this.game.player.classId);
     return `<p class="panel-note">Deine Basisfähigkeiten bleiben auf Q und F. Lerne neue Techniken ab Stufe 4, 12 und 25 und belege zwei Zusatzplätze. Lernen verbraucht Talentpunkte; Belegen ist kostenlos.</p><div class="ability-loadout">${[0,1].map(slot=>`<label class="loadout-slot"><span>PLATZ ${slot+3} · ${this.game.abilityLoadout?.[slot]?'BELEGT':'FREI'}</span><select class="game-input" data-ability-loadout="${slot}" aria-label="Fähigkeit auf Platz ${slot+3}"><option value="">Keine Fähigkeit</option>${learned.map(ability=>`<option value="${ability.id}" ${this.game.abilityLoadout?.[slot]===ability.id?'selected':''}>${escape(ability.name)}</option>`).join('')}</select></label>`).join('')}</div><div class="learnable-abilities">${abilities.map(ability=>{
       const known=Boolean(this.game.learnedAbilities?.[ability.id]),check=canLearnAbility(this.game,ability.id),required=ability.requires?getAbility(ability.requires):null;
       const occupied=(this.game.abilityLoadout||[]).findIndex(id=>id===ability.id);
-      return `<article class="learnable-ability ${known?'learned':check.ok?'learnable':'locked'}"><div class="learnable-heading"><div class="item-icon">${icon(learnedIcon(ability))}</div><div><h3>${escape(ability.name)}</h3><span class="ability-state">${known?occupied>=0?`ERLERNT · AUF PLATZ ${occupied+3}`:'ERLERNT':check.ok?'LERNBAR':this.game.player.level<ability.level?`AB STUFE ${ability.level}`:'VORAUSSETZUNG FEHLT'}</span></div></div><p>${escape(ability.description)}</p><div class="ability-facts"><span>Stufe ${ability.level}</span><span>${ability.cost} Mana</span><span>${ability.cooldown} Sek. Abklingzeit</span>${required?`<span>Benötigt ${escape(required.name)}</span>`:''}</div>${known?`<div class="ability-equip-actions">${[0,1].map(slot=>`<button class="small-button ${occupied===slot?'subtle-button':''}" data-command="assign-ability" data-id="${ability.id}" data-slot="${slot}" ${occupied===slot?'disabled':''}>${occupied===slot?`Auf ${slot+3} belegt`:`Auf ${slot+3} belegen`}</button>`).join('')}</div>`:`<button class="small-button" data-command="learnAbility" data-id="${ability.id}" ${check.ok?'':'disabled'}>Lernen · ${ability.talentCost} Talentpunkt${ability.talentCost===1?'':'e'}</button>${!check.ok?`<p class="talent-requirement">${escape(check.reason)}</p>`:''}`}</article>`;
+      return `<article class="learnable-ability ${known?'learned':check.ok?'learnable':'locked'}"><div class="learnable-heading"><div class="item-icon">${icon(learnedIcon(ability))}</div><div><h3>${escape(ability.name)}</h3><span class="ability-state">${known?occupied>=0?`ERLERNT · AUF PLATZ ${occupied+3}`:'ERLERNT':check.ok?'LERNBAR':this.game.player.level<ability.level?`AB STUFE ${ability.level}`:'VORAUSSETZUNG FEHLT'}</span></div></div><p>${escape(ability.description)}</p><div class="ability-facts"><span>Stufe ${ability.level}</span><span>${ability.cost} Mana</span><span>${seconds(ability.cooldown*(1-stats.cooldown))} Sek. Abklingzeit</span>${required?`<span>Benötigt ${escape(required.name)}</span>`:''}</div>${known?`<div class="ability-equip-actions">${[0,1].map(slot=>`<button class="small-button ${occupied===slot?'subtle-button':''}" data-command="assign-ability" data-id="${ability.id}" data-slot="${slot}" ${occupied===slot?'disabled':''}>${occupied===slot?`Auf ${slot+3} belegt`:`Auf ${slot+3} belegen`}</button>`).join('')}</div>`:`<button class="small-button" data-command="learnAbility" data-id="${ability.id}" ${check.ok?'':'disabled'}>Lernen · ${ability.talentCost} Talentpunkt${ability.talentCost===1?'':'e'}</button>${!check.ok?`<p class="talent-requirement">${escape(check.reason)}</p>`:''}`}</article>`;
     }).join('')}</div>`;
   }
 
