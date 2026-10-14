@@ -443,7 +443,7 @@
       "status": "V14 core family QA retained; V15 profession material and potion aliases covered by native tests and separate integration QA"
     }
   ],
-  "version": "15.0.0",
+  "version": "16.0.0",
   "updated": "2026-10-14",
   "developmentStatus": {
     "releaseState": "playable development build",
@@ -500,7 +500,17 @@
       "professionMasteries": 9,
       "professionCharacterLevelCaps": true,
       "professionAccountPersistence": true,
-      "totalCraftingRecipes": 124
+      "totalCraftingRecipes": 124,
+      "accountFriendships": true,
+      "consensualGuildMembership": true,
+      "guildRoles": [
+        "leader",
+        "officer",
+        "member"
+      ],
+      "persistentGuildChatHistoryLimit": 50,
+      "socialContactPartyJoin": true,
+      "socialGameplayPartyLimit": 8
     },
     "campaignHoursTarget": 200,
     "fullCampaignHoursVerified": 0,

@@ -4,7 +4,7 @@ import { Game } from '../src/game.js';
 import { GameUI } from '../src/ui.js';
 
 test('every existing game view is reachable through four groups with only the active group expanded',()=>{
-  const ui=Object.create(GameUI.prototype),views=['character','talents','inventory','craft','journal','journey','bestiary','map','adventures','dungeons','interactions','party'];
+  const ui=Object.create(GameUI.prototype),views=['character','talents','inventory','craft','journal','journey','bestiary','map','adventures','dungeons','interactions','party','social'];
   const reachable=new Set();
   for(const view of views){
     const html=ui.menuNavigation(view);

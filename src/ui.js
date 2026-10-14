@@ -45,11 +45,12 @@ const branchIcons = {'Wächter':'shield','Arkanist':'flame','Wildläufer':'leaf'
 const branchDescriptions = {'Wächter':'Halte stand. Jede Wunde macht dich stärker.','Arkanist':'Entfache die Glut und forme den Äther.','Wildläufer':'Bewege dich frei. Lebe von den Gaben des Hains.'};
 const professionRecipeIds = new Set(PROFESSION_RECIPES.map(recipe=>recipe.id));
 const combatPatterns = { melee:'Nahkampf',ranged:'Fernkampf',charge:'Ansturm',caster:'Zauberwirker',summon:'Beschwörer',swarm:'Schwarm',ambush:'Hinterhalt',artillery:'Artillerie',support:'Unterstützer',guardian:'Wächter',bruiser:'Brecher',skirmisher:'Plänkler',assassin:'Meuchler',siege:'Belagerung',drain:'Lebensraub',nova:'Flächenangriff',burst:'Angriffsserie',hex:'Fluch',ring:'Geschossring',fan:'Geschossfächer',summoner:'Beschwörer' };
-const menuGroups=[{id:'hero',name:'Held',icon:'shield',panels:[['character','Charakter'],['talents','Fähigkeiten']]},{id:'arsenal',name:'Inventar',icon:'bag',panels:[['inventory','Ausrüstung & Lager'],['craft','Handwerk']]},{id:'chronicle',name:'Quests',icon:'book',panels:[['journal','Quests & Aufträge'],['journey','Ruf & Gefährten'],['bestiary','Bestiarium']]},{id:'world',name:'Welt',icon:'map',panels:[['map','Weltkarte'],['adventures','Abenteuer'],['dungeons','Dungeons'],['interactions','Entdeckungen'],['party','Gruppe']]}];
+const menuGroups=[{id:'hero',name:'Held',icon:'shield',panels:[['character','Charakter'],['talents','Fähigkeiten']]},{id:'arsenal',name:'Inventar',icon:'bag',panels:[['inventory','Ausrüstung & Lager'],['craft','Handwerk']]},{id:'chronicle',name:'Quests',icon:'book',panels:[['journal','Quests & Aufträge'],['journey','Ruf & Gefährten'],['bestiary','Bestiarium']]},{id:'world',name:'Welt',icon:'map',panels:[['map','Weltkarte'],['adventures','Abenteuer'],['dungeons','Dungeons'],['interactions','Entdeckungen'],['party','Gruppe'],['social','Gemeinschaft']]}];
 const groupFor=panel=>menuGroups.find(group=>group.panels.some(([id])=>id===panel));
 const panels = {map:['Weltkarte','Regionen, Wege und Reiseziele.'],world:['Weltkarte','Regionen, Wege und Reiseziele.'],character:['Charakter','Ausrüstung, Werte und Klassenaufbau.'],inventory:['Inventar','Beute anlegen, vergleichen und verwalten.'],talents:['Fähigkeiten','Techniken lernen und Talente verteilen.'],craft:['Handwerk','Ausrüstung schmieden und Vorräte herstellen.'],journal:['Quests','Aufgaben, Ziele und regionale Aufträge.'],bestiary:['Bestiarium','Gegner und ihre Bossformen.'],interactions:['Entdeckungen','Altäre, Reliquien und Begegnungen.'],party:['Gruppe','Gemeinsam spielen mit bis zu acht Personen.'],dungeons:['Dungeons','Wege, Bosse und Gruppenvoraussetzungen.'],journey:['Ruf & Gefährten','Orden, Errungenschaften und Begleiter.'],adventures:['Abenteuer','Ereignisse, Prüfungen und Expeditionen.'],settings:['Einstellungen','Ton, Bedienung und Spielstand.']};
 
 panels.account=['Spielerkonto','Dein Charakter und Fortschritt auf dem Spielserver.'];
+panels.social=['Gemeinschaft','Freunde, Gilden und gemeinsame Reisen.'];
 
 export class GameUI {
   constructor(game) {
@@ -115,6 +116,7 @@ export class GameUI {
     this.accountMessage = '';
     this.accountMessageTone = 'info';
     this.lastAccountState = '';
+    this.socialTab='friends';this.socialFriendUsername='';this.socialGuildName='';this.socialInviteUsername='';this.socialChatText='';this.socialBusy=null;this.socialMessage='';this.socialMessageError=false;
     this.lastPartyState = '';
     this.lastAbilityClass = '';
     this.lastSeenLevel = game.player?.level || 1;
@@ -134,6 +136,7 @@ export class GameUI {
 
   bind() {
     document.addEventListener('submit', event => {
+      if(event.target?.matches?.('[data-social-form]')){event.preventDefault();this.submitSocial(event.target);return;}
       if (!event.target?.matches?.('[data-account-form]')) return;
       event.preventDefault();
       this.submitAccount(event.target);
@@ -204,6 +207,10 @@ export class GameUI {
     for(const name of ['pointerup','pointercancel'])document.addEventListener(name,release);
     this.elements['game-panel'].addEventListener('focusout',()=>{if(this.pendingPanelRender)requestAnimationFrame(()=>{if(!this.panelPointers.size){this.pendingPanelRender=false;this.renderPanel();}});});
     window.addEventListener('blur',()=>{this.panelPointers.clear();this.game.keys?.clear();});
+    document.addEventListener('visibilitychange',()=>{
+      if(this.activePanel!=='social')return;
+      if(document.visibilityState==='hidden')this.network?.closeSocial?.();else this.openSocialView();
+    });
   }
 
   get currentPanel() { return this.activePanel; }
@@ -326,7 +333,7 @@ export class GameUI {
     const trackerState = JSON.stringify([game.questState || {},game.contracts,game.trackedQuestId,game.endgame,eventState,this.dungeonId()]);
     if (force || trackerState !== this.lastTracker) { this.lastTracker = trackerState; this.renderTracker(); }
     const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.deathPenalty,game.waypoint,game.trackedQuestId,eventSummary.map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]),game.equipment,game.generatedItems,game.resources,game.professions,game.professionTraining,game.skills,game.learnedAbilities,game.abilityLoadout,game.techniqueSpecializations,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,game.dungeonInstance?.raidRevivesUsed,game.dungeonInstance?.routes?.completed,game.networkRaidResume,this.dungeonId()]);
-    if (force || state !== this.lastState) { this.lastState = state; if (this.activePanel && !['death','victory','reset','settings','party','account'].includes(this.activePanel)) this.renderPanel(); }
+    if (force || state !== this.lastState) { this.lastState = state; if (this.activePanel && !['death','victory','reset','settings','party','account','social'].includes(this.activePanel)) this.renderPanel(); }
     this.updateParty();
     this.updateAccount();
     const now = performance.now();
@@ -493,6 +500,7 @@ export class GameUI {
     this.closeInformation({restoreFocus:false});
     if (name === this.activePanel) { this.closePanel(); return; }
     if(this.activePanel==='account')this.clearAccountPassword();
+    if(this.activePanel==='social')this.network?.closeSocial?.();
     if (!this.activePanel) this.previousFocus = informationFocus?.isConnected?informationFocus:document.activeElement;
     this.activePanel = name;
     this.pendingScrollReset=true;
@@ -509,6 +517,7 @@ export class GameUI {
     this.renderPanel();
     this.renderNotice();
     if(name==='party') this.refreshRooms();
+    if(name==='social')this.openSocialView();
     requestAnimationFrame(() => (name === 'death' ? this.elements['panel-content'].querySelector('button') : name==='account' ? this.elements['panel-content'].querySelector('input,button,a[href]') || this.elements['close-panel'] : this.elements['close-panel'])?.focus({preventScroll:true}));
   }
 
@@ -517,6 +526,7 @@ export class GameUI {
     this.closeInformation({restoreFocus:false});
     this.clearAccountPassword();
     const previous = this.activePanel;
+    if(previous==='social')this.network?.closeSocial?.();
     this.activePanel = null;
     document.body.classList.remove('panel-open');
     this.dialogueNPC = null;
@@ -534,6 +544,8 @@ export class GameUI {
   renderPanel(allowFocusedSelect = false, allowCraftWhileBusy = false) {
     const name = this.activePanel;
     if (!name) return;
+    if(name==='social'&&this.renderedPanel==='social'&&!this.socialExplicitRender){this.updateSocial();return;}
+    this.socialExplicitRender=false;
     if(this.craftBusy&&['craft','dialogue'].includes(name)&&this.renderedPanel===name&&!allowCraftWhileBusy)return;
     if(this.panelPointers.size||!allowFocusedSelect&&document.activeElement?.matches?.('select')&&this.elements['game-panel'].contains(document.activeElement)){this.pendingPanelRender=true;return;}
     if(name==='party'&&this.renderedPanel==='party'&&['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)&&this.elements['game-panel'].contains(document.activeElement)){this.pendingPanelRender=true;return;}
@@ -559,7 +571,7 @@ export class GameUI {
         if(navigation.innerHTML!==markup)navigation.innerHTML=markup;
       }
     }
-    const renderers = {inventory:()=>this.inventory(),character:()=>this.character(),talents:()=>this.talents(),craft:()=>this.craft(),journal:()=>this.journal(),map:()=>this.map(),party:()=>this.party(),account:()=>this.account(),dungeons:()=>this.dungeons(),settings:()=>this.settings(),bestiary:()=>this.bestiary(),journey:()=>this.journey(),adventures:()=>this.adventures(),interactions:()=>this.interactions(),dialogue:()=>this.dialogue(),death:()=>this.death(),victory:()=>this.victory(),reset:()=>this.resetConfirmation()};
+    const renderers = {inventory:()=>this.inventory(),character:()=>this.character(),talents:()=>this.talents(),craft:()=>this.craft(),journal:()=>this.journal(),map:()=>this.map(),party:()=>this.party(),account:()=>this.account(),social:()=>this.social(),dungeons:()=>this.dungeons(),settings:()=>this.settings(),bestiary:()=>this.bestiary(),journey:()=>this.journey(),adventures:()=>this.adventures(),interactions:()=>this.interactions(),dialogue:()=>this.dialogue(),death:()=>this.death(),victory:()=>this.victory(),reset:()=>this.resetConfirmation()};
     this.elements['panel-content'].innerHTML = (renderers[name] || renderers.inventory)();
     this.lastInformationBadge=null;
     this.elements['game-panel'].dataset.panel=name;
@@ -571,6 +583,10 @@ export class GameUI {
     if (name === 'map') this.drawMap(document.getElementById('full-map'), true);
     if (name === 'character' && this.characterTab!=='build') this.renderHeroPreview();
     if (name === 'party') { this.lastPartyState='';this.lastPartyCode=''; this.updateParty(); }
+    if(name==='social'){
+      this.updateSocial();
+      if(this.socialTab==='chat')requestAnimationFrame(()=>{if(this.activePanel==='social'){const list=document.getElementById('social-messages');if(list)list.scrollTop=list.scrollHeight;}});
+    }
     if (!resetScroll&&focusCommand&&(focusId||name==='party')) {
       const target = [...this.elements['panel-content'].querySelectorAll('button')].find(button=>(!focusId||button.dataset.id===focusId)&&button.dataset.command===focusCommand);
       if (target && !target.disabled) target.focus({preventScroll:true});
@@ -1152,7 +1168,7 @@ export class GameUI {
     if(network.accountStatus==='checking')return '<section class="account-surface"><p class="account-feedback" role="status">Dein Spielerkonto wird geprüft …</p><button type="button" class="text-button" data-command="account-guest">Ohne Anmeldung spielen</button></section>';
     if(network.account) {
       const account=network.account,currentClass=getClass(account.classId || this.game.player.classId);
-      return `<section class="account-surface"><div class="account-character">${icon(classIcons[currentClass.id])}<div><h3>${escape(account.playerName || account.username)}</h3><p>${escape(currentClass.name)} · Stufe ${format(account.level || 1)}<br>Angemeldet als ${escape(account.username)}</p></div></div><p>Dein Charakter, Ausrüstung und Quests werden auf dem Spielserver gespeichert. Melde dich auf einem anderen Gerät mit demselben Konto an, um weiterzuspielen.</p><div class="account-actions"><button type="button" class="primary-button" data-command="account-play" ${this.accountBusy?'disabled':''}>Reise fortsetzen ${icon('arrow')}</button><button type="button" class="small-button" data-panel="party">${icon('group')}Gruppen finden</button></div>${this.invitationPrompt()}<p id="account-feedback" class="account-feedback ${this.accountMessageTone}" role="status" aria-live="polite">${escape(this.accountMessage)}</p><button type="button" class="text-button" data-command="account-logout" ${this.accountBusy?'disabled':''}>${this.accountBusy?'Bitte warten …':'Abmelden'}</button><p class="account-footnote">Deine vorherige lokale Reise bleibt als eigene Reise in diesem Browser erhalten.</p></section>`;
+      return `<section class="account-surface"><div class="account-character">${icon(classIcons[currentClass.id])}<div><h3>${escape(account.playerName || account.username)}</h3><p>${escape(currentClass.name)} · Stufe ${format(account.level || 1)}<br>Angemeldet als ${escape(account.username)}</p></div></div><p>Dein Charakter, Ausrüstung und Quests werden auf dem Spielserver gespeichert. Melde dich auf einem anderen Gerät mit demselben Konto an, um weiterzuspielen.</p><div class="account-actions"><button type="button" class="primary-button" data-command="account-play" ${this.accountBusy?'disabled':''}>Reise fortsetzen ${icon('arrow')}</button><button type="button" class="small-button" data-panel="party">${icon('group')}Gruppen finden</button><button type="button" class="small-button" data-panel="social">Gemeinschaft</button></div>${this.invitationPrompt()}<p id="account-feedback" class="account-feedback ${this.accountMessageTone}" role="status" aria-live="polite">${escape(this.accountMessage)}</p><button type="button" class="text-button" data-command="account-logout" ${this.accountBusy?'disabled':''}>${this.accountBusy?'Bitte warten …':'Abmelden'}</button><p class="account-footnote">Deine vorherige lokale Reise bleibt als eigene Reise in diesem Browser erhalten.</p></section>`;
     }
     const registering=this.accountTab==='register';
     return `<section class="account-surface"><nav class="account-tabs panel-tabs" aria-label="Spielerkonto"><button type="button" data-command="account-tab" data-id="login" aria-pressed="${!registering}" ${this.accountBusy?'disabled':''}>Anmelden</button><button type="button" data-command="account-tab" data-id="register" aria-pressed="${registering}" ${this.accountBusy?'disabled':''}>Konto erstellen</button></nav><p>${registering?'Wähle einen Spielernamen und deine erste Klasse. Dein Charakter bleibt auf dem Spielserver gespeichert.':'Melde dich an, um deinen Charakter auf jedem Gerät weiterzuspielen.'}</p><form id="account-form" data-account-form="${registering?'register':'login'}" autocomplete="on"><label class="field-label" for="account-username">Spielername</label><input id="account-username" name="username" class="game-input" type="text" minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]{3,24}" required autocomplete="username" autocapitalize="off" spellcheck="false" aria-describedby="account-username-hint" ${this.accountBusy?'disabled':''}/><small id="account-username-hint" class="account-field-hint">3–24 Zeichen: Buchstaben, Zahlen, _ oder -.</small><label class="field-label" for="account-password">Passwort</label><input id="account-password" name="password" class="game-input" type="password" minlength="12" maxlength="128" required autocomplete="${registering?'new-password':'current-password'}" aria-describedby="account-password-hint" ${this.accountBusy?'disabled':''}/><small id="account-password-hint" class="account-field-hint">Mindestens 12 Zeichen. Verwende ein eigenes Passwort für Emberfall.</small>${registering?`<label class="field-label" for="account-player-name">Charaktername <span>(optional)</span></label><input id="account-player-name" name="playerName" class="game-input" type="text" maxlength="24" autocomplete="nickname" placeholder="Wie dein Spielername" ${this.accountBusy?'disabled':''}/><label class="field-label" for="account-class">Klasse</label><select id="account-class" name="classId" class="game-input" ${this.accountBusy?'disabled':''}>${CLASSES.map(entry=>`<option value="${entry.id}" ${entry.id===this.game.player.classId?'selected':''}>${escape(entry.name)} · ${escape(entry.role)}</option>`).join('')}</select>`:''}<p id="account-feedback" class="account-feedback ${this.accountMessageTone}" role="status" aria-live="polite">${escape(this.accountMessage)}</p><button type="submit" class="primary-button" ${this.accountBusy?'disabled aria-busy="true"':''}>${this.accountBusy?'Bitte warten …':registering?'Konto erstellen':'Anmelden'} ${icon('arrow')}</button></form><p class="account-footnote">Ohne E-Mail. Bewahre deine Zugangsdaten sicher auf.</p><button type="button" class="text-button" data-command="account-guest">Ohne Anmeldung spielen</button></section>`;
@@ -1171,6 +1187,12 @@ export class GameUI {
 
   updateAccount(force=false) {
     const network=this.network,account=network?.account;
+    const owner=account?`${network.baseUrl}|${account.id}`:null;
+    if(owner!==this.socialOwner){
+      this.socialOwner=owner;this.socialGeneration=(this.socialGeneration||0)+1;this.socialBusy=null;this.socialMessage='';this.socialMessageError=false;
+      this.socialFriendUsername='';this.socialGuildName='';this.socialInviteUsername='';this.socialChatText='';this.socialTab='friends';
+      if(this.activePanel==='social'){this.socialExplicitRender=true;this.renderPanel();if(owner)this.openSocialView();}
+    }
     const state=JSON.stringify([network?.accountStatus,account?.id,account?.username,account?.playerName,account?.classId,account?.level,network?.requiresHTTPS,network?.secureOrigin,network?.pendingInvitation]);
     if(!force&&state===this.lastAccountState)return;
     this.lastAccountState=state;
@@ -1258,12 +1280,184 @@ export class GameUI {
     finally {this.accountBusy=false;this.updateAccount(true);}
   }
 
+  socialSnapshot() {
+    const network=this.network;
+    return network?.account&&network.social?.accountId===network.account.id?network.social:null;
+  }
+
+  social() {
+    const network=this.network;
+    if(!network?.account||network.accountStatus!=='authenticated'||network.requiresHTTPS)return `<section class="social-surface social-empty"><h3>Gemeinsam durch Emberfall</h3><p>Mit einem Spielerkonto kannst du Freundschaftsanfragen annehmen, eine Gilde gründen und deinen Gefährten in Gruppen folgen.</p><button type="button" class="small-button" data-command="account-open">${icon('group')}Spielerkonto öffnen</button></section>`;
+    const tab=['friends','guild','chat'].includes(this.socialTab)?this.socialTab:'friends';
+    return `<section class="social-surface"><nav class="panel-tabs social-tabs" aria-label="Gemeinschaft">${[['friends','Freunde'],['guild','Gilde'],['chat','Nachrichten']].map(([id,name])=>`<button type="button" data-command="social-tab" data-id="${id}" aria-pressed="${tab===id}">${name}</button>`).join('')}</nav><div class="social-status-row"><p id="social-connection" class="panel-note" role="status" aria-live="polite"></p><button type="button" class="text-button" data-command="social-refresh">Aktualisieren</button></div><p id="social-feedback" class="social-feedback" role="status" aria-live="polite" tabindex="-1" hidden></p><div id="social-body">${this.socialBody()}</div></section>`;
+  }
+
+  socialBody() {
+    const snapshot=this.socialSnapshot(),guild=snapshot?.guild;
+    this.socialStructure=JSON.stringify([this.network?.account?.id,this.socialTab||'friends',guild?.id,guild?.role,guild?.members.length]);
+    if(this.socialTab==='guild')return `${guild?`<div class="social-guild-heading"><div><h3>${escape(guild.name)}</h3><p>${escape({leader:'Gildenleitung',officer:'Offizier',member:'Mitglied'}[guild.role])} · ${guild.members.length}/32 Mitglieder</p></div></div>${['leader','officer'].includes(guild.role)?this.socialForm('guild-invite','Spieler einladen','socialInviteUsername','Exakter Kontoname','Einladung senden'):''}<div id="social-roster">${this.socialRoster()}</div><div id="social-sent-invites">${this.socialSentInvites()}</div><details class="social-disclosure"><summary>Gilde verlassen</summary><p class="panel-note">${guild.role==='leader'&&guild.members.length>1?'Übertrage zuerst die Gildenleitung an ein anderes Mitglied.':'Deine Figur und ihr Fortschritt bleiben erhalten.'}</p>${this.socialButton('guild_leave','','Gilde verlassen',{disabled:guild.role==='leader'&&guild.members.length>1,danger:true})}</details>`:`<p class="panel-note">Gründe eine Gilde oder nimm eine persönliche Einladung an. Mitglieder können sich schreiben und gemeinsam aufbrechen.</p>${this.socialForm('guild-create','Gildenname','socialGuildName','Name deiner Gilde','Gilde gründen')}<div id="social-guild-invites">${this.socialGuildInvites()}</div>`}`;
+    if(this.socialTab==='chat')return guild?`<h3 class="social-chat-title">${escape(guild.name)}</h3><p class="panel-note">Nur Mitglieder deiner Gilde lesen diese Nachrichten. Die letzten 50 bleiben erhalten.</p><ol id="social-messages" class="social-messages" aria-label="Gildennachrichten">${this.socialMessages()}</ol><form data-social-form="guild-chat" class="social-form social-chat-form"><label class="field-label" for="social-chat-text">Nachricht an deine Gilde</label><textarea id="social-chat-text" name="text" class="game-input" rows="3" minlength="1" maxlength="240" required data-ui-draft="socialChatText" placeholder="An deine Gefährten …">${escape(this.socialChatText||'')}</textarea><div><small>Bis zu 240 Zeichen</small><button type="submit" class="small-button">Senden ${icon('arrow')}</button></div></form>`:`<p class="social-empty">Nachrichten sind für Gildenmitglieder verfügbar.</p><button type="button" class="small-button" data-command="social-tab" data-id="guild">Gilde finden oder gründen</button>`;
+    return `${this.socialForm('friend-request','Freundschaft anfragen','socialFriendUsername','Exakter Kontoname','Anfrage senden')}<div id="social-requests">${this.socialRequests()}</div><h3 class="section-title">Deine Freunde</h3><div id="social-friends">${this.socialFriends()}</div><div id="social-blocked">${this.socialBlocked()}</div>`;
+  }
+
+  socialForm(kind,label,draft,placeholder,submit) {
+    const guildName=kind==='guild-create',id=`social-${kind}`,max=guildName?32:24;
+    return `<form class="social-form" data-social-form="${kind}"><label class="field-label" for="${id}">${label}</label><div class="social-form-row"><input id="${id}" name="${guildName?'guildName':'username'}" class="game-input" type="text" minlength="3" maxlength="${max}" ${guildName?'':'pattern="[A-Za-z0-9_-]{3,24}" autocapitalize="off"'} required autocomplete="off" spellcheck="false" data-ui-draft="${draft}" value="${escape(this[draft]||'')}" placeholder="${placeholder}"/><button type="submit" class="small-button">${submit}</button></div><small>${guildName?'3–32 Zeichen: Buchstaben, Zahlen, Leerzeichen, Apostroph, _ oder -.':'Exakter Kontoname: 3–24 Buchstaben, Zahlen, _ oder -. Die Person muss zustimmen.'}</small></form>`;
+  }
+
+  socialButton(action,id,label,{disabled=false,danger=false,role}={}) {
+    return `<button type="button" class="${danger?'text-button danger-button':'small-button'}" data-command="social-action" data-action-name="${action}" data-id="${escape(id)}" ${role?`data-role="${role}"`:''} data-social-disabled="${disabled}" ${disabled||this.socialBusy?'disabled':''}>${label}</button>`;
+  }
+
+  socialContact(profile,actions='') {
+    const known=profile.classId&&Number.isInteger(profile.level),status=profile.online?'Online':'Offline';
+    return `<article class="social-contact" data-social-contact="${escape(profile.accountId)}"><div class="social-contact-name"><strong>${escape(profile.playerName)}</strong><span>@${escape(profile.username)}${known?` · ${escape(getClass(profile.classId).name)} · Stufe ${profile.level}`:''}</span><small class="${profile.online?'is-online':''}">${status}${profile.inParty?` · ${escape(profile.roomName||'In einer Gruppe')}`:''}</small></div>${actions?`<div class="social-contact-actions">${actions}</div>`:''}</article>`;
+  }
+
+  socialJoin(profile) {
+    return profile.canJoin?`<button type="button" class="small-button" data-command="social-join" data-id="${escape(profile.accountId)}" ${this.socialBusy?'disabled':''}>Gruppe beitreten</button>`:profile.online?`<small class="social-join-reason">${escape(profile.joinReason||'Gerade keiner Gruppe beitretbar.')}</small>`:'';
+  }
+
+  socialRequests() {
+    const requests=this.socialSnapshot()?.friendRequests;
+    return `${requests?.incoming.length?`<h3 class="section-title">Neue Anfragen · ${requests.incoming.length}</h3>${requests.incoming.map(profile=>this.socialContact(profile,this.socialButton('friend_accept',profile.accountId,'Annehmen')+this.socialButton('friend_decline',profile.accountId,'Ablehnen')+`<details class="social-disclosure"><summary>Mehr</summary>${this.socialButton('block',profile.accountId,'Blockieren',{danger:true})}</details>`)).join('')}`:''}${requests?.outgoing.length?`<details class="social-disclosure"><summary>Gesendete Anfragen · ${requests.outgoing.length}</summary>${requests.outgoing.map(profile=>this.socialContact(profile,this.socialButton('friend_cancel',profile.accountId,'Zurückziehen'))).join('')}</details>`:''}`;
+  }
+
+  socialFriends() {
+    const friends=this.socialSnapshot()?.friends;
+    return friends?.length?[...friends].sort((a,b)=>Number(b.online)-Number(a.online)||a.playerName.localeCompare(b.playerName,'de')).map(profile=>this.socialContact(profile,`${this.socialJoin(profile)}<details class="social-disclosure"><summary>Kontakt verwalten</summary>${this.socialButton('friend_remove',profile.accountId,'Freundschaft beenden',{danger:true})}${this.socialButton('block',profile.accountId,'Blockieren',{danger:true})}</details>`)).join(''):'<p class="social-empty">Noch keine bestätigten Freunde. Sende eine Anfrage mit dem exakten Spielernamen.</p>';
+  }
+
+  socialBlocked() {
+    const blocked=this.socialSnapshot()?.blocked;
+    return blocked?.length?`<details class="social-disclosure"><summary>Blockierte Spieler · ${blocked.length}</summary><p class="panel-note">Blockierte Personen können dir keine Anfragen senden. Ihre Gildennachrichten werden ausgeblendet.</p>${blocked.map(profile=>this.socialContact(profile,this.socialButton('unblock',profile.accountId,'Blockierung aufheben'))).join('')}</details>`:'';
+  }
+
+  socialGuildInvites() {
+    const invites=this.socialSnapshot()?.guildInvites;
+    return invites?.length?`<h3 class="section-title">Gildeneinladungen</h3>${invites.map(invite=>`<article class="social-contact"><div class="social-contact-name"><strong>${escape(invite.guildName)}</strong><span>Von ${escape(invite.inviter.playerName)} · @${escape(invite.inviter.username)}</span></div><div class="social-contact-actions">${this.socialButton('guild_accept',invite.guildId,'Beitreten')}${this.socialButton('guild_decline',invite.guildId,'Ablehnen')}</div></article>`).join('')}`:'<p class="social-empty">Keine offenen Gildeneinladungen.</p>';
+  }
+
+  socialRoster() {
+    const guild=this.socialSnapshot()?.guild;if(!guild)return '';
+    return `<h3 class="section-title">Mitglieder · ${guild.members.length}/32</h3>${guild.members.map(profile=>{
+      const self=profile.accountId===this.network?.account?.id,leader=guild.role==='leader',kick=!self&&(leader&&profile.role!=='leader'||guild.role==='officer'&&profile.role==='member');
+      const management=!self?`<details class="social-disclosure"><summary>Mitglied verwalten</summary>${leader?`${this.socialButton('guild_role',profile.accountId,profile.role==='officer'?'Zum Mitglied ernennen':'Zum Offizier ernennen',{role:profile.role==='officer'?'member':'officer'})}${this.socialButton('guild_transfer',profile.accountId,'Gildenleitung übertragen')}`:''}${kick?this.socialButton('guild_kick',profile.accountId,'Aus Gilde entfernen',{danger:true}):''}${this.socialButton('block',profile.accountId,'Blockieren',{danger:true})}</details>`:'';
+      return this.socialContact(profile,`<span class="social-role">${escape({leader:'Gildenleitung',officer:'Offizier',member:'Mitglied'}[profile.role])}${self?' · Du':''}</span>${!self?this.socialJoin(profile):''}${management}`);
+    }).join('')}`;
+  }
+
+  socialSentInvites() {
+    const invites=this.socialSnapshot()?.guild?.invites;
+    return invites?.length?`<details class="social-disclosure"><summary>Offene Einladungen · ${invites.length}</summary>${invites.map(profile=>this.socialContact(profile,this.socialButton('guild_cancel',profile.accountId,'Einladung zurückziehen'))).join('')}</details>`:'';
+  }
+
+  socialMessages() {
+    const snapshot=this.socialSnapshot(),blocked=new Set(snapshot?.blocked.map(profile=>profile.accountId)||[]);
+    return (snapshot?.guild?.messages||[]).slice(-50).filter(message=>!blocked.has(message.accountId)).map(message=>{
+      const date=new Date(message.createdAt),time=date.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+      return `<li data-social-message="${escape(message.id)}"><div><strong>${escape(message.playerName)}</strong><time datetime="${date.toISOString()}" title="${escape(date.toLocaleString('de-DE'))}">${escape(time)}</time></div><p>${escape(message.text)}</p></li>`;
+    }).join('')||'<li class="social-empty">Noch keine Nachrichten. Begrüße deine Gilde.</li>';
+  }
+
+  socialFeedback(message,error=false) {
+    this.socialMessage=String(message||'');this.socialMessageError=error;
+    const element=document.getElementById('social-feedback');
+    if(element){element.textContent=this.socialMessage;element.hidden=!this.socialMessage;element.className=`social-feedback${error?' error':''}`;}
+  }
+
+  async openSocialView() {
+    const network=this.network;
+    if(!network||this.activePanel!=='social'||document.visibilityState==='hidden')return;
+    if(this.socialNetwork!==network){
+      this.socialNetwork?.closeSocial?.();this.socialNetwork=network;
+      network.onSocial=()=>{if(this.network===network)this.updateSocial();};
+    }
+    if(!network.account||network.requiresHTTPS||network.accountStatus!=='authenticated')return;
+    const accountId=network.account.id,generation=this.socialGeneration;
+    try{await network.openSocial();}catch(error){if(this.network===network&&network.account?.id===accountId&&generation===this.socialGeneration&&this.activePanel==='social')this.socialFeedback(error.message||'Gemeinschaft konnte nicht geladen werden.',true);}
+  }
+
+  updateSocial() {
+    if(this.activePanel!=='social')return;
+    if(this.panelPointers?.size){this.pendingPanelRender=true;return;}
+    const network=this.network,snapshot=this.socialSnapshot(),guild=snapshot?.guild;
+    const status=document.getElementById('social-connection');
+    if(status)status.textContent=network?.socialError||({idle:'Gemeinschaft wird vorbereitet.',loading:'Gemeinschaft wird geladen …',ready:'Persönliche Kontakte · Auf dem Spielserver gespeichert',reconnecting:'Gemeinschaft wird wieder verbunden …',unavailable:'Dieser Spielserver bietet noch keine Gemeinschaft.',error:'Gemeinschaft konnte nicht geladen werden.'}[network?.socialStatus]||'Gemeinschaft wird vorbereitet.');
+    const body=document.getElementById('social-body');if(!body)return;
+    const structure=JSON.stringify([network?.account?.id,this.socialTab||'friends',guild?.id,guild?.role,guild?.members.length]);
+    const scroll=this.elements['panel-content'].scrollTop;
+    if(structure!==this.socialStructure){
+      const active=document.activeElement,draft=active?.dataset?.uiDraft,selection=draft?[active.selectionStart,active.selectionEnd]:null;
+      body.innerHTML=this.socialBody();
+      if(draft){const restored=body.querySelector(`[data-ui-draft="${draft}"]`);restored?.focus({preventScroll:true});if(selection)restored?.setSelectionRange?.(...selection);}
+    }else{
+      for(const [id,render] of [['social-requests',()=>this.socialRequests()],['social-friends',()=>this.socialFriends()],['social-blocked',()=>this.socialBlocked()],['social-roster',()=>this.socialRoster()],['social-sent-invites',()=>this.socialSentInvites()],['social-guild-invites',()=>this.socialGuildInvites()],['social-messages',()=>this.socialMessages()]]){
+        const element=document.getElementById(id);if(!element)continue;const markup=render();if(element.innerHTML===markup)continue;
+        const active=document.activeElement,command=active?.dataset?.command,idValue=active?.dataset?.id,action=active?.dataset?.actionName,contained=element.contains(active);
+        const disclosures=[...element.querySelectorAll('details')].map((details,index)=>details.open?index:-1).filter(index=>index>=0),oldScroll=element.scrollTop,atBottom=element.scrollHeight-element.clientHeight-oldScroll<24;
+        element.innerHTML=markup;disclosures.forEach(index=>{const details=element.querySelectorAll('details')[index];if(details)details.open=true;});
+        if(id==='social-messages')element.scrollTop=atBottom?element.scrollHeight:oldScroll;
+        if(contained&&command){const replacement=[...element.querySelectorAll('button')].find(button=>button.dataset.command===command&&button.dataset.id===idValue&&button.dataset.actionName===action);if(replacement&&!replacement.disabled)replacement.focus({preventScroll:true});else document.getElementById('social-feedback')?.focus({preventScroll:true});}
+      }
+    }
+    this.elements['panel-content'].scrollTop=scroll;
+    const usable=!!snapshot&&network?.socialStatus!=='unavailable',busy=!!this.socialBusy;
+    for(const control of this.elements['panel-content'].querySelectorAll('[data-social-form] input,[data-social-form] textarea,[data-social-form] button,[data-command="social-action"],[data-command="social-join"]')){control.disabled=busy||!usable||control.dataset.socialDisabled==='true';control.setAttribute('aria-busy',String(busy));}
+    this.socialFeedback(this.socialMessage,this.socialMessageError);
+  }
+
+  async submitSocial(form) {
+    if(this.socialBusy||this.accountBusy||this.networkBusy)return;
+    const kind=form.dataset.socialForm,chat=kind==='guild-chat',guild=kind==='guild-create',name=chat?'text':guild?'guildName':'username',field=form.querySelector(`[name="${name}"]`),raw=field?.value||'',value=raw.trim();
+    const valid=chat?value.length>0&&value.length<=240&&!/[\x00-\x1f\x7f]/.test(value.replace(/[\r\n\t]/g,' ')):guild?value.length>=3&&value.length<=32&&/^[\p{L}\p{N} '_-]+$/u.test(value):/^[A-Za-z0-9_-]{3,24}$/.test(value);
+    if(!valid){this.socialFeedback(chat?'Schreibe eine Nachricht mit 1–240 Zeichen.':guild?'Der Gildenname benötigt 3–32 Buchstaben, Zahlen, Leerzeichen, Apostroph, _ oder -.':'Gib den exakten Spielernamen mit 3–24 Buchstaben, Zahlen, _ oder - ein.',true);field?.focus();return;}
+    if(typeof form.reportValidity==='function'&&!form.reportValidity())return;
+    const action={'friend-request':'friend_request','guild-create':'guild_create','guild-invite':'guild_invite','guild-chat':'guild_chat'}[kind];if(!action)return;
+    const draft=chat?'socialChatText':guild?'socialGuildName':kind==='friend-request'?'socialFriendUsername':'socialInviteUsername';
+    await this.runSocial(()=>this.network.socialAction(action,{[name]:value}),{draft,field,raw,success:chat?'Nachricht gesendet.':kind==='friend-request'?'Freundschaftsanfrage gesendet.':guild?'Gilde gegründet.':'Gildeneinladung gesendet.'});
+  }
+
+  async runSocial(operation,{draft,field,raw,success='Änderung gespeichert.',joined=false,allowEmpty=false}={}) {
+    if(this.socialBusy||this.accountBusy||this.networkBusy)return;
+    const network=this.network,accountId=network?.account?.id,generation=this.socialGeneration,token=Symbol('social-ui');
+    if(!accountId||!allowEmpty&&!this.socialSnapshot()){this.socialFeedback('Melde dich an und lade zuerst deine Gemeinschaft.',true);return;}
+    this.socialBusy=token;this.socialFeedback('Bitte warten …');this.updateSocial();
+    const current=()=>this.network===network&&network.account?.id===accountId&&this.socialGeneration===generation;
+    try{
+      await operation();if(!current())return;
+      if(draft&&(this[draft]===raw||!this[draft])&&(!field?.isConnected||field.value===raw)){this[draft]='';if(field?.isConnected)field.value='';}
+      this.socialFeedback(success);
+      if(joined){this.closePanel();this.syncWelcome();this.elements.world.focus({preventScroll:true});}
+    }catch(error){if(current())this.socialFeedback(error.message||'Die Anfrage ist fehlgeschlagen. Versuche es erneut.',true);}
+    finally{if(this.socialBusy===token){this.socialBusy=null;if(current())this.updateSocial();}}
+  }
+
+  async socialCommand(name,id,button) {
+    if(name==='social-tab'){
+      if(!['friends','guild','chat'].includes(id))return;
+      this.socialTab=id;this.socialExplicitRender=true;this.renderPanel();requestAnimationFrame(()=>this.elements['panel-content'].querySelector(`[data-command="social-tab"][data-id="${id}"]`)?.focus({preventScroll:true}));return;
+    }
+    if(name==='social-refresh'){
+      if(this.socialBusy)return;
+      await this.runSocial(()=>this.network.refreshSocial(),{success:'Gemeinschaft aktualisiert.',allowEmpty:true});
+      if(this.network?.socialStatus==='ready'&&!this.network.socialSource)this.openSocialView();return;
+    }
+    if(name==='social-join'){await this.runSocial(()=>this.network.joinContact(id),{success:'Gruppe verbunden.',joined:true});return;}
+    if(name==='social-action'){
+      const action=button?.dataset?.actionName,actions=['friend_accept','friend_decline','friend_cancel','friend_remove','block','unblock','guild_accept','guild_decline','guild_cancel','guild_kick','guild_transfer','guild_role','guild_leave'];if(!actions.includes(action))return;
+      const fields=action==='guild_leave'?{}:['guild_accept','guild_decline'].includes(action)?{guildId:id}:{accountId:id};
+      if(action==='guild_role')fields.role=button.dataset.role;
+      await this.runSocial(()=>this.network.socialAction(action,fields));
+    }
+  }
+
   party() {
     if(this.inPvp)return this.duelLobby();
     const network=this.network,inParty=this.inParty,account=network?.account;
     const locked=this.networkBusy||inParty||['connecting','reconnecting'].includes(network?.status);
     const guest=`${account?'':`<h3 class="section-title">Dein Gruppencharakter</h3><label class="field-label" for="party-player-name">Name</label><input id="party-player-name" class="game-input" value="${escape(this.game.player.name || 'Aren')}" maxlength="24" autocomplete="nickname"/><label class="field-label" for="party-class">Klasse</label><select id="party-class" class="game-input">${CLASSES.map(entry=>`<option value="${entry.id}" ${entry.id===this.game.player.classId?'selected':''}>${escape(entry.name)} · ${escape(entry.role)}</option>`).join('')}</select><p class="panel-note">Als Gast hat jede Gruppenreise einen eigenen Fortschritt. Melde dich an, um denselben Charakter in allen Gruppen zu spielen.</p><button type="button" class="text-button" data-command="account-open">Spielerkonto öffnen</button>`}<h3 class="section-title">Spielserver</h3><label class="field-label" for="party-server-address">Serveradresse</label><div class="party-server-controls"><input id="party-server-address" type="url" inputmode="url" class="game-input" value="${escape(network?.baseUrl || globalThis.location?.origin || '')}" placeholder="https://…" maxlength="2048" autocomplete="url" autocapitalize="off" spellcheck="false" ${locked||network?.online?'disabled':''}/><button class="small-button" data-command="party-server-connect" ${locked||network?.online||typeof network?.setServerAddress!=='function'?'disabled':''}>${icon('portal')}Server prüfen</button></div><p class="panel-note">${network?.online?'Verlasse zuerst die Gruppe, bevor du den Spielserver wechselst.':'Für Internetgruppen verwendet ihr denselben erreichbaren HTTPS-Spielserver. Für eine lokale Gruppe öffnet ihr Emberfall über die WLAN-Adresse des Hosts.'}</p>`;
-    return `<div class="party-connection"><div><h3 id="party-status">Verbindung prüfen</h3><p id="party-connection-error" class="panel-note" role="status"></p></div><div id="party-room-code" class="party-room-code"></div></div>${this.invitationPrompt()}${account?`<p class="party-account-note">${icon(classIcons[account.classId || this.game.player.classId] || 'shield')}Du spielst als <strong>${escape(account.playerName || account.username)}</strong>. Dein Fortschritt bleibt über Gruppen hinweg erhalten.</p>`:''}<div id="party-roster" class="party-roster" ${inParty?'':'hidden'}></div><div class="party-primary-actions"><button type="button" class="small-button" data-command="party-create" ${locked||network?.serverAvailable===false?'disabled':''}>${icon('group')}Gruppe erstellen</button>${network?.savedSession&&!account?'<button type="button" class="small-button" data-command="party-resume">Gespeicherte Gruppe fortsetzen</button>':''}<button type="button" class="text-button danger-button" data-command="party-disconnect" ${inParty?'':'hidden'}>Gruppe verlassen</button></div><section class="party-open-groups"><div class="party-section-heading"><h3 class="section-title">Offene Gruppen</h3><button type="button" class="text-button" data-command="party-refresh">Aktualisieren</button></div><div id="party-room-list" class="party-room-list">${this.partyRoomMarkup()}</div></section><details class="party-code-join"><summary>Mit Gruppencode beitreten</summary><label class="field-label" for="party-join-code">Gruppencode</label><div class="party-join-controls"><input id="party-join-code" class="game-input code-input" placeholder="8 Zeichen" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"/><button type="button" class="small-button" data-command="party-join">Beitreten ${icon('arrow')}</button></div></details><details class="party-advanced"><summary>${account?'Server & Gruppenname':'Gastcharakter, Server & Gruppenname'}</summary><div class="party-forms"><section><label class="field-label" for="party-room-name">Name deiner neuen Gruppe</label><input id="party-room-name" class="game-input" value="Glutwacht" maxlength="32"/></section><section>${guest}</section></div></details>${inParty?`<details class="party-duels"><summary>Freiwillige Duelle</summary>${this.duelLobby()}</details>`:''}<p class="panel-note party-short-guide">Bis zu acht Reisende. Erstelle eine Gruppe und teile den Einladungslink oder tritt einer offenen Gruppe bei.</p><button type="button" class="text-button" data-panel="dungeons">Gruppendungeons ansehen ${icon('portal')}</button>`;
+    return `<div class="party-connection"><div><h3 id="party-status">Verbindung prüfen</h3><p id="party-connection-error" class="panel-note" role="status"></p></div><div id="party-room-code" class="party-room-code"></div></div>${this.invitationPrompt()}${account?`<p class="party-account-note">${icon(classIcons[account.classId || this.game.player.classId] || 'shield')}Du spielst als <strong>${escape(account.playerName || account.username)}</strong>. Dein Fortschritt bleibt über Gruppen hinweg erhalten.</p>`:''}<div id="party-roster" class="party-roster" ${inParty?'':'hidden'}></div><div class="party-primary-actions">${account?'<button type="button" class="small-button" data-panel="social">Freunde & Gilde</button>':''}<button type="button" class="small-button" data-command="party-create" ${locked||network?.serverAvailable===false?'disabled':''}>${icon('group')}Gruppe erstellen</button>${network?.savedSession&&!account?'<button type="button" class="small-button" data-command="party-resume">Gespeicherte Gruppe fortsetzen</button>':''}<button type="button" class="text-button danger-button" data-command="party-disconnect" ${inParty?'':'hidden'}>Gruppe verlassen</button></div><section class="party-open-groups"><div class="party-section-heading"><h3 class="section-title">Offene Gruppen</h3><button type="button" class="text-button" data-command="party-refresh">Aktualisieren</button></div><div id="party-room-list" class="party-room-list">${this.partyRoomMarkup()}</div></section><details class="party-code-join"><summary>Mit Gruppencode beitreten</summary><label class="field-label" for="party-join-code">Gruppencode</label><div class="party-join-controls"><input id="party-join-code" class="game-input code-input" placeholder="8 Zeichen" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"/><button type="button" class="small-button" data-command="party-join">Beitreten ${icon('arrow')}</button></div></details><details class="party-advanced"><summary>${account?'Server & Gruppenname':'Gastcharakter, Server & Gruppenname'}</summary><div class="party-forms"><section><label class="field-label" for="party-room-name">Name deiner neuen Gruppe</label><input id="party-room-name" class="game-input" value="Glutwacht" maxlength="32"/></section><section>${guest}</section></div></details>${inParty?`<details class="party-duels"><summary>Freiwillige Duelle</summary>${this.duelLobby()}</details>`:''}<p class="panel-note party-short-guide">Bis zu acht Reisende. Erstelle eine Gruppe und teile den Einladungslink oder tritt einer offenen Gruppe bei.</p><button type="button" class="text-button" data-panel="dungeons">Gruppendungeons ansehen ${icon('portal')}</button>`;
   }
 
   updateParty() {
@@ -1461,6 +1655,7 @@ export class GameUI {
     if(name.startsWith('pvp-')){await this.pvpCommand(name,id);return;}
     if(this.inPvp&&name!=='resume'){this.showNotice('Kehre zuerst aus dem Duell zurück.','info');return;}
     if(name.startsWith('account-')){await this.accountCommand(name,id);return;}
+    if(name.startsWith('social-')){await this.socialCommand(name,id,button);return;}
     if(['craft','trainProfession','chooseProfessionMastery'].includes(name)){await this.professionCommand(name,id,button);return;}
     if(name==='craft-profession'||name==='profession-open'){
       this.craftProfession=PROFESSIONS.some(profession=>profession.id===id)?id:'all';this.craftPage=0;this.pendingScrollReset=true;

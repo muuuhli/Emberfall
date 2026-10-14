@@ -13,6 +13,7 @@ import { captureEncounterDirector, restoreEncounterDirector } from '../src/encou
 import { deriveCharacterAppearance } from '../src/character-appearance.js';
 import { SnapshotEncoder, createSnapshotSignatureCache, immutableSnapshotValue } from '../src/network-snapshots.js';
 import { AccountManager } from './accounts.mjs';
+import { SocialManager } from './social.mjs';
 
 const KEYS = new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
 const ACTIONS = new Set(['attack','dash','bolt','nova','potion','interact','primary','secondary','ultimate']);
@@ -67,6 +68,8 @@ export class MultiplayerHub {
     this.strictRestore=strictRestore;
     this.rooms=new Map();this.sessions=new Map();this.creations=new Map();this.frames=0;this.lastPersist=this.clock();
     this.accounts=new AccountManager({clock,...accountOptions});this.accountMembers=new Map();this.accountStreamSessions=new WeakMap();
+    this.social=new SocialManager({accounts:()=>this.accounts.records,clock,profile:id=>this._socialProfile(id),presence:(viewer,target)=>this._socialPresence(viewer,target)});
+    this.socialStreams=new Set();this.socialRevision=0;this.socialLimits=new Map();this.socialTimer=null;
     this.snapshotStreams=new WeakMap();
     this.layoutSnapshots=new WeakMap();this.canonicalNpcSnapshot=immutableSnapshotValue(Catalog.NPCS);
     this.pvp=new PvpArena({clock:this.clock,id:()=>randomUUID(),notice:(member,text,tone='info')=>this._event(member,{kind:'notice',text,tone}),sound:(member,name)=>this._event(member,{kind:'sound',name})});
@@ -80,6 +83,8 @@ export class MultiplayerHub {
   }
   dispose() {
     clearInterval(this.timer);this.timer=null;
+    clearInterval(this.socialTimer);this.socialTimer=null;
+    for(const stream of [...this.socialStreams])this._closeSocialStream(stream);
     this.persist();
     for(const member of this.sessions.values())for(const stream of member.streams)stream.end();
   }
@@ -274,7 +279,7 @@ export class MultiplayerHub {
     if(source)this._syncRoom(member.room,source);
   }
   capture() {
-    return {version:1,savedAt:this.clock(),...(this.accounts.records.size?{accounts:this.accounts.capture()}:{}),rooms:[...this.rooms.values()].map(room=>{
+    return {version:1,savedAt:this.clock(),...(this.accounts.records.size?{accounts:this.accounts.capture()}:{}),...(this.social.hasData()?{social:this.social.capture()}:{}),rooms:[...this.rooms.values()].map(room=>{
       const leader=room.members.values().next().value?.game;
       const persistentWorld=leader?.dungeonInstance?leader.overworld:room.world;
       return {code:room.code,name:room.name,createdAt:room.createdAt,lastActive:room.lastActive,time:room.time,...(room.accountHome?{accountHome:true,accountOwnerId:room.accountOwnerId}:{}),worldMode:leader?.dungeonInstance?'dungeon':'overworld',dungeonCheckpoint:leader?.captureDungeonCheckpoint?.()||null,world:clone(Object.fromEntries([...MUTABLE_WORLD,'structures'].filter(key=>persistentWorld?.[key]!==undefined).map(key=>[key,persistentWorld[key]]))),members:[...room.members.values()].map(m=>({id:m.id,...(m.accountId?{accountId:m.accountId}:{token:m.token}),classId:m.game.classId,eventSequence:m.eventSequence,save:m.game.capture()}))};
@@ -287,6 +292,7 @@ export class MultiplayerHub {
     let data;try{data=JSON.parse(this.storage?.getItem(STORE_KEY)||'null');}catch(error){if(this.strictRestore)throw new Error('Der Gruppenspeicher enthält keine lesbare Reise.',{cause:error});return;}
     if(data?.version!==1||!Array.isArray(data.rooms)){if(data!==null&&this.strictRestore)throw new Error('Der Gruppenspeicher besitzt eine unbekannte Reiseversion.');return;}
     this.accounts.restore(data.accounts);
+    this.social.restore(data.social);
     // Admission limits never truncate the lifetime save roster, including
     // older stores above today's limits. Personal resume tokens are retained.
     for(const saved of data.rooms) {
@@ -461,6 +467,78 @@ export class MultiplayerHub {
     member.game.keys.clear();
     if(!member.streams.size){member.game.keys.clear();member.active=false;member.lastSeen=this.clock()-this.disconnectMs-1;this.pvp.disconnect(member);}
   }
+  _socialProfile(id) {
+    const account=this.accounts.records.get(id),member=this.accountMembers.get(id);
+    return {accountId:id,username:account?.username,playerName:member?.game.player.name||'Reisender',classId:member?.game.classId||null,level:member?.game.player.level||1};
+  }
+  _gameConnected(member) {
+    return !!(member?.active&&member.accountId&&[...member.streams].some(res=>!res.destroyed&&!res.writableEnded&&this.accounts.sessionValid(this.accountStreamSessions.get(res),member.accountId)));
+  }
+  _socialPresence(viewerId,targetId) {
+    const member=this.accountMembers.get(viewerId),target=this.accountMembers.get(targetId),online=this._gameConnected(target),inParty=online&&!target.room.accountHome;
+    const result={online,inParty,canJoin:false,joinReason:online?'Persönliche Reise':'Offline'};
+    if(!inParty)return result;
+    result.roomName=target.room.name;
+    if(viewerId===targetId||member?.room===target.room){result.joinReason='Bereits in dieser Gruppe';return result;}
+    try{this._assertSocialDestination(member,target);result.canJoin=true;result.joinReason='';}
+    catch(error){result.joinReason=error.status?error.message:'Gruppe zurzeit nicht verfügbar';}
+    return result;
+  }
+  _assertSocialDestination(member,target) {
+    if(!member||!target||!this.social.isContact(member.accountId,target.accountId))throw new HttpError(403,'Ein bestätigter Freund oder ein Gildenmitglied ist erforderlich.');
+    if(!this._gameConnected(target)||target.room.accountHome)throw new HttpError(409,'Dieses Konto ist gerade in keiner verbundenen öffentlichen Gruppe.');
+    if(target.room===member.room)throw new HttpError(409,'Du bist bereits in dieser Gruppe.');
+    if([...target.room.members.values()].some(m=>m.active&&m.game.inCombat()))throw new HttpError(409,'Diese Gruppe kämpft gerade. Warte vor dem Beitritt auf eine sichere Pause.');
+    this._assertDestination(target.room,member);
+  }
+  _assertSocialAccount(req,auth,{required=true,accountId=req.headers['x-emberfall-account-id']}={}) {
+    if((required||accountId!==undefined)&&accountId!==auth.account.id)throw new HttpError(409,'Das Konto dieses Tabs hat sich geändert. Melde dich im Tab erneut an.');
+  }
+  _socialSnapshot(id){return {...this.social.snapshot(id),revision:this.socialRevision};}
+  _closeSocialStream(stream) {
+    if(!this.socialStreams.delete(stream))return;stream.res.end();
+    if(!this.socialStreams.size){clearInterval(this.socialTimer);this.socialTimer=null;}
+  }
+  _closeSocialStreams(accountId,key=null) {
+    for(const stream of [...this.socialStreams])if(stream.accountId===accountId&&(!key||stream.sessionKey===key))this._closeSocialStream(stream);
+  }
+  _writeSocial(stream,payload) {
+    // A slow reader reconnects to the bounded complete snapshot. Never queue an
+    // unbounded history behind an unread browser or paused network connection.
+    if(stream.res.destroyed||stream.res.writableEnded||stream.res.writableLength+Buffer.byteLength(payload)>256*1024){this._closeSocialStream(stream);return false;}
+    if(stream.waitingDrain){this._closeSocialStream(stream);return false;}
+    if(!stream.res.write(payload)){stream.waitingDrain=true;stream.res.once('drain',()=>{stream.waitingDrain=false;});}return true;
+  }
+  _socialStream(req,res,auth,url) {
+    this._assertSocialAccount(req,auth,{accountId:url.searchParams.get('accountId')});
+    this._assertActor(req,this._accountMember(auth),{playerId:url.searchParams.has('playerId')?url.searchParams.get('playerId'):undefined});
+    if([...this.socialStreams].filter(stream=>stream.accountId===auth.account.id).length>=2)throw new HttpError(429,'Für dein Konto sind bereits zwei Sozialfenster verbunden.');
+    res.writeHead(200,{'Content-Type':'text/event-stream; charset=utf-8','Connection':'keep-alive','X-Accel-Buffering':'no'});
+    const snapshot=this.social.snapshot(auth.account.id),stream={res,accountId:auth.account.id,sessionKey:auth.key,fingerprint:JSON.stringify(snapshot),heartbeatAt:this.clock()};
+    this.socialStreams.add(stream);res.on('close',()=>this._closeSocialStream(stream));
+    this._writeSocial(stream,`retry: 1200\nevent: social\ndata: ${JSON.stringify({...snapshot,revision:this.socialRevision})}\n\n`);
+    if(this.socialStreams.size&&!this.socialTimer){this.socialTimer=setInterval(()=>this._flushSocial(),1000);this.socialTimer.unref?.();}
+    return true;
+  }
+  _flushSocial() {
+    if(!this.socialStreams.size)return;
+    const snapshots=new Map(),changed=[];
+    for(const stream of [...this.socialStreams]) {
+      if(!this.accounts.sessionValid(stream.sessionKey,stream.accountId)||!this.accounts.records.has(stream.accountId)||stream.res.destroyed||stream.res.writableEnded){this._closeSocialStream(stream);continue;}
+      let entry=snapshots.get(stream.accountId);
+      if(!entry){const data=this.social.snapshot(stream.accountId);entry={data,fingerprint:JSON.stringify(data)};snapshots.set(stream.accountId,entry);}
+      if(entry.fingerprint!==stream.fingerprint)changed.push({stream,entry});
+      else if(this.clock()-stream.heartbeatAt>=15000){stream.heartbeatAt=this.clock();this._writeSocial(stream,': heartbeat\n\n');}
+    }
+    if(changed.length)this.socialRevision++;
+    for(const {stream,entry}of changed){stream.fingerprint=entry.fingerprint;stream.heartbeatAt=this.clock();this._writeSocial(stream,`event: social\ndata: ${JSON.stringify({...entry.data,revision:this.socialRevision})}\n\n`);}
+  }
+  _socialLimit(accountId,action=null) {
+    const check=(key,max,window)=>{const now=this.clock();let item=this.socialLimits.get(key);if(!item||now-item.at>=window){item={at:now,count:0};this.socialLimits.set(key,item);}if(++item.count>max)throw new HttpError(429,'Zu viele Sozialaktionen. Bitte warte kurz.');};
+    check(`action:${accountId}`,40,60000);
+    if(action==='guild_chat'){check(`chat:${accountId}`,6,10000);const guild=this.social.guildFor(accountId);if(guild)check(`guild:${guild.id}`,24,10000);}
+    if(this.socialLimits.size>1024)for(const [key,value]of this.socialLimits)if(this.clock()-value.at>=60000)this.socialLimits.delete(key);
+  }
   _stream(req,res,member,url,auth=null) {
     if(member.streams.size>=this.maxSessionStreams)throw new HttpError(429,'Für diese Sitzung sind bereits zu viele Gruppenverbindungen geöffnet. Schließe einen anderen Spieltab.');
     this._activate(member);member.lastSeen=this.clock();
@@ -496,11 +574,32 @@ export class MultiplayerHub {
     }
     if(!auth)throw new HttpError(401,'Melde dich zuerst bei deinem Konto an.');
     const member=this._accountMember(auth),version=member.membershipVersion;
+    if(route==='/social'||route==='/social/join'||route==='/social/events') {
+      this._assertSocialAccount(req,auth,{required:req.method!=='GET'});
+      this._assertActor(req,member);
+      if(req.method==='GET'&&route==='/social')return this._json(res,200,this._socialSnapshot(auth.account.id));
+      if(req.method==='GET'&&route==='/social/events')return this._socialStream(req,res,auth,url);
+      if(req.method==='POST'&&(route==='/social'||route==='/social/join')) {
+        const body=await readJson(req);this._assertOwner(req,member,auth,version);this._assertSocialAccount(req,auth);this._assertActor(req,member);
+        this._socialLimit(auth.account.id,body.action);
+        if(route==='/social/join') {
+          if(Object.keys(body).length!==1||typeof body.accountId!=='string')throw new HttpError(400,'Der Beitritt benötigt genau ein Zielkonto.');
+          const target=this.accountMembers.get(body.accountId);this._assertSocialDestination(member,target);this._transferAccount(member,target.room);
+          res.once('finish',()=>this._flushSocial());return this._json(res,200,this._connectionResponse(member));
+        }
+        const before=this.social.capture();
+        try{this.social.action(auth.account.id,body);if(!this.persist())throw new HttpError(503,'Die Sozialaktion konnte nicht gespeichert werden. Der bisherige Stand bleibt erhalten.');}
+        catch(error){this.social.restore(before);throw error;}
+        this.socialRevision++;const snapshot=this._socialSnapshot(auth.account.id);
+        res.once('finish',()=>this._flushSocial());return this._json(res,200,{ok:true,snapshot});
+      }
+      throw new HttpError(405,'Methode nicht unterstützt.');
+    }
     if(req.method==='POST'&&route==='/logout'){
       await readJson(req);this._assertOwner(req,member,auth,version);
       const previous=this.accounts.sessions.get(auth.key);this.accounts.sessions.delete(auth.key);
       if(!this.persist()){this.accounts.sessions.set(auth.key,previous);throw new HttpError(503,'Abmelden konnte nicht sicher gespeichert werden.');}
-      member.membershipVersion++;this._closeAccountStreams(member,auth.key);res.setHeader('Set-Cookie',this.accounts.clearCookie());return this._json(res,200,{ok:true});
+      member.membershipVersion++;this._closeAccountStreams(member,auth.key);this._closeSocialStreams(auth.account.id,auth.key);res.setHeader('Set-Cookie',this.accounts.clearCookie());return this._json(res,200,{ok:true});
     }
     if(req.method==='POST'&&route==='/play'){
       const body=await readJson(req);this._assertOwner(req,member,auth,version);
@@ -545,7 +644,7 @@ export class MultiplayerHub {
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');
     try {
       this._origin(req,res);
-      if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, X-Emberfall-Player-Id'}).end();return true;}
+      if(req.method==='OPTIONS'){res.writeHead(204,{'Access-Control-Allow-Methods':'GET, POST, OPTIONS','Access-Control-Allow-Headers':'Content-Type, X-Emberfall-Player-Id, X-Emberfall-Account-Id'}).end();return true;}
       if(url.pathname==='/api/account'||url.pathname.startsWith('/api/account/'))return await this._handleAccount(req,res,url);
       if(req.method==='GET'&&url.pathname==='/api/rooms') {
         return this._json(res,200,{protocol:1,rooms:[...this.rooms.values()].filter(r=>!r.accountHome&&[...r.members.values()].some(m=>m.active)).map(r=>({code:r.code,name:r.name,players:[...r.members.values()].filter(m=>m.active).length,maxPlayers:this.maxPlayers,createdAt:r.createdAt,joinable:[...r.members.values()].filter(m=>m.active).length<this.maxPlayers&&r.members.size<this.maxSavedCharactersPerRoom&&![...r.members.values()].some(m=>m.game.dungeonInstance||this.pvp.occupied(m))})),maxPlayers:this.maxPlayers,classes:classIds()});

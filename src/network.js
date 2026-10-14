@@ -10,6 +10,32 @@ const INPUT_KEYS=new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arr
 const REMOTE_METHODS=['questAccept','questTurnIn','learn','trainProfession','chooseProfessionMastery','learnAbility','learnTechniqueSpecialization','selectTechniqueSpecialization','setAbilityLoadout','useLearnedAbility','equip','unequip','pickupLoot','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward'];
 const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','techniqueSpecializations','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professions','professionTraining','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame','deathPenalty'];
 
+// Social state has its own authenticated stream and never enters a character save.
+export function validateSocialSnapshot(value,accountId) {
+  const fail=()=>{throw new Error('Die Gemeinschaftsantwort ist ungültig.');};
+  const string=(value,max=128)=>typeof value==='string'&&value.length>0&&value.length<=max;
+  const profile=value=>{
+    if(!value||!string(value.accountId)||!string(value.username,24)||!string(value.playerName,64)||!['online','inParty','canJoin'].every(key=>typeof value[key]==='boolean')||typeof value.joinReason!=='string'||value.joinReason.length>240)fail();
+    if(value.classId!==undefined&&(!string(value.classId,32)||!Number.isInteger(value.level)||value.level<1||value.level>100))fail();
+    return {...value};
+  };
+  const list=(value,read=profile,max=32)=>{if(!Array.isArray(value)||value.length>max)fail();return value.map(read);};
+  if(!value||value.version!==1||value.accountId!==accountId||!Number.isSafeInteger(value.revision)||value.revision<0)fail();
+  if(!value.friendRequests)fail();
+  const result={version:1,revision:value.revision,accountId,friends:list(value.friends),friendRequests:{incoming:list(value.friendRequests.incoming),outgoing:list(value.friendRequests.outgoing)},blocked:list(value.blocked),guildInvites:list(value.guildInvites,invite=>{
+    if(!invite||!string(invite.guildId)||!string(invite.guildName,32))fail();return {guildId:invite.guildId,guildName:invite.guildName,inviter:profile(invite.inviter)};
+  }),guild:null};
+  if(value.guild!==null){
+    const guild=value.guild,roles=['leader','officer','member'];
+    if(!guild||!string(guild.id)||!string(guild.name,32)||!string(guild.leaderId)||!roles.includes(guild.role))fail();
+    result.guild={id:guild.id,name:guild.name,role:guild.role,leaderId:guild.leaderId,members:list(guild.members,member=>{if(!roles.includes(member?.role))fail();return {...profile(member),role:member.role};}),invites:list(guild.invites),messages:list(guild.messages,message=>{
+      if(!message||!string(message.id)||!string(message.accountId)||!string(message.playerName,64)||!string(message.text,240)||!Number.isFinite(message.createdAt)||!Number.isFinite(new Date(message.createdAt).getTime()))fail();
+      return {id:message.id,accountId:message.accountId,playerName:message.playerName,text:message.text,createdAt:message.createdAt};
+    },50)};
+  }
+  return result;
+}
+
 /** Browser transport; the server owns combat, progression, drops and movement. */
 export class NetworkClient {
   constructor(game,{baseUrl=globalThis.location?.origin||'',fetchImpl=globalThis.fetch,EventSourceImpl=globalThis.EventSource,storage=globalThis.localStorage,clock=()=>globalThis.performance?.now()??Date.now()}={}) {
@@ -18,6 +44,7 @@ export class NetworkClient {
     this.serverAvailable=null;
     this.account=null;this.accountStatus='checking';this.accountOwned=false;this.privateWorld=false;this.requiresHTTPS=false;this.secureOrigin=null;
     this.pendingInvitation=invitationCode();
+    this.social=null;this.socialStatus='idle';this.socialError=null;this.onSocial=()=>{};this._socialEpoch=0;this._socialBaseline=0;this._socialWanted=false;
     this._methods=new Map();this._lastInputAt=-Infinity;this._inputPending=null;this._inputSending=false;this._lastEventId=0;this._sequence=-1;this._actionQueue=Promise.resolve();
     this._targetPlayer=null;this._targets=new Map();this._enemyTargets=new Map();
     this._snapshotState=new SnapshotAccumulator();
@@ -29,18 +56,21 @@ export class NetworkClient {
   async refreshAccount(){
     try{
       const data=await this._request('/api/account');
+      if(this.account?.id!==data.account?.id)this.closeSocial({reset:true});
       if(this.active&&this.accountOwned&&this.account?.id!==data.account?.id)await this.disconnect({leave:false,logout:true});
       this.account=data.account||null;this.accountStatus=this.account?'authenticated':'anonymous';
       this.requiresHTTPS=!!data.requiresHTTPS;this.secureOrigin=null;
       if(data.secureOrigin){const origin=normalizeServerAddress(data.secureOrigin,{pageUrl:'https://localhost/'});if(origin.startsWith('https://'))this.secureOrigin=origin;}
       this._status(this.status);return data;
-    }catch(error){this.account=null;this.accountStatus='unavailable';this._status(this.status);return {account:null,unavailable:true};}
+    }catch(error){this.closeSocial({reset:true});this.account=null;this.accountStatus='unavailable';this._status(this.status);return {account:null,unavailable:true};}
   }
   async registerAccount(details){
+    this.closeSocial({reset:true});
     const data=await this._request('/api/account/register',details);
     await this.refreshAccount();return data;
   }
   async loginAccount(details){
+    this.closeSocial({reset:true});
     const data=await this._request('/api/account/login',details);
     await this.refreshAccount();return data;
   }
@@ -52,6 +82,7 @@ export class NetworkClient {
     catch(error){this._status(this.active?'reconnecting':'offline',error.message);throw error;}
   }
   async logoutAccount(){
+    this.closeSocial({reset:true});
     await this._request('/api/account/logout',{});
     await this.disconnect({leave:false,logout:true});
     this.account=null;this.accountStatus='anonymous';this._status('offline');
@@ -80,6 +111,7 @@ export class NetworkClient {
       const data=await Promise.race([this._request('/api/rooms',undefined,{baseUrl:candidate,signal:controller?.signal}),timeout]);
       if(this._addressOperation!==operation||controller?.signal.aborted||this.active)throw new Error('Der Spielserverwechsel wurde beendet.');
       if(data.protocol!==1||!Array.isArray(data.rooms))throw new Error('Diese Adresse bietet keinen unterstützten Emberfall-Spielserver.');
+      this.closeSocial({reset:true});
       this.baseUrl=candidate;this.serverAvailable=true;
       try{this.storage?.setItem(SERVER_ADDRESS_KEY,candidate);}catch{}
       this._status('offline');return candidate;
@@ -113,6 +145,86 @@ export class NetworkClient {
     try {
       const snapshot=await this._request(`/api/session/${saved.token}`);await this.connect({...saved,snapshot});return snapshot;
     } catch(error){this._status('offline',error.message);throw error;}
+  }
+  _socialContext(){
+    if(!this.account||this.accountStatus!=='authenticated'||this.requiresHTTPS)throw new Error('Melde dich zuerst sicher bei deinem Spielerkonto an.');
+    return {accountId:this.account.id,baseUrl:this.baseUrl,epoch:this._socialEpoch};
+  }
+  _sameSocial(context){return context.epoch===this._socialEpoch&&context.accountId===this.account?.id&&context.baseUrl===this.baseUrl;}
+  _socialStatus(status,error=null){this.socialStatus=status;this.socialError=error;this.onSocial({snapshot:this.social,status,error,accountId:this.account?.id||null});}
+  _acceptSocial(data,context,{baseline=false}={}){
+    if(!this._sameSocial(context))return false;
+    const snapshot=validateSocialSnapshot(data,context.accountId);
+    if(!baseline&&this.social&&snapshot.revision<this.social.revision)return false;
+    this.social=snapshot;this._socialStatus('ready');return true;
+  }
+  closeSocial({reset=false}={}){
+    this._socialWanted=false;this._socialVisibilityEpoch=(this._socialVisibilityEpoch||0)+1;this.socialSource?.close();this.socialSource=null;this._socialRead=null;
+    if(reset){this._socialEpoch++;this._socialBaseline++;this.social=null;this._socialMutation=null;}
+    this._socialStatus('idle');
+  }
+  async refreshSocial(){
+    const context=this._socialContext(),baseline=this._socialBaseline;
+    try{
+      const data=await this._request('/api/account/social',undefined,{headers:{'X-Emberfall-Account-Id':context.accountId}});
+      if(this._sameSocial(context)&&baseline===this._socialBaseline)this._acceptSocial(data,context,{baseline:!this.socialSource});
+      return this.social;
+    }catch(error){
+      if(this._sameSocial(context)){this._socialStatus(error.status===404?'unavailable':'error',error.message);if([401,409].includes(error.status))await this.refreshAccount();}
+      throw error;
+    }
+  }
+  async openSocial(){
+    const context=this._socialContext();this._socialWanted=true;
+    if(this.socialSource)return this.social;
+    if(this._socialRead)return this._socialRead;
+    const visibilityEpoch=this._socialVisibilityEpoch;this._socialStatus('loading');
+    const operation=(async()=>{
+      await this.refreshSocial();
+      if(!this._sameSocial(context)||!this._socialWanted||visibilityEpoch!==this._socialVisibilityEpoch)return this.social;
+      if(!this.EventSourceImpl){this._socialStatus('ready','Live-Aktualisierung ist in diesem Browser nicht verfügbar.');return this.social;}
+      const params=new URLSearchParams({accountId:context.accountId});if(this.accountOwned&&this.playerId)params.set('playerId',this.playerId);
+      const source=new this.EventSourceImpl(`${context.baseUrl}/api/account/social/events?${params}`,{withCredentials:true});this.socialSource=source;
+      let first=true,checking=false;
+      const current=()=>this.socialSource===source&&this._sameSocial(context)&&this._socialWanted;
+      source.onopen=()=>{if(!current())return;first=true;checking=false;this._socialBaseline++;this._socialStatus('loading');};
+      source.addEventListener('social',event=>{
+        if(!current())return;
+        try{this._acceptSocial(JSON.parse(event.data),context,{baseline:first});first=false;}
+        catch(error){source.close();this.socialSource=null;this._socialStatus('error',error.message);}
+      });
+      source.onerror=()=>{
+        if(!current())return;this._socialStatus('reconnecting','Gemeinschaft wird wieder verbunden.');
+        // One authenticated probe per failed connection detects an expired cookie.
+        if(!checking){checking=true;this.refreshSocial().catch(()=>{});}
+      };
+      return this.social;
+    })();
+    this._socialRead=operation;
+    try{return await operation;}finally{if(this._socialRead===operation)this._socialRead=null;}
+  }
+  async socialAction(action,fields={}){
+    const context=this._socialContext();if(this._socialMutation)throw new Error('Deine Gemeinschaftsanfrage wird noch bearbeitet.');
+    const operation=Symbol('social-action'),baseline=this._socialBaseline;this._socialMutation=operation;
+    try{
+      const data=await this._request('/api/account/social',{...fields,action},{headers:{'X-Emberfall-Account-Id':context.accountId}});
+      if(!this._sameSocial(context))throw new Error('Das Spielerkonto wurde gewechselt. Öffne die Gemeinschaft erneut.');
+      if(data.ok!==true)throw new Error('Die Gemeinschaftsanfrage wurde nicht bestätigt.');
+      if(baseline===this._socialBaseline)this._acceptSocial(data.snapshot,context);
+      return data;
+    }catch(error){if(this._sameSocial(context)&&[401,409].includes(error.status))await this.refreshAccount();throw error;}
+    finally{if(this._socialMutation===operation)this._socialMutation=null;}
+  }
+  async joinContact(accountId){
+    const context=this._socialContext();if(this._addressOperation)throw new Error('Die Spielserveradresse wird noch geprüft.');
+    if(this.active&&!this.accountOwned)await this.disconnect();
+    this._transferring=true;this.game.keys.clear();this._inputPending=null;await Promise.allSettled([this._actionQueue,this._inputFlight]);this._status('connecting');
+    try{
+      const data=await this._request('/api/account/social/join',{accountId},{headers:{'X-Emberfall-Account-Id':context.accountId}});
+      if(!this._sameSocial(context))throw new Error('Das Spielerkonto wurde gewechselt.');
+      await this.connect({...data,accountOwned:true});return data;
+    }catch(error){this._status(this.active?'online':'offline',error.message);if(this._sameSocial(context)&&[401,409].includes(error.status))await this.refreshAccount();throw error;}
+    finally{this._transferring=false;}
   }
   async connect({token,roomCode,snapshot,accountOwned=false,privateWorld=false}) {
     if(this._addressOperation)throw new Error('Die Spielserveradresse wird noch geprüft.');
@@ -299,12 +411,12 @@ export class NetworkClient {
     this._disconnecting=false;
     this._status('offline');
   }
-  async _request(route,body,{baseUrl=this.baseUrl,signal}={}) {
+  async _request(route,body,{baseUrl=this.baseUrl,signal,headers={}}={}) {
     // Bind commands to this tab's character even if another tab replaces its cookie.
     const identity=this.accountOwned&&this.playerId&&route.startsWith('/api/account/')?{'X-Emberfall-Player-Id':this.playerId}:{};
-    const response=await this.fetchImpl(`${baseUrl}${route}`,body===undefined?{credentials:'include',cache:'no-store',...(signal?{signal}:{})}:{credentials:'include',method:'POST',headers:{'Content-Type':'application/json',...identity},body:JSON.stringify(body),...(signal?{signal}:{})});
+    const response=await this.fetchImpl(`${baseUrl}${route}`,body===undefined?{credentials:'include',cache:'no-store',...(Object.keys(headers).length?{headers:{...identity,...headers}}:{}),...(signal?{signal}:{})}:{credentials:'include',method:'POST',headers:{'Content-Type':'application/json',...identity,...headers},body:JSON.stringify(body),...(signal?{signal}:{})});
     let data;try{data=await response.json();}catch{throw new Error('Kein Multiplayer-Server erreichbar. Starte Emberfall über den Node-Spielserver.');}
-    if(!response.ok)throw new Error(data.error||`Spielserver-Fehler ${response.status}`);
+    if(!response.ok){const error=new Error(data.error||`Spielserver-Fehler ${response.status}`);error.status=response.status;throw error;}
     return data;
   }
 }
