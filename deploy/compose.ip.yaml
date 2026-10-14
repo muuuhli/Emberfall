@@ -1,0 +1,39 @@
+name: emberfall
+
+services:
+  emberfall:
+    image: emberfall:${EMBERFALL_RELEASE:-local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    mem_limit: ${EMBERFALL_MEMORY_LIMIT:-768m}
+    cpus: ${EMBERFALL_CPU_LIMIT:-0.5}
+    environment:
+      NODE_OPTIONS: --max-old-space-size=384
+      HOST: 0.0.0.0
+      PORT: 4173
+      EMBERFALL_DATA_DIR: /data
+      EMBERFALL_MAX_ROOMS: ${EMBERFALL_MAX_ROOMS:-8}
+      EMBERFALL_ALLOWED_ORIGIN: ${EMBERFALL_ALLOWED_ORIGIN:-}
+    ports:
+      - "${EMBERFALL_PUBLIC_PORT:-8088}:4173"
+    volumes:
+      - emberfall_data:/data
+    stop_grace_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  emberfall_data:
+    name: emberfall_data

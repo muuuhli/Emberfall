@@ -57,9 +57,11 @@ export function createFileRoomStorage(filename,{strictRead=false}={}) {
 }
 
 export class MultiplayerHub {
-  constructor({createGame=()=>new Game({storage:null}),clock=Date.now,random=Math.random,storage=null,allowedOrigin=null,maxRooms=32,maxPlayers=8,disconnectMs=120000,roomExpiryMs=1800000,autoStart=true,strictRestore=false}={}) {
+  constructor({createGame=()=>new Game({storage:null}),clock=Date.now,random=Math.random,storage=null,allowedOrigin=null,maxRooms=32,maxPlayers=8,maxSavedRooms=Math.max(32,maxRooms),maxSavedCharactersPerRoom=64,maxSessionStreams=4,disconnectMs=120000,roomExpiryMs=1800000,autoStart=true,strictRestore=false}={}) {
+    for(const [name,value,ceiling] of [['maxSavedRooms',maxSavedRooms,Math.max(32,maxRooms)],['maxSavedCharactersPerRoom',maxSavedCharactersPerRoom,64],['maxSessionStreams',maxSessionStreams,4]])if(!Number.isInteger(value)||value<1||value>ceiling)throw new RangeError(`${name} muss eine ganze Zahl zwischen 1 und ${ceiling} sein.`);
     this.createGame=createGame;this.clock=clock;this.random=random;this.storage=storage;this.allowedOrigin=allowedOrigin;
     this.maxRooms=maxRooms;this.maxPlayers=Math.max(2,Math.min(8,maxPlayers));this.disconnectMs=disconnectMs;this.roomExpiryMs=roomExpiryMs;
+    this.maxSavedRooms=maxSavedRooms;this.maxSavedCharactersPerRoom=maxSavedCharactersPerRoom;this.maxSessionStreams=maxSessionStreams;
     this.strictRestore=strictRestore;
     this.rooms=new Map();this.sessions=new Map();this.creations=new Map();this.frames=0;this.lastPersist=this.clock();
     this.snapshotStreams=new WeakMap();
@@ -278,8 +280,8 @@ export class MultiplayerHub {
   restore() {
     let data;try{data=JSON.parse(this.storage?.getItem(STORE_KEY)||'null');}catch(error){if(this.strictRestore)throw new Error('Der Gruppenspeicher enthält keine lesbare Reise.',{cause:error});return;}
     if(data?.version!==1||!Array.isArray(data.rooms)){if(data!==null&&this.strictRestore)throw new Error('Der Gruppenspeicher besitzt eine unbekannte Reiseversion.');return;}
-    // Active-room/player limits govern admissions, never the lifetime save
-    // roster. Retained inactive characters must keep their personal tokens.
+    // Admission limits never truncate the lifetime save roster, including
+    // older stores above today's limits. Personal resume tokens are retained.
     for(const saved of data.rooms) {
       if(typeof saved.code!=='string'||!/^[A-F0-9]{8}$/.test(saved.code)||!Array.isArray(saved.members)){if(this.strictRestore)throw new Error('Der Gruppenspeicher besitzt eine ungültige Gruppe.');continue;}
       const room={code:saved.code,name:cleanName(saved.name,'Glutgruppe'),createdAt:saved.createdAt||this.clock(),lastActive:this.clock(),time:Number.isFinite(saved.time)?saved.time:0,members:new Map(),world:null};
@@ -358,6 +360,7 @@ export class MultiplayerHub {
       if(req.method==='POST'&&url.pathname==='/api/rooms') {
         const body=await readJson(req);this._creationLimit(req);
         if([...this.rooms.values()].filter(r=>[...r.members.values()].some(m=>m.active)).length>=this.maxRooms)throw new HttpError(503,'Alle Gruppenplätze des Servers sind belegt.');
+        if(this.rooms.size>=this.maxSavedRooms)throw new HttpError(503,'Der Server kann keine weiteren Gruppen speichern. Bestehende Reisen können fortgesetzt werden.');
         const room={code:this._code(),name:cleanName(body.name,'Glutgruppe'),createdAt:this.clock(),lastActive:this.clock(),time:0,members:new Map(),world:null};
         this.rooms.set(room.code,room);
         let member;try{member=this._createMember(room,body);}catch(error){this.rooms.delete(room.code);throw error;}
@@ -365,9 +368,11 @@ export class MultiplayerHub {
       }
       const join=url.pathname.match(/^\/api\/rooms\/([A-Fa-f0-9]{8})\/join$/);
       if(req.method==='POST'&&join) {
-        const body=await readJson(req),room=this.rooms.get(join[1].toUpperCase());
+        const body=await readJson(req);this._creationLimit(req);const room=this.rooms.get(join[1].toUpperCase());
         if(!room)throw new HttpError(404,'Diese Gruppe existiert nicht.');
         if([...room.members.values()].filter(m=>m.active).length>=this.maxPlayers)throw new HttpError(409,'Die Gruppe ist voll.');
+        if(room.members.size>=this.maxSavedCharactersPerRoom)throw new HttpError(409,'Diese Gruppe kann keine weiteren Charaktere speichern. Setze deine bestehende Reise mit ihrer gespeicherten Sitzung fort.');
+        if(![...room.members.values()].some(m=>m.active)&&[...this.rooms.values()].filter(r=>[...r.members.values()].some(m=>m.active)).length>=this.maxRooms)throw new HttpError(503,'Alle Gruppenplätze des Servers sind belegt.');
         if([...room.members.values()].some(member=>member.game.dungeonInstance))throw new HttpError(409,'Der Dungeon läuft bereits. Kehre mit deiner bestehenden Sitzung zurück oder warte, bis die Gruppe den Dungeon verlässt.');
         const member=this._createMember(room,body);this.persist();
         return this._json(res,201,{token:member.token,roomCode:room.code,playerId:member.id,snapshot:this.snapshot(member,{includeLayout:true})});
@@ -375,6 +380,7 @@ export class MultiplayerHub {
       const session=url.pathname.match(/^\/api\/session\/([\w-]{43})(?:\/(events|command|leave))?$/);
       if(!session)throw new HttpError(404,'Unbekannter Spielserver-Endpunkt.');
       const member=this.sessions.get(session[1]);if(!member)throw new HttpError(401,'Die Sitzung ist abgelaufen. Erstelle eine neue Gruppe oder tritt erneut bei.');
+      if(req.method==='GET'&&session[2]==='events'&&member.streams.size>=this.maxSessionStreams)throw new HttpError(429,'Für diese Sitzung sind bereits zu viele Gruppenverbindungen geöffnet. Schließe einen anderen Spieltab und versuche es erneut.');
       this._activate(member);
       member.lastSeen=this.clock();
       if(req.method==='GET'&&!session[2])return this._json(res,200,this.snapshot(member,{includeLayout:true}));
@@ -494,7 +500,7 @@ export class MultiplayerHub {
   _creationLimit(req) {
     const address=req.socket.remoteAddress||'local';let limit=this.creations.get(address);
     if(!limit||this.clock()-limit.at>60000){limit={at:this.clock(),count:0};this.creations.set(address,limit);}
-    if(++limit.count>10)throw new HttpError(429,'Zu viele neue Gruppen.');
+    if(++limit.count>10)throw new HttpError(429,'Zu viele neue Gruppensitzungen.');
     if(this.creations.size>1000)for(const [key,value]of this.creations)if(this.clock()-value.at>60000)this.creations.delete(key);
   }
   _json(res,status,data) {res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'}).end(JSON.stringify(data));return true;}
