@@ -1,4 +1,4 @@
-import { ENEMY_TYPES, QUESTS } from './catalog.js';
+import { ENEMY_TYPES, QUESTS, RESOURCES } from './catalog.js';
 import { CLASSES, getClass } from './classes.js';
 import { getRelic } from './relics.js';
 import { shapeBounds, annulusDangerArcs } from './encounter-geometry.js';
@@ -10,6 +10,7 @@ import { dungeonRouteSummary, routeHazardShapes } from './dungeon-routes.js';
 import { pveLevelGap } from './balance.js';
 import { drawPixelItem } from './item-art.js';
 import { RARITIES, equipmentRequiredLevel } from './loot.js';
+import { getGatherBonus } from './professions.js';
 
 export const TERRAIN_CHUNK_SIZE = 512;
 export const TERRAIN_CACHE_LIMIT = 64;
@@ -841,13 +842,16 @@ export class Renderer {
     if(planted)for(let i=0;i<6;i++){const x=p.x-12+(i%3)*12,y=p.y-5+Math.floor(i/3)*15;line(c,[[x,y+5],[x+(Math.sin(time*1.4+i)*1.4),y-(ripe?21:8)]],ripe?'#b9a75b':'#72915b',2);for(let k=0;k<3;k++)ellipse(c,x+(k%2?3:-3),y-(ripe?8+k*4:2+k*2),ripe?3:3.5,ripe?4:2,ripe?'#ddc77a':'#98ab67');}
   }
   node(c,n,game) {
-    const ready=(n.readyAt||0)<=game.time;c.save();c.translate(n.x,n.y);if(!ready)c.globalAlpha=.32;
-    ellipse(c,3,5,21,8,'#19302d55');
-    if(n.type==='wood'){for(let i=0;i<3;i++){rounded(c,-18+i*7,-5-i*7,33,10,4,'#72583c','#323e2d');ellipse(c,13+i*2,-i*7,5,5,'#bc9962');ellipse(c,13+i*2,-i*7,2,2,'#87653f');line(c,[[-13+i*5,-3-i*7],[6+i*5,-3-i*7]],'#aa815249',1.5);}}
-    else if(n.type==='herb'){for(let i=0;i<7;i++){const a=i*2.4;line(c,[[0,4],[Math.cos(a)*13,Math.sin(a)*8-12]],'#66805d',2);ellipse(c,Math.cos(a)*13,Math.sin(a)*8-12,5,3,i%2?'#9eb785':'#658d68');if(i%3===0)ellipse(c,Math.cos(a)*13,Math.sin(a)*8-18,3,3,'#d9d7a6');}}
-    else if(n.type==='crystal'){glow(c,0,-8,38,'#ad90e326');poly(c,[[-15,3],[-18,-16],[-8,-31],[2,-17],[5,-3]],'#ad9bca','#514968',2);poly(c,[[0,5],[2,-27],[12,-41],[22,-19],[17,7]],'#a88dc7','#514968',2);poly(c,[[12,-41],[12,-7],[22,-19]],'#dcc5ed');poly(c,[[-8,-31],[-8,-5],[2,-17]],'#ddc2e8');}
-    else {poly(c,[[-23,3],[-18,-13],[-4,-24],[15,-19],[24,-2],[16,9],[-6,11]],'#697b75','#3b4c47',2);poly(c,[[-18,-13],[-4,-24],[15,-19],[3,-5]],'#8d9f94');for(let i=0;i<3;i++)poly(c,[[-12+i*11,-8-i*3],[-6+i*11,-16-i*3],[i*11,-7-i*3],[-6+i*11,1-i*3]],'#d4c79a');}
-    if(ready&&Math.hypot(n.x-game.player.x,n.y-game.player.y)<90){text(c,'✦',0,-42,13,'#d4c18a');}c.restore();
+    const ready=(n.readyAt||0)<=game.time,region=n.region||game.regionAt?.(n.x,n.y)?.id;
+    const bonusId=Object.keys(getGatherBonus(region,n.type,{playerLevel:game.player.level}))[0];
+    const id=bonusId||n.type,item=RESOURCES[id];
+    c.save();if(!ready)c.globalAlpha*=.32;
+    rect(c,Math.round(n.x)-22,Math.round(n.y)+7,44,4,'#18262188');rect(c,Math.round(n.x)-15,Math.round(n.y)+11,30,2,'#18262144');
+    drawPixelItem(c,{...item,id,type:'resource'},n.x,n.y-18,{size:64});
+    if(ready&&Math.hypot(n.x-game.player.x,n.y-game.player.y)<90){
+      rect(c,Math.round(n.x)-3,Math.round(n.y)-59,6,2,'#d4c18a');rect(c,Math.round(n.x)-1,Math.round(n.y)-61,2,6,'#d4c18a');
+    }
+    c.restore();
   }
   chest(c,ch) {
     c.save();c.translate(ch.x,ch.y);ellipse(c,2,6,23,9,'#172b2866');rounded(c,-20,-16,40,25,4,'#6d5135','#332d29');

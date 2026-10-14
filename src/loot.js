@@ -400,7 +400,10 @@ export function salvageYield(item) {
   if (rank >= 3) materials.crystal = Math.max(1, Math.floor(rank - 2 + item.level / 35));
   for (const socket of item.sockets) {
     const data = gemData(socket);
-    if (data) materials[data.gem.id] = (materials[data.gem.id] || 0) + 1;
+    if (data) {
+      const resourceId=data.tier===1?data.gem.id:`${data.gem.id}_t${data.tier}`;
+      materials[resourceId]=(materials[resourceId]||0)+1;
+    }
   }
   return materials;
 }

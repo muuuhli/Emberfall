@@ -1,11 +1,12 @@
 import { REGIONS, RESOURCES, ITEMS, RECIPES, QUESTS, NPCS, ENEMY_TYPES } from './catalog.js';
 import { CLASSES, getClass, canLearnTalent } from './classes.js';
-import { GEM_TYPES, SETS, ITEM_BASES, itemPower, describeStat, equipmentRequiredLevel } from './loot.js';
+import { GEM_TYPES, SETS, ITEM_BASES, itemPower, describeStat, equipmentRequiredLevel, computeItemStats } from './loot.js';
 import { ABILITIES, getAbility, canLearnAbility, getLearnedAbilities } from './abilities.js';
 import { DUNGEONS } from './dungeons.js';
 import { MAX_LEVEL } from './progression.js';
 import { getArsenalShopStock } from './arsenal.js';
-import { getConsumableProfile } from './professions.js';
+import { getConsumableProfile, socketDescriptor, gemResourceId, getSocketMasteryBonus, PROFESSIONS, PROFESSION_RECIPES } from './professions.js';
+import { PROFESSION_TRAINERS, getRecipeProfession, craftProfessionGate, professionSummary, craftedEquipmentPreview, canTrainProfession, canChooseProfessionMastery } from './profession-system.js';
 import { drawMapFeatures } from './map-art.js';
 import { PVP_RULES } from './pvp.js';
 import { NoticeQueue, noticeKind } from './ui-notices.js';
@@ -13,7 +14,7 @@ import { relicPresentation } from './relics.js';
 import { loadoutProblems } from './inventory-system.js';
 import { summarizeWorldEvents } from './world-events.js';
 import { FACTIONS, FACTION_RANKS, ACHIEVEMENTS, COMPANIONS, JOURNEY_RECIPES, JOURNEY_MASTERIES, getFactionProgress, getJourneyUnlocks, getAchievementProgress, canClaimAchievement, canChooseJourneyMastery, getMasteryRank, canSelectCompanion, canCraftJourneyRecipe } from './journey.js';
-import { EQUIPMENT_SLOTS, equipmentSlot, getEquipmentShopStock, scaleEquipmentStats } from './equipment-system.js';
+import { EQUIPMENT_SLOTS, equipmentSlot, getEquipmentShopStock } from './equipment-system.js';
 import { applyTalentAbilityProfile, applyTalentAttackProfile, describeTalentCombatEffects } from './talent-combat.js';
 import { deriveCharacterAppearance } from './character-appearance.js';
 import { drawCharacterSprite, loadCharacterSpriteAssets, dungeonRoutePresentation } from './renderer.js';
@@ -42,6 +43,7 @@ const abilityIcon = (ability, classId) => ({ heal:'heart', shield:'shield', drai
 const learnedIcon = ability => ({'⬡':'shield','⚑':'group','⚔':'sword','✚':'heart','☀':'sun','➤':'bow','⌘':'leaf','❧':'leaf','↝':'dash','◆':'gem','✦':'flame','☄':'flame','❄':'snowflake','✿':'leaf','☾':'gem','◈':'group'}[ability?.icon] || ability?.icon || 'tree');
 const branchIcons = {'Wächter':'shield','Arkanist':'flame','Wildläufer':'leaf'};
 const branchDescriptions = {'Wächter':'Halte stand. Jede Wunde macht dich stärker.','Arkanist':'Entfache die Glut und forme den Äther.','Wildläufer':'Bewege dich frei. Lebe von den Gaben des Hains.'};
+const professionRecipeIds = new Set(PROFESSION_RECIPES.map(recipe=>recipe.id));
 const combatPatterns = { melee:'Nahkampf',ranged:'Fernkampf',charge:'Ansturm',caster:'Zauberwirker',summon:'Beschwörer',swarm:'Schwarm',ambush:'Hinterhalt',artillery:'Artillerie',support:'Unterstützer',guardian:'Wächter',bruiser:'Brecher',skirmisher:'Plänkler',assassin:'Meuchler',siege:'Belagerung',drain:'Lebensraub',nova:'Flächenangriff',burst:'Angriffsserie',hex:'Fluch',ring:'Geschossring',fan:'Geschossfächer',summoner:'Beschwörer' };
 const menuGroups=[{id:'hero',name:'Held',icon:'shield',panels:[['character','Charakter'],['talents','Fähigkeiten']]},{id:'arsenal',name:'Inventar',icon:'bag',panels:[['inventory','Ausrüstung & Lager'],['craft','Handwerk']]},{id:'chronicle',name:'Quests',icon:'book',panels:[['journal','Quests & Aufträge'],['journey','Ruf & Gefährten'],['bestiary','Bestiarium']]},{id:'world',name:'Welt',icon:'map',panels:[['map','Weltkarte'],['adventures','Abenteuer'],['dungeons','Dungeons'],['interactions','Entdeckungen'],['party','Gruppe']]}];
 const groupFor=panel=>menuGroups.find(group=>group.panels.some(([id])=>id===panel));
@@ -62,6 +64,7 @@ export class GameUI {
     this.inventoryUsable = false;
     this.inventorySelected = null;
     this.inventoryFlags = 'all';
+    this.inventoryMaterialsAll = false;
     this.characterTab = 'equipment';
     this.journeyTab = 'factions';
     this.adventureFilter = 'all';
@@ -76,6 +79,13 @@ export class GameUI {
     this.bestiaryFamily = 'all';
     this.bestiaryPage = 0;
     this.craftFilter = 'available';
+    this.craftProfession = 'all';
+    this.craftSource = 'all';
+    this.craftSearch = '';
+    this.craftPage = 0;
+    this.craftBusy = null;
+    this.craftMessage = '';
+    this.craftMessageError = false;
     this.talentTab = 'abilities';
     this.talentSearch = '';
     this.talentStatus = 'all';
@@ -170,12 +180,12 @@ export class GameUI {
       const draft=event.target.dataset.uiDraft;if(draft){this[draft]=event.target.value;return;}
       const key = event.target.dataset.uiSearch;
       if (!key) return;
-      this[key] = event.target.value; this.inventoryPage = 0; this.bestiaryPage = 0;this.questPage=0;this.adventurePage=0;this.talentPage=0;
-      this.renderPanel();
+      this[key] = event.target.value; this.inventoryPage = 0; this.bestiaryPage = 0;this.questPage=0;this.adventurePage=0;this.talentPage=0;this.craftPage=0;
+      this.renderPanel(false,key==='craftSearch');
     });
     document.addEventListener('change', event => {
       const filter = event.target.dataset.uiFilter;
-      if (filter) { this[filter]=event.target.type==='checkbox'?event.target.checked:event.target.value;this.inventoryPage=0;this.bestiaryPage=0;this.questPage=0;this.adventurePage=0;this.talentPage=0;this.renderPanel(true);return; }
+      if (filter) { this[filter]=event.target.type==='checkbox'?event.target.checked:event.target.value;this.inventoryPage=0;this.bestiaryPage=0;this.questPage=0;this.adventurePage=0;this.talentPage=0;this.craftPage=0;this.renderPanel(true,filter.startsWith('craft'));return; }
       if(event.target.dataset.abilityLoadout!==undefined) {this.assignAbility(Number(event.target.dataset.abilityLoadout),event.target.value||null);return;}
       if(event.target.dataset.contractRegion!==undefined) {this.contractRegion=event.target.value;this.renderPanel();return;}
       const key = event.target.dataset.setting;
@@ -315,7 +325,7 @@ export class GameUI {
     const eventState=eventSummary.filter(event=>event.state==='active'||this.adventureRewardReady(event)).map(event=>[event.id,event.state,event.phase,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]);
     const trackerState = JSON.stringify([game.questState || {},game.contracts,game.trackedQuestId,game.endgame,eventState,this.dungeonId()]);
     if (force || trackerState !== this.lastTracker) { this.lastTracker = trackerState; this.renderTracker(); }
-    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.deathPenalty,game.waypoint,game.trackedQuestId,eventSummary.map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]),game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.techniqueSpecializations,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,game.dungeonInstance?.raidRevivesUsed,game.dungeonInstance?.routes?.completed,game.networkRaidResume,this.dungeonId()]);
+    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.deathPenalty,game.waypoint,game.trackedQuestId,eventSummary.map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]),game.equipment,game.generatedItems,game.resources,game.professions,game.professionTraining,game.skills,game.learnedAbilities,game.abilityLoadout,game.techniqueSpecializations,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,game.dungeonInstance?.raidRevivesUsed,game.dungeonInstance?.routes?.completed,game.networkRaidResume,this.dungeonId()]);
     if (force || state !== this.lastState) { this.lastState = state; if (this.activePanel && !['death','victory','reset','settings','party','account'].includes(this.activePanel)) this.renderPanel(); }
     this.updateParty();
     this.updateAccount();
@@ -521,9 +531,10 @@ export class GameUI {
     this.updateHudLayout(true);
   }
 
-  renderPanel(allowFocusedSelect = false) {
+  renderPanel(allowFocusedSelect = false, allowCraftWhileBusy = false) {
     const name = this.activePanel;
     if (!name) return;
+    if(this.craftBusy&&['craft','dialogue'].includes(name)&&this.renderedPanel===name&&!allowCraftWhileBusy)return;
     if(this.panelPointers.size||!allowFocusedSelect&&document.activeElement?.matches?.('select')&&this.elements['game-panel'].contains(document.activeElement)){this.pendingPanelRender=true;return;}
     if(name==='party'&&this.renderedPanel==='party'&&['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)&&this.elements['game-panel'].contains(document.activeElement)){this.pendingPanelRender=true;return;}
     if(name==='account'&&this.renderedPanel==='account'&&!this.accountExplicitRender&&!this.network?.requiresHTTPS&&document.getElementById('account-form')?.contains(document.activeElement))return;
@@ -582,6 +593,14 @@ export class GameUI {
     }).join(' · ');
   }
 
+  socketPreviewStats(item, resourceId) {
+    const descriptor=socketDescriptor(resourceId),index=item?.sockets?.indexOf(null);if(!descriptor||!(index>=0))return {};
+    const after={...item,sockets:item.sockets.map((socket,slot)=>slot===index?descriptor:socket)};
+    const beforeStats=computeItemStats(item),afterStats=computeItemStats(after),options={training:this.inPvp?[]:this.game.professionTraining || []};
+    const beforeMastery=getSocketMasteryBonus(item,this.game.professions,options),afterMastery=getSocketMasteryBonus(after,this.game.professions,options);
+    return Object.fromEntries(Object.keys(GEM_TYPES[descriptor.id].stats).map(key=>[key,Math.round(((afterStats[key] || 0)+(afterMastery[key] || 0)-(beforeStats[key] || 0)-(beforeMastery[key] || 0))*10000)/10000]));
+  }
+
   equipmentComparison(item) {
     if(!['weapon','armor','charm'].includes(item.type)||this.game.equipment?.[equipmentSlot(item)]===item.id)return '';
     const currentId=this.game.equipment?.[equipmentSlot(item)],current=this.item(currentId),before=this.game.stats();
@@ -613,10 +632,10 @@ export class GameUI {
     const generated = !!item.baseId;
     const itemStats = generated ? this.itemStats(item.id) : item.stats;
     const upgrade = item.upgrade || 0, upgradeCost = 8 + upgrade * 6;
-    const gems = generated && (item.sockets || []).includes(null) ? Object.values(GEM_TYPES).filter(gem=>(this.game.resources?.[gem.id] || 0)>0) : [];
+    const gems = generated && (item.sockets || []).includes(null) ? Object.entries(this.game.resources || {}).filter(([id,count])=>count>0&&socketDescriptor(id)).map(([id])=>({id,name:RESOURCES[id]?.name || GEM_TYPES[socketDescriptor(id).id].name,stats:this.socketPreviewStats(item,id)})) : [];
     const legendaryPower=generated?(item.affixes || []).filter(affix=>affix.legendary).map(affix=>`<div class="legendary-power"><span>LEGENDÄRE MACHT</span><strong>${escape(affix.name)}</strong><p>${Object.entries(affix.stats).map(([key,value])=>escape(describeStat(key,value))).join(' · ')}</p></div>`).join(''):'';
-    const modifiers = generated ? `<details class="item-details"><summary>Affixe${item.sockets.length?` · ${item.sockets.length} Sockel`:''}${item.setId?' · Set':''}</summary><p>${escape(item.description)}</p>${item.affixes.map(affix=>`<div class="item-modifier ${affix.legendary?'legendary-modifier':''}"><strong>${escape(affix.name)}</strong><span>${Object.entries(affix.stats).map(([key,value])=>escape(describeStat(key,value))).join(' · ')}</span></div>`).join('')}${item.sockets.length?`<div class="socket-list">${item.sockets.map(gem=>`<span>${gem?resourceArt(typeof gem==='string'?gem:gem.id):icon('gem')}${gem?escape(GEM_TYPES[typeof gem==='string'?gem:gem.id]?.name || 'Edelstein'):'Freier Sockel'}</span>`).join('')}</div>`:''}${item.setId?`<p class="set-description">${escape(SETS[item.setId]?.name)} · 2 Teile: ${this.statsText(SETS[item.setId]?.bonuses[2])} · 3 Teile: ${this.statsText(SETS[item.setId]?.bonuses[3])}</p>`:''}</details>` : '';
-    const improve = generated && !shop && action==='equip' ? `<div class="item-improvement-actions"><button class="small-button" data-command="upgradeItem" data-id="${escape(item.id)}" ${upgrade>=10 || (this.game.resources?.dust || 0)<upgradeCost?'disabled':''}>${upgrade>=10?'Aufwertung +10':`Aufwerten · ${upgradeCost} Staub`}</button>${!equipped?`<button class="small-button subtle-button" data-command="salvage" data-id="${escape(item.id)}" ${this.game.itemFlags?.[item.id]?.locked||this.game.itemFlags?.[item.id]?.favorite?'disabled':''}>Zerlegen</button>`:''}${gems.map(gem=>`<button class="small-button" data-command="socket" data-id="${escape(item.id)}" data-gem="${gem.id}" title="${escape(this.statsText(scaleEquipmentStats(gem.stats,item)))}">${escape(gem.name)} sockeln</button>`).join('')}</div>` : '';
+    const modifiers = generated ? `<details class="item-details"><summary>Affixe${item.sockets.length?` · ${item.sockets.length} Sockel`:''}${item.setId?' · Set':''}</summary><p>${escape(item.description)}</p>${item.affixes.map(affix=>`<div class="item-modifier ${affix.legendary?'legendary-modifier':''}"><strong>${escape(affix.name)}</strong><span>${Object.entries(affix.stats).map(([key,value])=>escape(describeStat(key,value))).join(' · ')}</span></div>`).join('')}${item.sockets.length?`<div class="socket-list">${item.sockets.map(gem=>`<span>${gem?resourceArt(gemResourceId(gem)):icon('gem')}${gem?escape(RESOURCES[gemResourceId(gem)]?.name || GEM_TYPES[typeof gem==='string'?gem:gem.id]?.name || 'Edelstein'):'Freier Sockel'}</span>`).join('')}</div>`:''}${item.setId?`<p class="set-description">${escape(SETS[item.setId]?.name)} · 2 Teile: ${this.statsText(SETS[item.setId]?.bonuses[2])} · 3 Teile: ${this.statsText(SETS[item.setId]?.bonuses[3])}</p>`:''}</details>` : '';
+    const improve = generated && !shop && action==='equip' ? `<div class="item-improvement-actions"><button class="small-button" data-command="upgradeItem" data-id="${escape(item.id)}" ${upgrade>=10 || (this.game.resources?.dust || 0)<upgradeCost?'disabled':''}>${upgrade>=10?'Aufwertung +10':`Aufwerten · ${upgradeCost} Staub`}</button>${!equipped?`<button class="small-button subtle-button" data-command="salvage" data-id="${escape(item.id)}" ${this.game.itemFlags?.[item.id]?.locked||this.game.itemFlags?.[item.id]?.favorite?'disabled':''}>Zerlegen</button>`:''}${gems.length?`<details class="socket-options"><summary>Sockelstein wählen · ${gems.length} Varianten</summary>${gems.map(gem=>`<button type="button" class="small-button socket-choice" data-command="socket" data-id="${escape(item.id)}" data-gem="${gem.id}" title="${escape(this.statsText(gem.stats))}">${resourceArt(gem.id)}<span>${escape(gem.name)} sockeln<small>Zuwachs am Gegenstand: ${this.statsText(gem.stats)}</small></span></button>`).join('')}</details>`:''}</div>` : '';
     const image = `<div class="item-icon pixel-item-tile ${escape(item.rarity || 'common')}">${itemSpriteMarkup(item,{decorative:true})}</div>`;
     const heading = `<h3>${escape(item.name)}${upgrade?` <span class="item-upgrade">+${upgrade}</span>`:''}</h3><p class="item-metadata">${escape(rarityLabels[item.rarity] || item.rarity || 'Gewöhnlich')} · ${escape(EQUIPMENT_SLOTS.find(entry=>entry.id===slot)?.name || typeLabels[item.type])} · Stufe ${requiredLevel}${generated?`${item.dungeonTier>1?` · Tiefe ${item.dungeonTier}`:''} · Macht ${itemPower(item)}`:''}${classIds?` · ${escape(classIds.map(id=>getClass(id).name).join(' / '))}`:''}</p>`;
     const content = `<p class="item-description">${this.statsText(itemStats)}</p>${legendaryPower}${seal?`<div class="relic-power" style="--seal-color:${seal.color}"><span class="eyebrow">SELTENE SIEGELWAFFE</span><h4>${escape(seal.name)}</h4><p>${escape(seal.effectText)}</p><details><summary>Fundort, Chance & Aufwertung</summary><p>${escape(seal.originText)}</p><p>${escape(seal.chanceText)}</p><p>${escape(seal.upgradeText)}</p></details></div>`:''}${!shop&&command==='equip'&&!equipped?this.equipmentComparison(item):''}${consumeProfile?`<p class="consumable-profile">${consumeProfile.outOfCombat?'Mahlzeit · außerhalb des Kampfes':'Trank'} · ${seconds(consumeProfile.cooldown)} Sek. Erholung</p>`:''}${lockReason?`<p class="equipment-lock">${icon('shield')}${escape(lockReason)}</p>`:''}${modifiers}${improve}`;
@@ -642,19 +661,20 @@ export class GameUI {
     if(this.inventorySort==='power')filtered.sort((a,b)=>itemPower(this.item(b[0]))-itemPower(this.item(a[0])));
     if(this.inventorySort==='rarity')filtered.sort((a,b)=>(rarityOrder[this.item(b[0]).rarity] || 0)-(rarityOrder[this.item(a[0]).rarity] || 0));
     if(this.inventorySort==='name')filtered.sort((a,b)=>this.item(a[0]).name.localeCompare(this.item(b[0]).name,'de'));
-    const pageSize=12,pages=Math.max(1,Math.ceil(filtered.length/pageSize));this.inventoryPage=Math.min(this.inventoryPage || 0,pages-1);
+    const resourceEntries=Object.entries(RESOURCES).filter(([id,resource])=>search?`${resource.name} ${resource.description}`.toLocaleLowerCase('de-DE').includes(search):this.inventoryMaterialsAll||!resource.tier||(this.game.resources?.[id] || 0)>0).sort(([a,one],[b,two])=>Number((this.game.resources?.[b] || 0)>0)-Number((this.game.resources?.[a] || 0)>0)||Number(!!one.tier)-Number(!!two.tier));
+    const pageSize=12,pages=Math.max(1,Math.ceil((tab==='resources'?resourceEntries.length:filtered.length)/pageSize));this.inventoryPage=Math.min(this.inventoryPage || 0,pages-1);
     const page=filtered.slice(this.inventoryPage*pageSize,(this.inventoryPage+1)*pageSize);
     if(!page.some(([id])=>id===this.inventorySelected))this.inventorySelected=page[0]?.[0] || null;
-    const resources=Object.entries(RESOURCES).filter(([id,r])=>!search||`${r.name} ${r.description}`.toLocaleLowerCase('de-DE').includes(search)).map(([id,resource])=>`<div class="item-row resource-row"><div class="item-icon pixel-item-tile common">${resourceArt(id)}</div><div class="item-main"><h3>${escape(resource.name)}</h3><p>${escape(resource.description)}</p></div><span class="item-count">${format(this.game.resources?.[id])}</span></div>`).join('');
+    const resources=resourceEntries.slice(this.inventoryPage*pageSize,(this.inventoryPage+1)*pageSize).map(([id,resource])=>`<div class="item-row resource-row" data-resource-id="${escape(id)}"><div class="item-icon pixel-item-tile common">${resourceArt(id)}</div><div class="item-main"><h3>${escape(resource.name)}</h3><p>${escape(resource.description)}</p></div><span class="item-count">${format(this.game.resources?.[id])}</span></div>`).join('') || '<p class="panel-note">Keine passenden Materialien. Ändere deine Suche.</p>';
     const activeFilters=[this.inventoryType&&this.inventoryType!=='all',this.inventoryRarity&&this.inventoryRarity!=='all',this.inventoryFlags&&this.inventoryFlags!=='all',this.inventoryUsable,this.inventorySort&&this.inventorySort!=='default'].filter(Boolean).length;
-    const controls=`<div class="inventory-search-row"><label class="search-field"><span>${stored?'Lager':'Gepäck'} durchsuchen</span><input class="game-input" type="search" data-ui-search="inventorySearch" value="${escape(this.inventorySearch || '')}" placeholder="Name oder Eigenschaft …" autocomplete="off" /></label>${tab!=='resources'?`<button class="small-button inventory-filter-toggle" data-command="inventory-filters" aria-expanded="${!!this.inventoryFiltersOpen}" aria-controls="inventory-filters">${icon('settings')}Filter & Sortierung${activeFilters?` · ${activeFilters} aktiv`:''}</button>`:''}</div>${tab!=='resources'?`<div id="inventory-filters" class="inventory-filter-content inventory-toolbar compact-toolbar ${this.inventoryFiltersOpen?'expanded':''}"><label><span>Seltenheit</span><select class="game-input" data-ui-filter="inventoryRarity"><option value="all">Alle Seltenheiten</option>${Object.entries(rarityLabels).map(([id,label])=>`<option value="${id}" ${this.inventoryRarity===id?'selected':''}>${label}</option>`).join('')}</select></label><label><span>Sortieren</span><select class="game-input" data-ui-filter="inventorySort">${[['default','Fundreihenfolge'],['power','Höchste Macht'],['rarity','Seltenheit'],['name','Name A–Z']].map(([id,label])=>`<option value="${id}" ${this.inventorySort===id?'selected':''}>${label}</option>`).join('')}</select></label>${tab!=='consumables'?`<label><span>Ausrüstungsplatz</span><select class="game-input" data-ui-filter="inventoryType"><option value="all">Alle Plätze</option>${EQUIPMENT_SLOTS.map(slot=>`<option value="${slot.id}" ${this.inventoryType===slot.id?'selected':''}>${escape(slot.name)}</option>`).join('')}${stored?'<option value="consumable">Vorräte</option>':''}</select></label>`:''}<label><span>Markierungen</span><select class="game-input" data-ui-filter="inventoryFlags">${[['all','Alle Gegenstände'],['favorite','Favoriten'],['locked','Gesperrte Beute']].map(([id,label])=>`<option value="${id}" ${this.inventoryFlags===id?'selected':''}>${label}</option>`).join('')}</select></label><label class="usable-filter"><input type="checkbox" data-ui-filter="inventoryUsable" ${this.inventoryUsable?'checked':''} /> Für mich nutzbar</label></div>`:''}`;
+    const controls=`<div class="inventory-search-row"><label class="search-field"><span>${stored?'Lager':tab==='resources'?'Materialien':'Gepäck'} durchsuchen</span><input class="game-input" type="search" data-ui-search="inventorySearch" value="${escape(this.inventorySearch || '')}" placeholder="Name oder Eigenschaft …" autocomplete="off" /></label>${tab==='resources'?`<button type="button" class="small-button inventory-filter-toggle" data-command="materials-all" aria-pressed="${!!this.inventoryMaterialsAll}">${this.inventoryMaterialsAll?'Nur Vorräte & Basisstoffe':'Alle Materialien entdecken'}</button>`:tab!=='resources'?`<button class="small-button inventory-filter-toggle" data-command="inventory-filters" aria-expanded="${!!this.inventoryFiltersOpen}" aria-controls="inventory-filters">${icon('settings')}Filter & Sortierung${activeFilters?` · ${activeFilters} aktiv`:''}</button>`:''}</div>${tab!=='resources'?`<div id="inventory-filters" class="inventory-filter-content inventory-toolbar compact-toolbar ${this.inventoryFiltersOpen?'expanded':''}"><label><span>Seltenheit</span><select class="game-input" data-ui-filter="inventoryRarity"><option value="all">Alle Seltenheiten</option>${Object.entries(rarityLabels).map(([id,label])=>`<option value="${id}" ${this.inventoryRarity===id?'selected':''}>${label}</option>`).join('')}</select></label><label><span>Sortieren</span><select class="game-input" data-ui-filter="inventorySort">${[['default','Fundreihenfolge'],['power','Höchste Macht'],['rarity','Seltenheit'],['name','Name A–Z']].map(([id,label])=>`<option value="${id}" ${this.inventorySort===id?'selected':''}>${label}</option>`).join('')}</select></label>${tab!=='consumables'?`<label><span>Ausrüstungsplatz</span><select class="game-input" data-ui-filter="inventoryType"><option value="all">Alle Plätze</option>${EQUIPMENT_SLOTS.map(slot=>`<option value="${slot.id}" ${this.inventoryType===slot.id?'selected':''}>${escape(slot.name)}</option>`).join('')}${stored?'<option value="consumable">Vorräte</option>':''}</select></label>`:''}<label><span>Markierungen</span><select class="game-input" data-ui-filter="inventoryFlags">${[['all','Alle Gegenstände'],['favorite','Favoriten'],['locked','Gesperrte Beute']].map(([id,label])=>`<option value="${id}" ${this.inventoryFlags===id?'selected':''}>${label}</option>`).join('')}</select></label><label class="usable-filter"><input type="checkbox" data-ui-filter="inventoryUsable" ${this.inventoryUsable?'checked':''} /> Für mich nutzbar</label></div>`:''}`;
     const cards=page.map(([id,count])=>{
       const item=this.item(id),slot=equipmentSlot(item),equipped=Object.values(this.game.equipment || {}).includes(id),flags=this.game.itemFlags?.[id] || {},level=slot?equipmentRequiredLevel(item):getConsumableProfile(item)?.minLevel||item.minLevel||item.level||1;
       return `<button type="button" class="item-grid-card ${escape(item.rarity || 'common')} ${this.inventorySelected===id?'selected':''} ${equipped?'equipped':''}" data-command="inspect-item" data-id="${escape(id)}" aria-pressed="${this.inventorySelected===id}" aria-label="${escape(item.name)}, ${escape(rarityLabels[item.rarity])}, Stufe ${level}${equipped?', angelegt':''}"><span class="grid-card-flags">${flags.favorite?icon('star'):''}${flags.locked?icon('lock'):''}</span><span class="grid-card-icon pixel-item-tile ${escape(item.rarity || 'common')}">${itemSpriteMarkup(item,{decorative:true})}</span><strong>${escape(item.name)}</strong><span class="grid-card-meta">${escape(EQUIPMENT_SLOTS.find(s=>s.id===slot)?.name || 'Vorrat')} · ${level}</span><span class="grid-card-rarity">${escape(rarityLabels[item.rarity] || 'Gewöhnlich')}</span>${count>1?`<b class="grid-card-count">×${count}</b>`:''}${equipped?'<span class="grid-card-equipped">ANGELEGT</span>':''}</button>`;
     }).join('');
-    const pagination=tab!=='resources'&&pages>1?`<div class="inventory-pagination"><button class="small-button" data-command="inventory-page" data-id="${this.inventoryPage-1}" ${this.inventoryPage===0?'disabled':''}>Zurück</button><span>${this.inventoryPage+1} / ${pages} · ${filtered.length} Gegenstände</span><button class="small-button" data-command="inventory-page" data-id="${this.inventoryPage+1}" ${this.inventoryPage===pages-1?'disabled':''}>Weiter</button></div>`:'';
+    const pagination=pages>1?`<div class="inventory-pagination"><button class="small-button" data-command="inventory-page" data-id="${this.inventoryPage-1}" ${this.inventoryPage===0?'disabled':''}>Zurück</button><span>${this.inventoryPage+1} / ${pages} · ${tab==='resources'?`${resourceEntries.length} Materialien`:`${filtered.length} Gegenstände`}</span><button class="small-button" data-command="inventory-page" data-id="${this.inventoryPage+1}" ${this.inventoryPage===pages-1?'disabled':''}>Weiter</button></div>`:'';
     const ready=this.game.inSettlement?.()&&!this.game.inCombat?.();
-    return `${tabs}${tab==='resources'?'':`<div class="equipment-belt" aria-label="Sieben Ausrüstungsplätze">${this.equipmentBelt()}</div>`}${controls}${stored?`<p class="storage-note ${ready?'ready':''}">${icon('bag')}${ready?'Lager geöffnet. Gegenstände können kostenlos eingelagert und entnommen werden.':'Lagertransfers benötigen eine sichere Siedlung außerhalb des Kampfes. Deine gelagerten Gegenstände bleiben hier sichtbar.'}</p>`:''}<div class="inventory-workbench"><div class="inventory-bag"><div class="bag-heading"><p class="results-count">${tab==='resources'?'Materialien':`${filtered.length} von ${entries.filter(([id])=>stored||tab==='consumables'?stored||this.item(id).type==='consumable':this.item(id).type!=='consumable').length} Gegenständen`}</p><span>${icon('coin')}${format(this.game.player.gold)}</span></div>${tab==='resources'?resources:`<div class="item-grid" id="inventory-grid">${cards || '<p class="empty-inventory">Keine passenden Gegenstände.<br><small>Ändere die Filter oder entdecke neue Beute in der Welt.</small></p>'}</div>${pagination}<p class="panel-note bag-hint">Wähle einen Gegenstand zum Vergleichen. Favoriten und gesperrte Beute sind vor Verkauf und Zerlegen geschützt.</p>`}</div>${tab==='resources'?`<aside class="material-guide"><h3 class="section-title">Verarbeite deine Beute</h3><p class="panel-note">Materialien fließen in Schmiederezepte, Tränke, Runen und Aufwertungen. Zerlegte Ausrüstung liefert Arkanstaub.</p><button class="small-button" data-panel="craft">${icon('craft')}Zur Werkbank</button></aside>`:`<aside class="inventory-inspector" id="inventory-inspector" tabindex="-1" aria-label="Gegenstandsdetails">${this.itemInspector(this.inventorySelected,stored)}</aside>`}</div>`;
+    return `${tabs}${tab==='resources'?'':`<div class="equipment-belt" aria-label="Sieben Ausrüstungsplätze">${this.equipmentBelt()}</div>`}${controls}${stored?`<p class="storage-note ${ready?'ready':''}">${icon('bag')}${ready?'Lager geöffnet. Gegenstände können kostenlos eingelagert und entnommen werden.':'Lagertransfers benötigen eine sichere Siedlung außerhalb des Kampfes. Deine gelagerten Gegenstände bleiben hier sichtbar.'}</p>`:''}<div class="inventory-workbench"><div class="inventory-bag"><div class="bag-heading"><p class="results-count">${tab==='resources'?`${resourceEntries.length} Materialien`:`${filtered.length} von ${entries.filter(([id])=>stored||tab==='consumables'?stored||this.item(id).type==='consumable':this.item(id).type!=='consumable').length} Gegenständen`}</p><span>${icon('coin')}${format(this.game.player.gold)}</span></div>${tab==='resources'?`${resources}${pagination}`:`<div class="item-grid" id="inventory-grid">${cards || '<p class="empty-inventory">Keine passenden Gegenstände.<br><small>Ändere die Filter oder entdecke neue Beute in der Welt.</small></p>'}</div>${pagination}<p class="panel-note bag-hint">Wähle einen Gegenstand zum Vergleichen. Favoriten und gesperrte Beute sind vor Verkauf und Zerlegen geschützt.</p>`}</div>${tab==='resources'?`<aside class="material-guide"><h3 class="section-title">Verarbeite deine Beute</h3><p class="panel-note">Materialien fließen in Schmiederezepte, Tränke, Runen und Aufwertungen. Zerlegte Ausrüstung liefert Arkanstaub.</p><button class="small-button" data-panel="craft">${icon('craft')}Zur Werkbank</button></aside>`:`<aside class="inventory-inspector" id="inventory-inspector" tabindex="-1" aria-label="Gegenstandsdetails">${this.itemInspector(this.inventorySelected,stored)}</aside>`}</div>`;
   }
 
   itemInspector(id,stored=false) {
@@ -804,15 +824,85 @@ export class GameUI {
     }).join('')}</div><p class="panel-note technique-comparison-note">Trefferschaden vor Gegnerabwehr. Heilwerte vor Wunden und fehlendem Leben; Lebensschilde richten sich nach dem maximalen Leben des geschützten Gefährten.</p></div></details>`;
   }
 
+  craftIngredientCount(id) {
+    const bank=Object.hasOwn(RESOURCES,id)?this.game.resources:this.game.inventory,value=bank?.[id];
+    return Number.isFinite(value)?value:0;
+  }
+
+  craftRecipeState(recipe) {
+    const professionGate=craftProfessionGate(this.game,recipe),journeyGate=canCraftJourneyRecipe(this.game,recipe);
+    const missing=Object.entries(recipe.ingredients).filter(([id,count])=>this.craftIngredientCount(id)<count);
+    const levelMet=this.game.player.level>=(recipe.minLevel || 1),classMet=!recipe.classIds||recipe.classIds.includes(this.game.player.classId);
+    const bagFull=recipe.outputProfile?.kind==='gear'&&(this.game.bagUsed?.() || 0)>=240;
+    const started=!professionRecipeIds.has(recipe.id)||this.game.started!==false;
+    return {professionGate,journeyGate,missing,levelMet,bagFull,ok:professionGate.ok&&journeyGate.ok&&levelMet&&classMet&&!missing.length&&!bagFull&&started,
+      reason:!levelMet?`Benötigt Charakterstufe ${recipe.minLevel || 1}.`:!classMet?'Dieses Rezept gehört zu einer anderen Klasse.':!professionGate.ok?professionGate.reason:!journeyGate.ok?journeyGate.reason:!started?'Beginne zuerst deine Reise.':missing.length?`Fehlt: ${missing.map(([id,count])=>`${RESOURCES[id]?.name || ITEMS[id]?.name || id} ${Math.max(0,count-this.craftIngredientCount(id))}`).join(' · ')}`:bagFull?'Dein Gepäck ist voll. Das Rezept und seine Materialien bleiben erhalten.':''};
+  }
+
+  craftCollection() {
+    const profession=PROFESSIONS.some(entry=>entry.id===this.craftProfession)?this.craftProfession:'all',source=['new','legacy'].includes(this.craftSource)?this.craftSource:'all';
+    const search=(this.craftSearch || '').trim().toLocaleLowerCase('de-DE'),level=this.game.player.level,classId=this.game.player.classId;
+    const recipes=RECIPES.filter(recipe=>{
+      const isNew=professionRecipeIds.has(recipe.id),output=ITEMS[recipe.output] || RESOURCES[recipe.output];
+      return (!recipe.classIds||recipe.classIds.includes(classId))&&(profession==='all'||getRecipeProfession(recipe)===profession)
+        &&(source==='all'||(source==='new')===isNew)
+        &&(!search||[recipe.name,recipe.description,output?.name,...Object.keys(recipe.ingredients).map(id=>RESOURCES[id]?.name || ITEMS[id]?.name || id)].join(' ').toLocaleLowerCase('de-DE').includes(search))
+        &&(this.craftFilter==='all'||(this.craftFilter==='ready'?this.craftRecipeState(recipe).ok:(recipe.minLevel || 1)<=level+10));
+    });
+    const pages=Math.max(1,Math.ceil(recipes.length/8));this.craftPage=Math.floor(clamp(this.craftPage || 0,0,pages-1));
+    return {profession,source,recipes,pages,shown:recipes.slice(this.craftPage*8,this.craftPage*8+8)};
+  }
+
+  professionFeedback() {
+    return `<p id="profession-feedback" class="profession-feedback ${this.craftMessageError?'error':''}" role="status" aria-live="polite" tabindex="-1" ${this.craftMessage?'':'hidden'}>${escape(this.craftMessage || '')}</p>`;
+  }
+
+  professionOverview(summary, detailed = false) {
+    const training=summary.canTrain,remote=training.code==='teacher_distance',busy=!!this.craftBusy;
+    const activeMastery=summary.masteries.find(choice=>choice.active);
+    const action=!summary.trained&&!remote?`<button type="button" class="small-button" data-command="trainProfession" data-id="${summary.id}" ${training.ok&&!busy?'':'disabled'} aria-busy="${busy}">${busy&&this.craftBusy.id===summary.id?'Antwort abwarten…':`Lernen · ${summary.trainer.cost} Gold`}</button>`:`<button type="button" class="text-button" data-command="profession-teacher" data-id="${summary.id}">Zu ${escape(summary.trainer.name)} ${icon('arrow')}</button>`;
+    return `<section class="profession-progress ${summary.trained?'trained':'untrained'}" data-profession-id="${summary.id}"><div class="profession-progress-heading"><div><h3>${escape(summary.name)}</h3><p>${summary.trained?`Stufe ${summary.level} / 100${activeMastery?` · ${escape(activeMastery.name)} · Rang ${summary.masteryRank}`:''}`:`Ausbildung bei ${escape(summary.trainer.name)} · ${summary.trainer.cost} Gold`}</p></div>${action}</div>${summary.trained?`<div class="profession-xp-label"><span>${summary.capped?summary.level===100?'Beruf gemeistert':'Aktuelles Berufslimit erreicht':`${format(summary.xp)} / ${format(summary.xpToNext)} Berufs-EP`}</span><span>Limit ${summary.cap}</span></div><progress class="profession-xp" max="${summary.xpToNext || 1}" value="${summary.capped?1:summary.xp}" aria-label="${escape(summary.name)}: ${summary.capped?'Berufslimit erreicht':`${summary.xp} von ${summary.xpToNext} Berufs-EP`}"></progress>`:''}${!summary.trained&&!training.ok&&!remote?`<p class="profession-requirement">${escape(training.reason)}</p>`:''}${detailed?`<p class="profession-description">${escape(summary.description)}</p><p class="panel-note">${summary.trained?`Herstellung und Meisterschaften bei ${escape(summary.trainer.name)}. ${summary.capped&&summary.level<100?'Eine höhere Charakterstufe erweitert das Limit. ':''}Berufs-EP über dem Limit verfallen.`:`Alle Klassen können alle drei Berufe erlernen. Besuche ${escape(summary.trainer.name)} in Glutwacht.`}</p>${summary.trained?`<details class="profession-masteries"><summary>Meisterschaft ${activeMastery?`· ${escape(activeMastery.name)}`:'· ab Berufsstufe 75'}</summary><p class="panel-note">Eine Meisterschaft je Beruf. Bei ${escape(summary.trainer.name)} kostenlos wechseln; Rang 1 ab Stufe 75, Rang 2 ab 90 und Rang 3 ab 100.</p>${summary.masteries.map(choice=>`<div class="profession-mastery ${choice.active?'active':''}"><div><h4>${escape(choice.name)}</h4><p>${escape(choice.description)}</p>${!choice.active&&!choice.canChoose.ok?`<p class="profession-requirement">${escape(choice.canChoose.reason)}</p>`:''}</div><button type="button" class="small-button" data-command="chooseProfessionMastery" data-id="${summary.id}" data-choice="${choice.id}" ${choice.canChoose.ok&&!busy?'':'disabled'} aria-busy="${busy}">${choice.active?'Aktiv':'Wählen'}</button></div>`).join('')}</details>`:''}`:''}</section>`;
+  }
+
+  craftRecipe(recipe) {
+    const state=this.craftRecipeState(recipe),gate=state.professionGate,preview=recipe.outputProfile?craftedEquipmentPreview(recipe,{classId:this.game.player.classId}):null;
+    const output=preview || ITEMS[recipe.output] || (RESOURCES[recipe.output]?{...RESOURCES[recipe.output],id:recipe.output,type:'resource'}:null),requiredLevel=recipe.minLevel || 1;
+    const profession=PROFESSIONS.find(entry=>entry.id===getRecipeProfession(recipe)),busy=!!this.craftBusy,active=this.craftBusy?.name==='craft'&&this.craftBusy.id===recipe.id;
+    const regional=state.missing.filter(([id])=>RESOURCES[id]?.regions?.some(regionId=>REGIONS.some(region=>region.id===regionId)));
+    const futureRecipe=PROFESSION_RECIPES.find(entry=>entry.id===recipe.id),xpLocked=!!futureRecipe&&['untrained','character_level','profession_level'].includes(gate.code);
+    const xpLabel=xpLocked?`Bis zu ${format(futureRecipe.professionXp)} Berufs-EP bei Freigabe`:gate.xpGain?`+${format(gate.xpGain)} Berufs-EP`:'Keine Berufs-EP';
+    const label=active?'Wird hergestellt…':!state.levelMet?`Stufe ${requiredLevel} benötigt`:gate.code==='untrained'?'Ausbildung benötigt':gate.code==='profession_level'?`Berufsstufe ${recipe.minProfessionLevel} benötigt`:gate.code==='teacher_distance'?`Bei ${gate.trainer.name} herstellen`:'Herstellen';
+    return `<article class="recipe ${!state.ok?'recipe-locked':''} ${!gate.xpGain&&!xpLocked?'recipe-trivial':''}" data-recipe-id="${escape(recipe.id)}"><div class="recipe-top"><div class="item-icon pixel-item-tile ${escape(output?.rarity || 'common')}">${itemSpriteMarkup(output,{decorative:true})}</div><div><h3>${escape(recipe.name)}</h3><p>${escape(recipe.description)}</p></div></div>${preview?`<p class="recipe-output-stats">${escape(rarityLabels[preview.rarity])} · Stufe ${preview.level} · ${escape(EQUIPMENT_SLOTS.find(slot=>slot.id===preview.slot)?.name)}<br>Klassenbasis: ${escape(preview.name)}. Affixe und Sockel entstehen beim Schmieden.</p>`:`<p class="recipe-output-stats">${output?.stats?this.statsText(output.stats):escape(output?.description || '')}</p>`}<div class="ingredients">${Object.entries(recipe.ingredients).map(([id,amount])=>{const count=this.craftIngredientCount(id);return `<span class="ingredient ${count<amount?'missing':''}">${resourceArt(id)}<span>${escape(RESOURCES[id]?.name || ITEMS[id]?.name || id)} ${format(count)}/${amount}</span></span>`;}).join('')}</div><div class="recipe-progress"><span>${profession?`${escape(profession.name)}${recipe.minProfessionLevel?` ${recipe.minProfessionLevel}`:''}`:'Bewährtes Rezept'} · Charakterstufe ${requiredLevel}</span><strong class="${xpLocked?'xp-potential':gate.xpGain?'xp-earning':'xp-none'}">${escape(xpLabel)}</strong></div><div class="recipe-actions"><span class="recipe-level">${recipe.amount || 1} × ${escape(output?.name || recipe.name)}</span><button type="button" class="small-button" data-command="craft" data-id="${escape(recipe.id)}" ${state.ok&&!busy?'':'disabled'} aria-busy="${active}">${escape(label)} ${icon('craft')}</button></div>${state.reason?`<p class="profession-requirement">${escape(state.reason)}</p>`:''}${regional.length?`<details class="recipe-sources"><summary>Fehlende Materialien finden</summary>${regional.map(([id])=>{const resource=RESOURCES[id],regions=resource.regions.map(regionId=>REGIONS.find(region=>region.id===regionId)).filter(Boolean),closest=[...regions].sort((a,b)=>Math.hypot(a.x+a.w/2-this.game.player.x,a.y+a.h/2-this.game.player.y)-Math.hypot(b.x+b.w/2-this.game.player.x,b.y+b.h/2-this.game.player.y))[0];return `<div><span>${escape(resource.name)}<small>${regions.map(region=>escape(region.name)).join(' · ')}</small></span><button type="button" class="text-button" data-command="waypoint" data-kind="region" data-id="${escape(closest.id)}">${escape(closest.name)} auf Karte markieren</button></div>`;}).join('')}</details>`:''}</article>`;
+  }
+
   craft() {
-    const classId=this.game.player.classId,level=this.game.player.level;
-    const relevant=RECIPES.filter(recipe=>!recipe.classIds||recipe.classIds.includes(classId));
-    const recipes=this.craftFilter==='all'?relevant:this.craftFilter==='ready'?relevant.filter(r=>(r.minLevel || 1)<=level&&canCraftJourneyRecipe(this.game,r).ok&&Object.entries(r.ingredients).every(([id,n])=>(this.game.resources?.[id] || 0)>=n)):relevant.filter(recipe=>(recipe.minLevel || 1)<=level+10);
-    return `<div class="craft-toolbar"><p class="panel-note">Deine Klasse: ${escape(getClass(classId).name)} · Stufe ${level}. Materialien und Stufenvoraussetzungen gelten für jedes Rezept.</p><label><span>Rezepte anzeigen</span><select class="game-input" data-ui-filter="craftFilter">${[['available','Verfügbar & nächste Stufen'],['ready','Jetzt herstellbar'],['all','Alle Rezepte meiner Klasse']].map(([id,label])=>`<option value="${id}" ${this.craftFilter===id?'selected':''}>${label}</option>`).join('')}</select></label></div><div class="craft-layout">${recipes.map(recipe=>{
-      const output=ITEMS[recipe.output],requiredLevel=recipe.minLevel || 1;
-      const enough=Object.entries(recipe.ingredients).every(([id,amount])=>(this.game.resources?.[id] || 0)>=amount),levelMet=level>=requiredLevel,journeyGate=canCraftJourneyRecipe(this.game,recipe);
-      return `<article class="recipe ${!levelMet?'recipe-locked':''}"><div class="recipe-top"><div class="item-icon pixel-item-tile ${escape(output?.rarity || 'common')}">${itemSpriteMarkup(output,{decorative:true})}</div><div><h3>${escape(recipe.name)}</h3><p>${escape(recipe.description)}</p></div></div><p class="recipe-output-stats">${this.statsText(output?.stats)}</p><div class="ingredients">${Object.entries(recipe.ingredients).map(([id,amount])=>`<span class="ingredient ${(this.game.resources?.[id] || 0)<amount?'missing':''}">${resourceArt(id)}<span>${escape(RESOURCES[id]?.name || id)} ${format(this.game.resources?.[id])}/${amount}</span></span>`).join('')}</div><div class="recipe-actions"><span class="recipe-level">${recipe.amount || 1} × ${escape(output?.name)}<small>Ab Stufe ${requiredLevel}${recipe.profession?` · ${escape(recipe.profession)}`:''}</small></span><button class="small-button" data-command="craft" data-id="${escape(recipe.id)}" ${enough&&levelMet&&journeyGate.ok?'':'disabled'}>${levelMet?'Herstellen':`Stufe ${requiredLevel} benötigt`} ${icon('craft')}</button></div>${!journeyGate.ok?`<p class="talent-requirement">${escape(journeyGate.reason)}</p>`:''}</article>`;
-    }).join('') || '<p class="panel-note">Für diesen Filter sind keine Rezepte verfügbar. Sammle weitere Materialien oder zeige alle Rezepte an.</p>'}</div><p class="panel-note">Sammle Holz an Bäumen, Erz an Felsen und Mondkraut auf den Lichtungen. Glutkristalle findest du in den Fernlanden. Zerlege Ausrüstung für Arkanstaub.</p>`;
+    const collection=this.craftCollection(),summary=professionSummary(this.game),selected=summary.find(entry=>entry.id===collection.profession);
+    const nav=`<div class="profession-navigation" role="group" aria-label="Handwerksbereiche">${[['all','Alle'],...PROFESSIONS.map(profession=>[profession.id,profession.id==='smith'?'Schmiede':profession.name])].map(([id,name])=>`<button type="button" class="${collection.profession===id?'active':''}" data-command="craft-profession" data-id="${id}" aria-pressed="${collection.profession===id}">${escape(name)}</button>`).join('')}</div>`;
+    const overview=selected?this.professionOverview(selected,true):`<div class="profession-overview">${summary.map(entry=>this.professionOverview(entry)).join('')}</div>`;
+    const tools=`<div class="craft-search-tools"><label class="search-field"><span>Rezept oder Material suchen</span><input class="game-input" type="search" data-ui-search="craftSearch" value="${escape(this.craftSearch || '')}" maxlength="80" placeholder="z. B. Heiltrank oder Mondstahl" autocomplete="off" /></label><label><span>Rezeptgruppe</span><select class="game-input" data-ui-filter="craftSource">${[['all','Alle Rezepte'],['new','Berufsrezepte'],['legacy','Bewährte Rezepte']].map(([id,label])=>`<option value="${id}" ${collection.source===id?'selected':''}>${label}</option>`).join('')}</select></label><label><span>Verfügbarkeit</span><select class="game-input" data-ui-filter="craftFilter">${[['available','Verfügbar & nächste Stufen'],['ready','Jetzt herstellbar'],['all','Alle Stufen meiner Klasse']].map(([id,label])=>`<option value="${id}" ${this.craftFilter===id?'selected':''}>${label}</option>`).join('')}</select></label></div>`;
+    const pagination=collection.pages>1?`<div class="inventory-pagination craft-pagination"><button type="button" class="small-button" data-command="craft-page" data-id="${this.craftPage-1}" ${this.craftPage===0?'disabled':''}>Zurück</button><span>Seite ${this.craftPage+1} / ${collection.pages}</span><button type="button" class="small-button" data-command="craft-page" data-id="${this.craftPage+1}" ${this.craftPage===collection.pages-1?'disabled':''}>Weiter</button></div>`:'';
+    return `${nav}${overview}${this.professionFeedback()}${tools}<div class="craft-results-heading"><p class="results-count">${collection.recipes.length} Rezepte · ${escape(getClass(this.game.player.classId).name)} · Stufe ${this.game.player.level}</p>${this.craftSearch||collection.source!=='all'||this.craftFilter==='ready'?'<button type="button" class="text-button" data-command="craft-clear-filters">Filter zurücksetzen</button>':''}</div><div class="craft-layout">${collection.shown.map(recipe=>this.craftRecipe(recipe)).join('') || '<p class="panel-note">Keine passenden Rezepte. Ändere Suche, Rezeptgruppe oder Verfügbarkeit.</p>'}</div>${pagination}<p class="panel-note">Bewährte Rezepte bleiben ohne Ausbildung nutzbar. Berufsrezepte benötigen ihren Lehrer, Ausbildung und die angezeigten Stufen.</p>`;
+  }
+
+  async professionCommand(name,id,button) {
+    if(this.craftBusy)return;
+    const method=this.game[name];if(typeof method!=='function')return;
+    this.craftBusy={name,id};this.craftMessage=name==='craft'?'Dein Gegenstand wird hergestellt…':'Deine Ausbildung wird bestätigt…';this.craftMessageError=false;
+    const controls=this.elements?.['panel-content']?.querySelectorAll('button[data-command="craft"],button[data-command="trainProfession"],button[data-command="chooseProfessionMastery"]') || [];
+    const focusedAction=[...controls].some(control=>control===document.activeElement);
+    for(const control of controls){control.dataset.craftDisabled=String(control.disabled);control.disabled=true;control.setAttribute('aria-busy','true');}
+    const feedback=document.getElementById('profession-feedback');if(feedback){feedback.hidden=false;feedback.textContent=this.craftMessage;feedback.classList.remove('error');}
+    try {
+      const result=await (name==='chooseProfessionMastery'?method.call(this.game,id,button?.dataset?.choice):method.call(this.game,id));
+      if(result===false){const recipe=RECIPES.find(entry=>entry.id===id),check=name==='trainProfession'?canTrainProfession(this.game,id):name==='chooseProfessionMastery'?canChooseProfessionMastery(this.game,id,button?.dataset?.choice):recipe?this.craftRecipeState(recipe):null;this.craftMessage=check?.reason || 'Diese Aktion ist gerade nicht möglich. Prüfe Voraussetzungen und Verbindung.';this.craftMessageError=true;}
+      else this.craftMessage=name==='craft'?'Gegenstand hergestellt.':name==='trainProfession'?'Beruf erlernt. Du kannst seine Rezepte jetzt üben.':'Meisterschaft gewählt.';
+    } catch(error) {this.craftMessage=error.message || 'Die Handwerksaktion konnte nicht bestätigt werden. Versuche es erneut.';this.craftMessageError=true;}
+    finally {
+      this.craftBusy=null;
+      for(const control of controls){control.disabled=control.dataset.craftDisabled==='true';delete control.dataset.craftDisabled;control.setAttribute('aria-busy','false');}
+      this.update(true);
+      if(focusedAction&&['craft','dialogue'].includes(this.activePanel)&&this.elements?.['panel-content']?.contains?.(document.activeElement)===false)document.getElementById('profession-feedback')?.focus({preventScroll:true});
+    }
   }
 
   bestiary() {
@@ -1332,7 +1422,9 @@ export class GameUI {
     if (npc.id==='toma') extra = `<div class="dialogue-quest"><h3>Dein Stück Erde</h3><p>Die Beete liegen südlich von Toma. Stelle dich neben ein leeres Beet und drücke E, um Saatgut zu pflanzen. Wenn der Weizen reif ist, drücke erneut E zum Ernten.</p><p>Dein Saatgut: ${format(this.game.resources?.seed)} · Deine Ernte: ${format(this.game.resources?.wheat)} Sonnenweizen.</p><button class="small-button" data-command="buy" data-id="seed" ${(this.game.player?.gold||0)>=4?'':'disabled'}>${icon('leaf')}3 Saatgut kaufen · 4 Gold</button><button class="small-button" data-panel="craft">Hainbrot backen</button></div>`;
     if (['elin','sera'].includes(npc.id)) extra += `<p class="panel-note"><button class="small-button" data-panel="craft">${icon('craft')}${npc.id==='elin'?'Zur Werkbank':'Tränke selbst brauen'}</button></p>`;
     if(npc.id==='rowan'||NPCS.some(n=>n.id===npc.id&&QUESTS.some(q=>q.giver===n.id&&q.region&&q.minLevel)))extra+=`<p class="panel-note"><button class="small-button" data-command="open-contracts" data-id="${escape(QUESTS.find(q=>q.giver===npc.id&&q.region)?.region||'daemmerhain')}">Regionale Aufträge ansehen</button></p>`;
-    return `<div class="dialogue-layout"><div class="npc-portrait">${icon(npc.id==='elin'?'craft':npc.id==='toma'?'leaf':npc.id==='sera'?'potion':npc.id==='oren'?'coin':npc.id==='rowan'?'map':'flame')}</div><div><p class="npc-role">${escape(npc.role).toUpperCase()}</p><p class="npc-dialogue">„${escape(npc.dialogue)}“</p>${current.map(quest=> {
+    const profession=professionSummary(this.game).find(entry=>entry.trainer.npcId===npc.id);
+    const teacher=profession?`<div class="npc-profession">${this.professionOverview(profession,true)}${this.professionFeedback()}<button type="button" class="small-button" data-command="profession-open" data-id="${profession.id}">${escape(profession.name)}: Rezepte ansehen</button></div>`:'';
+    return `<div class="dialogue-layout"><div class="npc-portrait">${icon(npc.id==='elin'?'craft':npc.id==='toma'?'leaf':npc.id==='sera'?'potion':npc.id==='oren'?'coin':npc.id==='rowan'?'map':'flame')}</div><div><p class="npc-role">${escape(npc.role).toUpperCase()}</p><p class="npc-dialogue">„${escape(npc.dialogue)}“</p>${teacher}${current.map(quest=> {
       const state = this.game.questState?.[quest.id];
       const ready = state && (state.status==='ready' || quest.objectives.every((objective,index)=>(state.counts?.[index]||0)>=objective.count));
       return `<article class="dialogue-quest">${this.questType(quest)==='side'?`<p class="dialogue-quest-kind">NEBENQUEST · ${escape(quest.chainName)}<br>Kapitel ${quest.chapter}/${quest.chapters} · Stufe ${quest.minLevel}</p>`:''}<h3>${escape(quest.title)}</h3><p>${escape(quest.description)}</p><div class="quest-reward">${this.reward(quest)}</div>${!state?`<button class="small-button" data-command="questAccept" data-id="${escape(quest.id)}">Ich helfe dir ${icon('arrow')}</button>`:ready?`<button class="small-button" data-command="questTurnIn" data-id="${escape(quest.id)}">Belohnung abholen ${icon('check')}</button>`:`<p class="panel-note">Deine Aufgabe läuft. ${quest.objectives.map((objective,index)=>`${escape(objective.label)} ${Math.min(state.counts?.[index]||0,objective.count)}/${objective.count}`).join(' · ')}</p>`}</article>`;
@@ -1369,6 +1461,18 @@ export class GameUI {
     if(name.startsWith('pvp-')){await this.pvpCommand(name,id);return;}
     if(this.inPvp&&name!=='resume'){this.showNotice('Kehre zuerst aus dem Duell zurück.','info');return;}
     if(name.startsWith('account-')){await this.accountCommand(name,id);return;}
+    if(['craft','trainProfession','chooseProfessionMastery'].includes(name)){await this.professionCommand(name,id,button);return;}
+    if(name==='craft-profession'||name==='profession-open'){
+      this.craftProfession=PROFESSIONS.some(profession=>profession.id===id)?id:'all';this.craftPage=0;this.pendingScrollReset=true;
+      if(name==='profession-open'){this.craftSearch='';this.craftSource='all';this.craftFilter='available';}
+      if(name==='profession-open'&&this.activePanel!=='craft')this.togglePanel('craft');else this.renderPanel(false,true);return;
+    }
+    if(name==='craft-page'){this.craftPage=Math.max(0,Math.floor(Number(id)||0));this.pendingScrollReset=true;this.renderPanel(false,true);return;}
+    if(name==='craft-clear-filters'){this.craftSearch='';this.craftSource='all';this.craftFilter='available';this.craftPage=0;this.pendingScrollReset=true;this.renderPanel(false,true);return;}
+    if(name==='profession-teacher'){
+      const trainer=PROFESSION_TRAINERS[id];if(!trainer?.npcId)return;
+      const result=await this.game.setWaypoint?.('npc',trainer.npcId);if(result!==false)this.closePanel();this.update(true);return;
+    }
     if(['learnTechniqueSpecialization','selectTechniqueSpecialization','clear-technique'].includes(name)) {
       if(this.techniqueBusy)return;
       const method=this.game[name==='clear-technique'?'selectTechniqueSpecialization':name];if(typeof method!=='function')return;
@@ -1383,6 +1487,7 @@ export class GameUI {
     if(name==='talent-page'){this.talentPage=Math.max(0,Number(id)||0);this.pendingScrollReset=true;this.renderPanel();return;}
     if(name==='talent-clear-filters'){this.talentSearch='';this.talentBranch='all';this.talentStatus='all';this.talentPage=0;this.pendingScrollReset=true;this.renderPanel();return;}
     if(name==='hero-facing'){this.heroFacing=Math.floor(clamp(Number(id)||0,0,3));this.renderPanel();return;}
+    if(name==='materials-all'){this.inventoryMaterialsAll=!this.inventoryMaterialsAll;this.inventoryPage=0;this.renderPanel();return;}
     if(name==='inventory-filters'){this.inventoryFiltersOpen=!this.inventoryFiltersOpen;this.renderPanel();return;}
     if(name==='quest-filters'){this.questFiltersOpen=!this.questFiltersOpen;this.renderPanel();return;}
     if(name==='quest-page'){this.questPage=Math.max(0,Number(id)||0);this.pendingScrollReset=true;this.renderPanel();return;}

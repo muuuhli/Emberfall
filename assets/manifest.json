@@ -438,12 +438,12 @@
       "source": "Original Emberfall grid-authored integer pixel objects",
       "published": true,
       "license": "Original project artwork; repository license applies",
-      "bytes": 40579,
-      "sha256": "7095904204294d11505dae8137dddade320e65123d9c56c287547698ddeaf132",
-      "status": "Native contact sheet and integrated desktop/mobile item pipeline visually inspected; all families found in gameplay is not claimed"
+      "bytes": 41829,
+      "sha256": "cfd15b23f008c957008559b01abcd6d0d4c9335e695df782504d0f3c82ec2c0b",
+      "status": "V14 core family QA retained; V15 profession material and potion aliases covered by native tests and separate integration QA"
     }
   ],
-  "version": "14.0.0",
+  "version": "15.0.0",
   "updated": "2026-10-14",
   "developmentStatus": {
     "releaseState": "playable development build",
@@ -493,7 +493,14 @@
       "ipHttpsAccountDeployment": true,
       "pixelItemFamilies": 52,
       "itemInspectionFromNotices": true,
-      "personalGroundLootInteraction": true
+      "personalGroundLootInteraction": true,
+      "professions": 3,
+      "activeProfessionRecipes": 20,
+      "regionalProfessionMaterials": 20,
+      "professionMasteries": 9,
+      "professionCharacterLevelCaps": true,
+      "professionAccountPersistence": true,
+      "totalCraftingRecipes": 124
     },
     "campaignHoursTarget": 200,
     "fullCampaignHoursVerified": 0,

@@ -1,5 +1,6 @@
 import { ITEM_BASES } from './loot.js';
 import { ITEMS, RESOURCES } from './catalog.js';
+import { CRAFT_ITEMS, PROFESSION_RESOURCES } from './professions.js';
 
 // Original, grid-authored objects. SVG and Canvas consume the same integer runs.
 // No generated ID, player name, rolled statistic or external asset enters art.
@@ -10,8 +11,12 @@ const P = { ink: 1, dark: 2, barkShade: 3, bark: 4, leather: 5, woodLight: 6, li
 const materialColors = Object.freeze({ steel: [12, 13, 14], bronze: [9, 10, 11], leather: [3, 4, 5], wood: [3, 4, 6], cloth: [2, 23, 24], bone: [9, 7, 8], glass: [12, 13, 14], leaf: [15, 16, 17], stone: [2, 12, 13] });
 const elementColors = Object.freeze({ none: [12, 13, 14], fire: [18, 19, 20], frost: [21, 22, 14], nature: [15, 16, 17], void: [23, 24, 7], holy: [9, 10, 11] });
 const rarityColors = Object.freeze({ common: 13, uncommon: 16, rare: 22, epic: 24, legendary: 11 });
-const canonical = new Map([...ITEM_BASES.map(item => [item.id, item]), ...Object.entries(ITEMS), ...Object.entries(RESOURCES).map(([id, item]) => [id, { ...item, id, name: item.name || item.label, type: 'resource' }]), ['gold', { id: 'gold', name: 'Gold', type: 'resource' }]]);
+const canonical = new Map([...ITEM_BASES.map(item => [item.id, item]), ...Object.entries(ITEMS).filter(([id])=>!Object.hasOwn(CRAFT_ITEMS,id)), ...Object.entries(RESOURCES).filter(([id])=>!Object.hasOwn(PROFESSION_RESOURCES,id)).map(([id, item]) => [id, { ...item, id, name: item.name || item.label, type: 'resource' }]), ['gold', { id: 'gold', name: 'Gold', type: 'resource' }]]);
 const variants = new Map([...canonical.keys()].map((id, index) => [id, index % 3]));
+// Append the profession family without changing the original variant indices.
+for(const [id,item] of [...Object.entries(CRAFT_ITEMS),...Object.entries(PROFESSION_RESOURCES).map(([id,item])=>[id,{...item,id,type:'resource'}])]) {
+  variants.set(id,canonical.size%3);canonical.set(id,item);
+}
 const sprites = new Map(), svgBodies = new Map(), bitmaps = new Map();
 const own = (object, key) => Object.hasOwn(object, key);
 const finite = value => Number.isFinite(value);
@@ -20,10 +25,11 @@ const retain = (cache, key, value) => { if (cache.has(key)) cache.delete(key); c
 
 function familyFor(base) {
   const text = `${base.id} ${base.name || ''}`.toLowerCase(), slot = base.slot || base.type;
-  if (base.type === 'resource') return ({ wood: 'log', ore: 'ore', herb: 'herb', crystal: 'crystal', ruby: 'crystal', sapphire: 'crystal', emerald: 'crystal', wheat: 'wheat', seed: 'seed', dust: 'dust', raidSigil: 'talisman', gold: 'gold' })[base.id] || 'bag';
+  if (base.type === 'resource') return ({ wood: 'log', ore: 'ore', herb: 'herb', crystal: 'crystal', ruby: 'crystal', sapphire: 'crystal', emerald: 'crystal', wheat: 'wheat', seed: 'seed', dust: 'dust', raidSigil: 'talisman', gold: 'gold' })[base.baseResource||base.gemId||(base.kind==='alloy'?'ore':base.id)] || 'bag';
   if (base.type === 'consumable') {
     if (/stew|eintopf/.test(text)) return 'stew';
     if (/ration|proviant/.test(text)) return 'ration';
+    if (/feast|mahl/.test(text)) return 'stew';
     if (/meal|bread|brot/.test(text)) return 'bread';
     return base.family === 'hybrid' || /elixir|recovery/.test(text) ? 'elixir' : 'potion';
   }
@@ -66,6 +72,14 @@ function elementFor(base, item) {
   const gems = Array.isArray(item.sockets) ? item.sockets.slice(0, 3).map(gem => typeof gem === 'string' ? gem : gem?.id) : [];
   for (const gem of gems) if (['ruby', 'sapphire', 'emerald'].includes(gem)) return { ruby: 'fire', sapphire: 'frost', emerald: 'nature' }[gem];
   const text = `${base.id} ${base.name || ''}`.toLowerCase(), traits = [...(base.lootTraits || []), ...(Array.isArray(item.traits) ? item.traits.slice(0, 8) : [])];
+  if(base.gemId)return {ruby:'fire',sapphire:'frost',emerald:'nature'}[base.gemId]||'none';
+  if(Object.hasOwn(CRAFT_ITEMS,base.id)&&base.cooldownGroup!=='food') {
+    if(base.stats?.hpRestore&&base.stats?.manaRestore)return 'void';
+    if(base.stats?.hpRestore)return 'fire';
+    if(base.stats?.manaRestore)return 'frost';
+  }
+  if(base.baseResource==='herb'||base.baseResource==='wood')return base.tier===4?'void':base.tier===3?'frost':'nature';
+  if(base.baseResource==='crystal'||base.kind==='alloy'||base.baseResource==='ore')return base.tier===4?'void':base.tier===3?'frost':'none';
   if (base.family === 'health' || base.id === 'heal_potion' || base.id === 'ruby') return 'fire';
   if (base.family === 'mana' || base.id === 'mana_potion' || base.id === 'sapphire') return 'frost';
   if (base.family === 'hybrid') return 'void';
@@ -85,7 +99,7 @@ export function itemArtDescriptor(item = {}) {
   const base = canonical.get(item.baseId) || canonical.get(item.id), family = base ? familyFor(base) : 'bag';
   const rarity = item.rarity === 'mythic' ? 'legendary' : own(rarityColors, item.rarity) ? item.rarity : own(rarityColors, base?.rarity) ? base.rarity : 'common';
   const level = finite(item.level) ? Math.max(1, Math.min(100, item.level)) : base?.minLevel || 1;
-  const tier = level >= 80 ? 3 : level >= 50 ? 2 : level >= 20 ? 1 : 0;
+  const tier = base?.type==='resource'&&Number.isInteger(base.tier)?Math.max(0,Math.min(3,base.tier-1)):level >= 80 ? 3 : level >= 50 ? 2 : level >= 20 ? 1 : 0;
   const element = base ? elementFor(base, item) : 'none', variant = base ? variants.get(base.id) : 0;
   let material = ['plate', 'helm', 'gauntlets', 'sabatons', 'sword', 'daggers', 'axe', 'hammer', 'spear', 'flail', 'ore'].includes(family) ? 'steel'
     : ['robe', 'circlet', 'wraps', 'slippers'].includes(family) ? 'cloth'

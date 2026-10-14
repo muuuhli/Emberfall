@@ -12,7 +12,8 @@ import { MAX_ACTIVE_CONTRACTS, getContractOffers, createContract, advanceContrac
 import { ABILITIES, getAbility, canLearnAbility, validateAbilityState } from './abilities.js';
 import { BESTIARY_ENEMIES, REGION_ENEMY_POOLS, createBestiaryEnemy } from './bestiary.js';
 import { getSupplyDrop } from './arsenal.js';
-import { getConsumableProfile } from './professions.js';
+import { PROFESSIONS, PROFESSION_RECIPES, newProfessionState, validateProfessionState, awardProfessionXp, getCraftXp, chooseMastery as chooseProfessionStateMastery, getProfessionBonuses, getGatherBonus, socketDescriptor, getSocketMasteryBonus, makeCraftedEquipment, getConsumableProfile } from './professions.js';
+import { validateProfessionTraining, getRecipeProfession, canTrainProfession, canChooseProfessionMastery, craftProfessionGate, professionSummary } from './profession-system.js';
 import { updateBestiaryEnemy, applyEnemyTraits } from './enemy-ai.js';
 import { INTERACTION_TYPES, WORLD_BOONS, addWorldInteractions, interactionAvailable, captureInteractions, validateInteractionSave, restoreInteractions } from './interactions.js';
 import { SKILLS as LEGACY_SKILLS } from './content.js';
@@ -83,6 +84,7 @@ export class Game {
     this.equipment=createEmptyEquipment();this.itemFlags={};this.stash={};this.loadouts=[];this.trackedQuestId='';this.waypoint=null;
     this.skills = {}; this.questState = {}; this.discovered = ['daemmerhain']; this.unlockedShrines = [];
     this.learnedAbilities={};this.abilityLoadout=[null,null];
+    this.professions=newProfessionState();this.professionTraining=[];this._professionNeutral=null;this._professionDerivedCache=null;this._professionSocketCache=null;
     this.techniqueSpecializations=createTechniqueSpecializationState();
     this.contracts={active:[],completed:{}};
     this.journey=createJourneyState();advanceJourney(this,'explore','daemmerhain');
@@ -127,10 +129,11 @@ export class Game {
   stats(equipmentOverride=this.equipment) {
     if(this.worldMode==='pvp'&&this.pvpStats)return {...this.pvpStats};
     const p=this.player;
+    const profession=this._professionDerived();
     const s=basePlayerStats(p.level);
     for(const [key,value] of Object.entries(classStatModifiers(p.classId,p.level)))s[key]=(s[key]||0)+value;
     for(const id of Object.values(equipmentOverride)) {
-      const item=this.item(id); const modifiers=this.generatedItems[id]?computeItemStats(item):item?.stats||{};
+      const modifiers=this.itemStats(id,profession);
       for(const [key,value] of Object.entries(modifiers)) s[key]=(s[key]||0)+value;
     }
     for(const [key,value] of Object.entries(computeSetBonuses(Object.values(equipmentOverride).map(id=>this.item(id)).filter(Boolean)))) s[key]=(s[key]||0)+value;
@@ -142,13 +145,53 @@ export class Game {
       s[skill.effect.stat]=(s[skill.effect.stat]||0)+skill.effect.value*rank;
     }
     for(const boon of this.buffs||[])if(boon.expiresAt>this.time)for(const [key,value] of Object.entries(boon.effects))s[key]=(s[key]||0)+value;
-    for(const modifiers of [getJourneyModifiers(this),getCompanionModifiers(this)])for(const [key,value] of Object.entries(modifiers))s[key]=(s[key]||0)+value;
+    for(const modifiers of [getJourneyModifiers(this),getCompanionModifiers(this),profession.bonuses.stats])for(const [key,value] of Object.entries(modifiers))s[key]=(s[key]||0)+value;
     return capCombatStats(s,{level:p.level});
   }
   deathSummary(){return deathSummary(this);}
   gainGold(amount){return creditGold(this,amount);}
   item(id) { return this.generatedItems[id]||ITEMS[id]||null; }
-  itemStats(id) { const item=this.item(id);return this.generatedItems[id]?computeItemStats(item):item?.stats||{}; }
+  itemStats(id,profession=null) {
+    const item=this.item(id),base=this.generatedItems[id]?computeItemStats(item):item?.stats||{};
+    if(!item?.sockets?.some(Boolean))return base;
+    const derived=profession||this._professionDerived();if(derived.bonuses.socketBonusMultiplier===1)return base;
+    const key=`${derived.key}|${item.baseId||item.id}|${item.sockets.map(socket=>typeof socket==='string'?`${socket}:1`:socket?`${socket.id}:${socket.tier||1}`:'').join('|')}`;
+    const cache=this._professionSocketCache||(this._professionSocketCache=new WeakMap());let extra=cache.get(item);
+    if(extra?.key!==key){extra={key,stats:getSocketMasteryBonus(item,derived.state)};cache.set(item,extra);}
+    const stats=this.generatedItems[id]?base:{...base};for(const [name,value] of Object.entries(extra.stats))stats[name]=(stats[name]||0)+value;
+    return stats;
+  }
+  _professionDerived() {
+    if(!this.professionTraining.length||this.worldMode==='pvp'||this.world?.isPvp){
+      if(!this._professionNeutral){const state=newProfessionState();this._professionNeutral={state,bonuses:getProfessionBonuses(state)};}
+      return this._professionNeutral;
+    }
+    const key=PROFESSIONS.map(({id})=>this.professionTraining.includes(id)?`${id}:${this.professions[id].level}:${this.professions[id].mastery||''}`:'').join('|');
+    if(this._professionDerivedCache?.key===key)return this._professionDerivedCache;
+    const state=newProfessionState();
+    for(const profession of PROFESSIONS)if(this.professionTraining.includes(profession.id))state[profession.id]=this.professions[profession.id];
+    return this._professionDerivedCache={key,state,bonuses:getProfessionBonuses(state)};
+  }
+  _trainedProfessionState() {return this._professionDerived().state;}
+  professionSummary() {return professionSummary(this);}
+  trainProfession(id) {
+    if(arguments.length!==1||typeof id!=='string'||!this.started)return false;
+    const gate=canTrainProfession(this,id);if(!gate.ok){this.notice(gate.reason);return false;}
+    this.player.gold-=gate.trainer.cost;this.professionTraining.push(id);
+    this.notice(`${PROFESSIONS.find(profession=>profession.id===id).name} erlernt`,'quest');this.change();this.save(false);return true;
+  }
+  chooseProfessionMastery(id,choice) {
+    if(arguments.length!==2||typeof id!=='string'||typeof choice!=='string'||!this.started)return false;
+    const gate=canChooseProfessionMastery(this,id,choice);if(!gate.ok){this.notice(gate.reason);return false;}
+    const state=chooseProfessionStateMastery(this.professions,id,choice);if(!state)return false;
+    this.professions=state;const limits=this.stats();this.player.hp=Math.min(this.player.hp,limits.maxHp);this.player.mana=Math.min(this.player.mana,limits.mana);
+    this.notice('Berufsmeisterschaft gewählt. Deine laufenden Erholungszeiten bleiben bestehen.','quest');this.change();this.save(false);return true;
+  }
+  _awardCraftProfession(recipe) {
+    const id=getRecipeProfession(recipe);if(!id||!this.professionTraining.includes(id))return;
+    const result=awardProfessionXp(this.professions,id,getCraftXp(recipe,this.professions[id].level),{playerLevel:this.player.level});this.professions=result.state;
+    if(result.levels.length)this.notice(`${PROFESSIONS.find(profession=>profession.id===id).name} · Rang ${result.levels.at(-1)}`,'level');
+  }
   previewEquipment(id) {
     const item=this.item(id),slot=equipmentSlot(item);if(!slot)return null;
     const before=this.stats(),after=this.stats({...this.equipment,[slot]:id}),delta={};
@@ -479,7 +522,8 @@ export class Game {
     if(profile.outOfCombat&&this.inCombat()){this.notice('Diese Mahlzeit braucht einen ruhigen Moment außerhalb des Kampfes.');return false;}
     const s=this.stats(); const p=this.player;
     if((!item.stats.hpRestore||p.hp>=s.maxHp)&&(!item.stats.manaRestore||p.mana>=s.mana)) return false;
-    this.inventory[id]--; p.hp=Math.min(s.maxHp,p.hp+(item.stats.hpRestore||0)); p.mana=Math.min(s.mana,p.mana+(item.stats.manaRestore||0));
+    const bonuses=this._professionDerived().bonuses,food=profile.cooldownGroup==='food';
+    this.inventory[id]--; p.hp=Math.min(s.maxHp,p.hp+(item.stats.hpRestore||0)*(food?bonuses.foodMultiplier:bonuses.hpPotionMultiplier)); p.mana=Math.min(s.mana,p.mana+(item.stats.manaRestore||0)*(food?bonuses.foodMultiplier:bonuses.manaPotionMultiplier));
     this.cooldowns[profile.cooldownGroup]=profile.cooldown;
     this.cooldowns.potion=Math.max(this.cooldowns.potion||0,3);
     this.notice(`${item.name} verwendet`); this.onSound('heal'); this.change(); this.save(false); return true;
@@ -491,9 +535,9 @@ export class Game {
     this.notice(`${item.name} zerlegt`,'loot');this.change();this.save(false);return true;
   }
   socket(id,gemId) {
-    const item=this.generatedItems[id];if(!item||!this.inventory[id]||!GEM_TYPES[gemId]||!(this.resources[gemId]>0))return false;
+    const item=this.generatedItems[id],descriptor=socketDescriptor(gemId);if(!item||!this.inventory[id]||!descriptor||!(this.resources[gemId]>0))return false;
     const index=item.sockets.findIndex(s=>s===null);if(index<0)return false;
-    this.resources[gemId]--;item.sockets[index]=gemId;this.notice('Edelstein gesockelt','loot');this.change();this.save(false);return true;
+    this.resources[gemId]--;item.sockets[index]=descriptor.tier===1?descriptor.id:descriptor;this.notice('Edelstein gesockelt','loot');this.change();this.save(false);return true;
   }
   upgradeItem(id) {
     const item=this.generatedItems[id];if(!item||!this.inventory[id]||(item.upgrade||0)>=10)return false;
@@ -502,16 +546,28 @@ export class Game {
     this.notice(`${item.name} auf +${item.upgrade} verbessert`,'loot');this.change();this.save(false);return true;
   }
   craft(id) {
+    if(arguments.length!==1||typeof id!=='string')return false;
     const recipe=RECIPES.find(r=>r.id===id); if(!recipe) return false;
     const factionGate=canCraftJourneyRecipe(this,recipe);if(!factionGate.ok){this.notice(factionGate.reason);return false;}
     if(this.player.level<(recipe.minLevel||1)||recipe.classIds&&!recipe.classIds.includes(this.player.classId)){this.notice('Dieses Rezept erfordert eine höhere Stufe oder eine andere Klasse.');return false;}
-    if(!Object.entries(recipe.ingredients).every(([res,n])=>(this.resources[res]||this.inventory[res]||0)>=n)) { this.notice('Dir fehlen noch Materialien.'); return false; }
-    for(const [res,n] of Object.entries(recipe.ingredients)) {
-      if(Object.hasOwn(this.resources,res)) this.resources[res]-=n; else this.inventory[res]-=n;
-    }
-    if(Object.hasOwn(this.resources,recipe.output)) this.resources[recipe.output]+=recipe.amount||1;
-    else this.addItem(recipe.output,recipe.amount||1);
-    this.event('craft',id); this.gainXp(12); this.notice(`${recipe.name} hergestellt`,'loot'); this.onSound('craft'); this.save(false); return true;
+    if(PROFESSION_RECIPES.some(entry=>entry.id===id)&&!this.started)return false;
+    const professionGate=craftProfessionGate(this,recipe);if(!professionGate.ok){this.notice(professionGate.reason);return false;}
+    const ingredients=Object.entries(recipe.ingredients).map(([key,count])=>({key,count,bank:Object.hasOwn(RESOURCES,key)?this.resources:this.inventory}));
+    if(ingredients.some(({key,count,bank})=>!Number.isFinite(bank[key])||bank[key]<count)){this.notice('Dir fehlen noch Materialien.');return false;}
+    const nextSerial=this.lootSerial+1,amount=recipe.amount||1,resource=Object.hasOwn(RESOURCES,recipe.output),generated=recipe.outputProfile?.kind==='gear';
+    if(generated&&this.bagUsed()>=240){this.notice('Dein Gepäck ist voll. Das Rezept und seine Materialien bleiben erhalten.');return false;}
+    let output=recipe.output;
+    if(generated){
+      try{output=makeCraftedEquipment(id,{classId:this.player.classId,playerLevel:this.player.level,rng:this.random,uid:`craft-${nextSerial}-${Math.floor(this.random()*1e9)}-${this.player.id||'local'}`});}catch{return false;}
+      if(!output||!validateLootItem(output))return false;
+    }else if(!resource&&!Object.hasOwn(ITEMS,output))return false;
+    for(const {key,count,bank} of ingredients)bank[key]-=count;
+    if(resource)this.resources[output]=(this.resources[output]||0)+amount;
+    else if(!this.addItem(output,amount)){for(const {key,count,bank} of ingredients)bank[key]+=count;return false;}
+    if(generated)this.lootSerial=nextSerial;
+    this._awardCraftProfession(recipe);this.event('craft',id);
+    if(!PROFESSION_RECIPES.some(entry=>entry.id===id))this.gainXp(12);
+    this.notice(`${recipe.name} hergestellt`,'loot',generated?output.id:!resource?output:null);this.onSound('craft');this.change();this.save(false);return true;
   }
   nearby() {
     const p=this.player, candidates=[];
@@ -656,6 +712,7 @@ export class Game {
       const amount=1+Math.floor(this.stats().gatherYield)+Math.floor(this.random()*2);
       this.resources[o.type]=(this.resources[o.type]||0)+amount; o.readyAt=this.time+40;
       this.event('gather',o.type,amount); this.gainXp(5); this.text(o.x,o.y,`+${amount}`, '#a8cf8d');
+      for(const [id,count] of Object.entries(getGatherBonus(this.regionAt(o.x,o.y).id,o.type,{playerLevel:this.player.level}))){this.resources[id]=(this.resources[id]||0)+count;this.text(o.x,o.y-24,`+${count} ${RESOURCES[id]?.name||id}`,'#a8cf8d');}
       this.effect('burst',o.x,o.y,{color:'#b4cc82',life:.55}); this.onSound('gather');
     }
     if(n.kind==='plot') {
@@ -1298,6 +1355,7 @@ export class Game {
     const {presentation,...persistentPlayer}=this.player;
     return {version:2,savedAt:Date.now(),player:{...persistentPlayer,walking:false,raidDebuffs:captureRaidDebuffs(this.player,this.time)},inventory:this.inventory,resources:this.resources,equipment:this.equipment,generatedItems:this.generatedItems,lootPity:this.lootPity,lootSerial:this.lootSerial,dungeonRecords:this.dungeonRecords,dungeon,contracts:this.contracts,skills:this.skills,
       stash:{...this.stash},itemFlags:this.itemFlags,loadouts:this.loadouts,trackedQuestId:this.trackedQuestId,waypoint:this.waypoint?{kind:this.waypoint.kind,id:this.waypoint.id}:null,journey:this.journey,endgame:this.endgame,relicCooldown:this.cooldowns.relic||0,
+      professions:JSON.parse(JSON.stringify(this.professions)),professionTraining:[...this.professionTraining],
       learnedAbilities:{...this.learnedAbilities},abilityLoadout:[...this.abilityLoadout],abilityCooldowns,techniqueSpecializations:captureTechniqueSpecializations(this),deathPenalty:restoreDeathPenaltyState(this.deathPenalty),
       combatCooldowns:Object.fromEntries(['attack','dash','bolt','nova'].map(key=>[key,this.cooldowns[key]||0])),
       leechCredit:this.currentLeechCredit(),
@@ -1323,6 +1381,8 @@ export class Game {
     // must either succeed completely or leave the running save unchanged.
     const record=v=>v!==null&&typeof v==='object'&&!Array.isArray(v);
     if(!record(data.world)||!record(data.player)) throw new Error('Ungültige Weltdaten.');
+    const professionState=data.professions===undefined?newProfessionState():data.professions,professionTraining=data.professionTraining===undefined?[]:data.professionTraining;
+    if(!validateProfessionState(professionState,{playerLevel:data.player.level})||!validateProfessionTraining(professionTraining)||PROFESSIONS.some(({id})=>!professionTraining.includes(id)&&(professionState[id].level!==1||professionState[id].xp!==0||professionState[id].mastery!==null)))throw new Error('Ungültige Berufsausbildung oder Berufsfortschritte.');
     if(data.journey!==undefined&&!validateJourneyState(data.journey,{level:data.player.level}))throw new Error('Ungültige Reisechronik.');
     if(!validateInventoryExtensions(data)||data.trackedQuestId!==undefined&&typeof data.trackedQuestId!=='string'||data.waypoint!==undefined&&data.waypoint!==null&&(!record(data.waypoint)||!['npc','shrine','quest','event','interaction','dungeon','region'].includes(data.waypoint.kind)||typeof data.waypoint.id!=='string'))throw new Error('Ungültige Inventar- oder Reisedaten.');
     if(data.player.afflictions!==undefined&&(!Array.isArray(data.player.afflictions)||data.player.afflictions.length>3||new Set(data.player.afflictions.map(a=>a?.kind)).size!==data.player.afflictions.length||data.player.afflictions.some(a=>!record(a)||!['venom','burn','bleed'].includes(a.kind)||!Number.isFinite(a.damage)||a.damage<0||a.damage>500||!Number.isFinite(a.expiresAt)||a.expiresAt<0||!Number.isFinite(a.nextTick)||a.nextTick<0||!Number.isInteger(a.attackerLevel)||a.attackerLevel<1||a.attackerLevel>MAX_LEVEL)))throw new Error('Ungültige Wunddaten.');
@@ -1379,6 +1439,7 @@ export class Game {
     this.player.name=typeof p.name==='string'?p.name.slice(0,24):'Aren';this.player.classId=getClass(p.classId).id;
     if(typeof p.id==='string'&&p.id.length>0&&p.id.length<=120)this.player.id=p.id;
     this.classId=this.player.classId;
+    this.professions=JSON.parse(JSON.stringify(professionState));this.professionTraining=[...professionTraining];
     this.techniqueSpecializations=restoreTechniqueSpecializations(data.techniqueSpecializations,{classId:this.player.classId,level:this.player.level});
     this.journey=restoreJourneyState(data.journey,{level:this.player.level,legacy:data});
     this.endgame=restoreEndgameState(data.endgame);this.cooldowns.relic=data.relicCooldown||0;this.deathPenalty=restoreDeathPenaltyState(data.deathPenalty);

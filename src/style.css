@@ -803,6 +803,56 @@ svg.pixel-item-art{display:block;width:32px;height:32px;max-width:none;flex:none
 .information-history-item{display:flex;align-items:center;gap:8px;margin-top:8px}
 .information-history-item>svg.pixel-item-art{width:32px;height:32px}
 .information-history-item>.text-button{min-height:44px;margin:0;white-space:normal;text-align:left;font-size:12px}
+.profession-navigation{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px}
+.profession-navigation>button{flex:1;min-width:68px;min-height:44px;padding:8px 10px;border:1px solid #59633f;border-radius:0;background:#171d17;color:#d8cda8;font:13px/1.3 var(--sans);cursor:pointer}
+.profession-navigation>button.active{background:#344226;border-color:#d7bf79;color:#f0dfb0}
+.profession-navigation>button:hover{background:#2b3823}.profession-navigation>button:focus-visible{outline:2px solid #e7cd85;outline-offset:2px}
+.profession-overview{margin-bottom:14px}.profession-progress{min-width:0;padding:10px 0;border-bottom:1px solid #59633f;margin-bottom:12px}
+.profession-overview .profession-progress{margin:0}.profession-progress-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.profession-progress-heading>div{min-width:0}.profession-progress h3{font:23px/1.2 var(--serif);color:#e2d3ad;margin:0 0 5px}
+.profession-progress-heading p{font:12px/1.5 var(--sans);color:#c9c5a6;margin:0;overflow-wrap:anywhere}
+.profession-progress-heading>.small-button,.profession-progress-heading>.text-button{flex:none;min-height:44px;margin:0;font-size:12px}
+.profession-xp-label{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 5px;font:11px/1.4 var(--sans);color:#c9c5a6;font-variant-numeric:tabular-nums}
+progress.profession-xp{display:block;width:100%;height:6px;border:0;border-radius:0;appearance:none;background:#344226;color:#d7bf79}
+progress.profession-xp::-webkit-progress-bar{background:#344226}progress.profession-xp::-webkit-progress-value{background:#d7bf79}progress.profession-xp::-moz-progress-bar{background:#d7bf79}
+.profession-description{font:13px/1.6 var(--sans);color:#cfc9a8;margin:14px 0 8px}.profession-progress>.panel-note{font-size:12px;line-height:1.6;margin:8px 0}
+.profession-masteries{margin-top:12px;padding-top:2px;border-top:1px solid #59633f}
+:is(.profession-masteries,.recipe-sources)>summary{min-height:44px;padding:12px 0;cursor:pointer;list-style-position:inside;font:13px/1.5 var(--sans);color:#e1d2a5}
+:is(.profession-masteries,.recipe-sources)>summary:focus-visible{outline:2px solid #e7cd85;outline-offset:2px}
+.profession-mastery{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid #59633f}
+.profession-mastery:last-child{border:0}.profession-mastery>div{min-width:0}.profession-mastery h4{font:21px/1.25 var(--serif);color:#e2d3ad;margin:0 0 6px}
+.profession-mastery p{font-size:12px;line-height:1.6;color:#cfc9a8;margin:0 0 6px}.profession-mastery.active h4{color:#e7cd85}
+.profession-mastery>.small-button{min-height:44px;flex:none}.profession-requirement{font:12px/1.6 var(--sans);color:#e3b28e;margin:10px 0 0;overflow-wrap:anywhere}
+.profession-feedback{padding:10px 12px;margin:12px 0;color:#d8ddb4;background:#273324;font:13px/1.6 var(--sans);overflow-wrap:anywhere}
+.profession-feedback.error{background:#39251f;color:#efc3a6}.profession-feedback:focus-visible{outline:2px solid #e7cd85;outline-offset:2px}
+.craft-search-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:16px 0 12px}
+.craft-search-tools>.search-field{grid-column:1/-1}.craft-search-tools>label{min-width:0}.craft-search-tools>label>span{display:block;font:12px/1.4 var(--sans);color:#c9c5a6;margin-bottom:6px}
+.craft-search-tools .game-input{width:100%;min-width:0;max-width:100%;min-height:44px}
+.craft-results-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.craft-results-heading>.results-count{margin:0;font-size:12px}
+.craft-results-heading>.text-button{margin:0;min-height:44px;font-size:12px}.craft-layout .recipe{min-width:0}
+.recipe-progress{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 12px;margin:12px 0;color:#c9c5a6;font:11px/1.6 var(--sans)}
+.recipe-progress>strong{font-weight:500;font-variant-numeric:tabular-nums}.recipe-progress .xp-earning{color:#d7bf79}.recipe-progress .xp-none{color:#b6b69a}
+.recipe-actions>.small-button{min-height:44px;white-space:normal;max-width:100%}.recipe-output-stats{line-height:1.6;overflow-wrap:anywhere}
+.recipe-sources{margin-top:10px;border-top:1px solid #59633f}.recipe-sources>div{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 10px}
+.recipe-sources>div>span{min-width:0;font:12px/1.5 var(--sans);color:#d5cba6}.recipe-sources small{display:block;font-size:11px;color:#bfc29e;margin-top:3px}
+.recipe-sources .text-button{min-height:44px;white-space:normal;max-width:50%;margin:0;text-align:left;font-size:12px}
+.npc-profession{padding:14px 0;margin:16px 0 22px;border-block:1px solid #59633f}.npc-profession>.profession-progress{border:0;margin:0;padding:0}
+.npc-profession>.small-button{min-height:44px;margin-top:12px}.npc-profession .profession-feedback{margin-bottom:0}
+.socket-options{width:100%;margin-top:4px;border-top:1px solid #59633f}
+.socket-options>summary{min-height:44px;cursor:pointer;padding:12px 0;list-style-position:inside;font:12px/1.5 var(--sans);color:#e1d2a5}
+.socket-options>summary:focus-visible{outline:2px solid #e7cd85;outline-offset:2px}
+.socket-options .socket-choice{display:flex;align-items:center;gap:8px;min-height:48px;width:100%;margin:5px 0;padding:8px;white-space:normal;text-align:left}
+.socket-choice>svg.pixel-item-art{width:32px;height:32px}.socket-choice>span{min-width:0;line-height:1.5}
+.socket-choice small{display:block;margin-top:3px;font:11px/1.5 var(--sans);color:#d8d0ac;text-transform:none;letter-spacing:0;overflow-wrap:anywhere}
+@media(max-width:600px){
+  .profession-navigation{gap:4px}.profession-navigation>button{font-size:12px;padding:8px 5px}
+  .profession-progress h3{font-size:22px}.profession-progress-heading>.small-button{padding:8px 9px;white-space:normal;text-align:center;max-width:45%}
+  .profession-xp-label{font-size:12px}.profession-progress-heading p{font-size:12px}.craft-search-tools{gap:10px 8px}
+  .craft-results-heading{align-items:flex-start}.craft-results-heading>.results-count{line-height:1.6;padding-top:8px}
+  .recipe-progress{font-size:12px}.recipe-sources>div{align-items:flex-start;flex-direction:column;gap:2px}
+  .recipe-sources .text-button{max-width:100%}.profession-mastery{gap:10px;align-items:flex-start}
+  .profession-mastery>.small-button{padding:8px 10px;font-size:12px}.recipe .ingredient{max-width:100%;white-space:normal}
+}
 @media(max-width:600px){
   .item-grid-card:has(.pixel-item-art){grid-template-columns:48px minmax(0,1fr) auto;min-height:76px}
   .item-grid-card .grid-card-icon.pixel-item-tile{width:48px;height:48px;margin:0}

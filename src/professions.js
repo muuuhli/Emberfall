@@ -3,7 +3,7 @@ import { EXPANSION_REGIONS } from './expansion.js';
 import { getClass } from './classes.js';
 import { MAX_LEVEL } from './progression.js';
 import { ITEM_BASES, GEM_TYPES, generateLoot } from './loot.js';
-import { equipmentSlot } from './equipment-system.js';
+import { equipmentSlot, equipmentBudget } from './equipment-system.js';
 
 export const BASE_RECIPE_PROFESSIONS = {
   brew_heal: 'alchemy', brew_mana: 'alchemy', bake_bread: 'alchemy',
@@ -108,7 +108,7 @@ export function validateProfessionState(state, { playerLevel } = {}) {
     const progress = state[profession.id];
     if (!record(progress) || Object.keys(progress).length !== 3 || !Object.hasOwn(progress, 'mastery')) return false;
     if (!Number.isInteger(progress.level) || progress.level < 1 || progress.level > cap || !Number.isInteger(progress.xp) || progress.xp < 0) return false;
-    if (progress.level === 100 ? progress.xp !== 0 : progress.xp >= professionXpToNext(progress.level)) return false;
+    if (progress.level === cap ? progress.xp !== 0 : progress.xp >= professionXpToNext(progress.level)) return false;
     return progress.mastery === null || (progress.level >= 75 && profession.masteries.some(mastery => mastery.id === progress.mastery));
   });
 }
@@ -152,10 +152,11 @@ export function chooseMastery(state, professionId, choice) {
   const result = clone(state); result[professionId].mastery = choice; return result;
 }
 export function masteryRank(level) { return level >= 100 ? 3 : level >= 90 ? 2 : level >= 75 ? 1 : 0; }
-export function getProfessionBonuses(state) {
+export function getProfessionBonuses(state, { training } = {}) {
   const result = { stats: {}, hpPotionMultiplier: 1, manaPotionMultiplier: 1, foodMultiplier: 1, socketBonusMultiplier: 1 };
   if (!validateProfessionState(state)) return result;
   for (const profession of PROFESSIONS) {
+    if (training !== undefined && (!Array.isArray(training) || !training.includes(profession.id))) continue;
     const progress = state[profession.id], rank = masteryRank(progress.level);
     if (!progress.mastery || !rank) continue;
     if (profession.id === 'alchemy') {
@@ -174,8 +175,12 @@ export function getProfessionBonuses(state) {
 }
 
 /** Add this side yield to existing raw-resource gathering; old quests keep their original event. */
-export function getGatherBonus(regionId, resourceType) {
+export function getGatherBonus(regionId, resourceType, { playerLevel } = {}) {
   const tier = REGION_RESOURCE_TIERS[regionId], id = `${resourceType}_t${tier}`;
+  if (playerLevel !== undefined) {
+    const region = EXPANSION_REGIONS.find(entry => entry.id === regionId);
+    if (!Number.isInteger(playerLevel) || playerLevel < 1 || playerLevel > MAX_LEVEL || !region || playerLevel < region.level) return {};
+  }
   return tier && PROFESSION_RESOURCES[id]?.kind === 'material' ? { [id]: 1 } : {};
 }
 export function socketDescriptor(resourceId) {
@@ -188,8 +193,9 @@ export function gemResourceId(socket) {
   if (!Object.hasOwn(GEM_TYPES, id) || !Number.isInteger(tier) || tier < 1 || tier > 3) return null;
   return tier === 1 ? id : `${id}_t${tier}`;
 }
-export function getSocketMasteryBonus(item, state) {
-  const multiplier = getProfessionBonuses(state).socketBonusMultiplier - 1, stats = {};
+export function getSocketMasteryBonus(item, state, options) {
+  const base = ITEM_BASES.find(base => base.id === (item?.baseId || item?.id));
+  const multiplier = (getProfessionBonuses(state, options).socketBonusMultiplier - 1) * equipmentBudget(base || item), stats = {};
   if (!multiplier) return stats;
   for (const socket of item?.sockets || []) {
     const resource = gemResourceId(socket), descriptor = resource && socketDescriptor(resource);

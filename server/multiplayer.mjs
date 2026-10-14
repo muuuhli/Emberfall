@@ -16,14 +16,14 @@ import { AccountManager } from './accounts.mjs';
 
 const KEYS = new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
 const ACTIONS = new Set(['attack','dash','bolt','nova','potion','interact','primary','secondary','ultimate']);
-const METHODS = new Set(['questAccept','questTurnIn','learn','learnAbility','learnTechniqueSpecialization','selectTechniqueSpecialization','setAbilityLoadout','useLearnedAbility','equip','unequip','pickupLoot','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward','setSetting']);
+const METHODS = new Set(['questAccept','questTurnIn','learn','trainProfession','chooseProfessionMastery','learnAbility','learnTechniqueSpecialization','selectTechniqueSpecialization','setAbilityLoadout','useLearnedAbility','equip','unequip','pickupLoot','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward','setSetting']);
 const PVP_METHODS = new Set(['pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn']);
 const SHOP_STOCK = {
   elin:new Set(['forest_blade','sentinel_mail']),
   sera:new Set(['heal_potion','mana_potion']),
   oren:new Set(['heal_potion','mana_potion','leather_armor','forest_blade','seed']),
 };
-const PERSONAL_FIELDS = ['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','techniqueSpecializations','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame','deathPenalty'];
+const PERSONAL_FIELDS = ['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','techniqueSpecializations','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professions','professionTraining','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame','deathPenalty'];
 const SHARED_FIELDS = ['effects','projectiles','drops','hazards','summons','dungeonInstance','overworld','activeDungeon','worldMode'];
 const MUTABLE_WORLD = ['enemies','nodes','plots','shrines','chests','puzzles','puzzleObjects','gates','portals','dungeonPortals','dungeonState','dungeonExit','interactions','worldEvents','eventObjects','encounterDirector'];
 const LAYOUT_FIELDS = ['seed','width','height','regions','paths','river','bridges','structures','trees','rocks','landmarks','dungeons','dungeonEntrances','npcs','walls','floors','entrance','exit','rooms','isDungeon','dungeonId','tier','layoutVersion'];
@@ -638,7 +638,8 @@ export class MultiplayerHub {
         const [key,value]=command.args;
         if(command.args.length!==2||typeof key!=='string'||(!(['sound','shake','reducedMotion'].includes(key)&&typeof value==='boolean')&&!(['masterVolume','musicVolume','effectsVolume'].includes(key)&&Number.isFinite(value)&&value>=0&&value<=1)))throw new HttpError(400,'Ungültige Audio- oder Darstellungsoption.');
       }
-      if(['learn','learnTechniqueSpecialization','interactWorldObject','pickupLoot'].includes(command.name)&&(command.args.length!==1||typeof command.args[0]!=='string'||command.name==='pickupLoot'&&!command.args[0].length))throw new HttpError(400,'Diese Aktion benötigt eine bekannte Kennung.');
+      if(['learn','trainProfession','learnTechniqueSpecialization','interactWorldObject','pickupLoot','craft'].includes(command.name)&&(command.args.length!==1||typeof command.args[0]!=='string'||command.name==='pickupLoot'&&!command.args[0].length))throw new HttpError(400,'Diese Aktion benötigt eine bekannte Kennung.');
+      if(command.name==='chooseProfessionMastery'&&(command.args.length!==2||command.args.some(value=>typeof value!=='string'))||command.name==='socket'&&(command.args.length!==2||command.args.some(value=>typeof value!=='string')))throw new HttpError(400,'Diese Berufsaktion benötigt genau zwei bekannte Kennungen.');
       if(['depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','trackQuest','claimAchievement','chooseMastery','claimWorldEvent','startHunt','abandonHunt','claimHunt','redeemHuntReward'].includes(command.name)&&(command.args.length!==1||typeof command.args[0]!=='string'))throw new HttpError(400,'Diese Aktion benötigt eine bekannte Kennung.');
       if(['selectCompanion','selectTechniqueSpecialization'].includes(command.name)&&(command.args.length!==1||command.args[0]!==null&&typeof command.args[0]!=='string')||command.name==='respecTalents'&&command.args.length!==0||['setItemFlag','setWaypoint'].includes(command.name)&&(command.args.length!==2||command.args.some(value=>typeof value!=='string'))||command.name==='interactWorldEvent'&&(command.args.length<1||command.args.some(value=>typeof value!=='string')))throw new HttpError(400,'Ungültige Parameter für diese Reiseaktion.');
       if(command.name==='setItemFlag'&&!['favorite','locked'].includes(command.args[1])||command.name==='setWaypoint'&&!['npc','shrine','quest','event','interaction','dungeon','region','clear'].includes(command.args[0]))throw new HttpError(400,'Unbekannte Markierung.');
@@ -661,7 +662,12 @@ export class MultiplayerHub {
       }
       if(command.name==='respawn'&&command.args.length!==0)throw new HttpError(400,'Rückkehr erwartet keine Argumente.');
       if(command.name==='respawn'&&!game.dead)return false;
+      const professionMutation=['trainProfession','chooseProfessionMastery'].includes(command.name),rollback=professionMutation?{gold:game.player.gold,hp:game.player.hp,mana:game.player.mana,professions:clone(game.professions),training:[...game.professionTraining],events:[...member.events],eventSequence:member.eventSequence}:null;
       const accepted=game[command.name](...command.args)!==false;
+      if(accepted&&professionMutation&&!this.persist()){
+        Object.assign(game.player,{gold:rollback.gold,hp:rollback.hp,mana:rollback.mana});game.professions=rollback.professions;game.professionTraining=rollback.training;member.events=rollback.events;member.eventSequence=rollback.eventSequence;game.change();
+        throw new HttpError(503,'Deine Berufsausbildung konnte nicht gespeichert werden. Gold und Fortschritt bleiben erhalten.');
+      }
       if(accepted&&['learnTechniqueSpecialization','selectTechniqueSpecialization'].includes(command.name))this.persist();
       return accepted;
     }

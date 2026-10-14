@@ -50,6 +50,7 @@ test('merchants use class-aware arsenals and crafting clearly locks future recip
   for(const item of getArsenalShopStock({level:40,classId:'guardian',merchant:'elin'}))assert.ok(ui.dialogue().includes(`data-id="${item.id}"`));
   const future=RECIPES.find(recipe=>recipe.minLevel>40&&(!recipe.classIds||recipe.classIds.includes('guardian')));assert.ok(future);
   for(const [resource,count] of Object.entries(future.ingredients))game.resources[resource]=count*10;
+  ui.craftSearch=future.name;
   const html=ui.craft(),article=html.split('<article').find(part=>part.includes(`data-id="${future.id}"`));
   assert.ok(article.includes(`Stufe ${future.minLevel} benötigt`));assert.match(article,/data-command="craft"[^>]*disabled/);
   assert.ok(html.includes(ITEMS[future.output].name));

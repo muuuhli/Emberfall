@@ -145,10 +145,12 @@ test('tank, weapon, caster and socket mastery bonuses are bounded and separate f
   chosen = chooseMastery(chosen, 'runecraft', 'resonance');
   assert.deepEqual(getProfessionBonuses(chosen).stats, { armor: 6, maxHp: 60, spellDamage: 30 });
   const woven = chooseMastery(chosen, 'runecraft', 'weaving');
-  const item = { sockets: [{ id: 'emerald', tier: 3 }, 'ruby'] };
+  const item = { baseId: 'iron_longsword', type: 'weapon', sockets: [{ id: 'emerald', tier: 3 }, 'ruby'] };
   const before = clone(item);
   assert.deepEqual(getSocketMasteryBonus(item, woven), { maxHp: 10.8, crit: 0.0029, damage: 0.6, spellDamage: 0.36 });
   assert.deepEqual(item, before);
+  assert.deepEqual(getSocketMasteryBonus({ sockets: item.sockets }, woven), {}, 'No socket bonus without a valid equipment budget.');
+  assert.deepEqual(getSocketMasteryBonus({ ...item, baseId: 'relic_ring_1_2', type: 'charm', slot: 'ring' }, woven), { maxHp: 3.024, crit: 0.0008, damage: 0.168, spellDamage: 0.1008 }, 'Small-slot socket bonuses use the same 0.28 budget as native gear.');
 });
 
 test('tiered gems round-trip between crafted resource IDs and the existing validated socket schema', () => {

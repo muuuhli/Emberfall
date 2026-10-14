@@ -64,10 +64,12 @@ test('merchant stock, recipes, ingredients and material rows use actual catalog 
   for (const id of ['heal_potion', 'mana_potion', 'leather_armor', 'forest_blade']) assert.ok(shop.includes(art(ITEMS[id])), id);
   assert.ok(shop.includes(art({ ...RESOURCES.seed, id:'seed', type:'resource' })));
   const future = RECIPES.find(recipe => recipe.minLevel > 40 && (!recipe.classIds || recipe.classIds.includes('guardian'))); assert.ok(future);
+  ui.craftSearch = future.name;
   const recipe = ui.craft().split('<article').find(markup => markup.includes(`data-id="${future.id}"`)); assert.ok(recipe);
   assert.ok(recipe.includes(art(ITEMS[future.output]))); assert.match(recipe, /data-command="craft"[^>]*disabled/);
   for (const id of Object.keys(future.ingredients)) assert.ok(recipe.includes(art({ ...RESOURCES[id], id, type:'resource' })), id);
-  ui.inventoryTab = 'resources'; const materials = ui.inventory();
+  ui.inventoryTab = 'resources'; ui.inventoryMaterialsAll = true; let materials = '';
+  for (let page = 0; page < Math.ceil(Object.keys(RESOURCES).length / 12); page++) { ui.inventoryPage = page; materials += ui.inventory(); }
   for (const [id, resource] of Object.entries(RESOURCES)) assert.ok(materials.includes(art({ ...resource, id, type:'resource' })), id);
   assert.deepEqual(state(game), before);
 });
