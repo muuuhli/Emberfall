@@ -55,7 +55,9 @@ function nearbyObstacles(world,x,y,r) {
 }
 
 export class Game {
-  constructor({ storage = globalThis.localStorage, random = Math.random } = {}) {
+  constructor({ storage = globalThis.localStorage, random = Math.random, worldFactory = null } = {}) {
+    if(worldFactory!==null&&typeof worldFactory!=='function')throw new TypeError('worldFactory must be a function.');
+    this.worldFactory=worldFactory;
     this.storage = storage; this.random = random; this.keys = new Set();
     this.onNotice = () => {}; this.onDialogue = () => {}; this.onDeath = () => {}; this.onVictory = () => {};
     this.onSound = () => {}; this.onChange = () => {};
@@ -66,7 +68,7 @@ export class Game {
   }
   initialize() {
     clearMasteryAbilities(this);
-    this.world = addWorldEvents(addWorldInteractions(expandWorld(makeWorld()))); this.overworld=this.world;this.dungeonInstance=null;this.dungeonRecords={};this.npcs = NPCS; this.time = 0;
+    this.world = this.worldFactory?this.worldFactory():addWorldEvents(addWorldInteractions(expandWorld(makeWorld()))); this.overworld=this.world;this.dungeonInstance=null;this.dungeonRecords={};this.npcs = NPCS; this.time = 0;
     this.world.encounterDirector=createEncounterDirector();this.networkEncounterDirectorSave=null;this.networkDungeonCheckpoint=null;this.networkRaidResume=null;
     for(const enemy of this.world.enemies)if(!BESTIARY_ENEMIES[enemy.type]&&!ENEMY_TYPES[enemy.type]?.boss&&enemy.level>=12){const tuned=normalEnemyStats(enemy.level);Object.assign(enemy,{hp:tuned.hp,maxHp:tuned.hp,damage:tuned.damage,xp:tuned.xp,attackPeriod:tuned.attackPeriod});}
     this.player = { name:'Aren', x:520, y:1250, face:Math.PI/2, walking:false, hp:112, mana:85, level:1, xp:0, gold:45, skillPoints:2, invulnerable:0, attackUntil:0, dashUntil:0, hitUntil:0 };

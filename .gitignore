@@ -8,4 +8,5 @@ dist/
 .env.*
 !.env.example
 !.env.ip.example
+!.env.account.example
 assets/*.blend1

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { startServer } from '../server.mjs';
+import {accountTransportOptions} from './transport-security.mjs';
 const projectRoot=fileURLToPath(new URL('..',import.meta.url));
 
 export function dedicatedConfig(env=process.env,{cwd=process.cwd()}={}){
@@ -19,7 +20,7 @@ export function dedicatedConfig(env=process.env,{cwd=process.cwd()}={}){
   }
   const dataDirectory=path.resolve(cwd,env.EMBERFALL_DATA_DIR||'.emberfall-server');
   assertPrivateDirectory(dataDirectory,cwd);
-  return {port,host,maxRooms,allowedOrigin,dataDirectory,storagePath:path.join(dataDirectory,'rooms.json')};
+  return {port,host,maxRooms,allowedOrigin,dataDirectory,storagePath:path.join(dataDirectory,'rooms.json'),accountOptions:accountTransportOptions(env)};
 }
 function assertPrivateDirectory(directory,cwd){
   if(directory===path.parse(directory).root||[path.resolve(cwd),path.resolve(projectRoot)].some(root=>directory===root||['src','assets','dist'].some(name=>{const publicRoot=path.join(root,name);return directory===publicRoot||directory.startsWith(publicRoot+path.sep);})))throw new TypeError('Spielstände benötigen ein eigenes privates Verzeichnis außerhalb von src, assets und dist.');

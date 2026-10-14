@@ -1,0 +1,22 @@
+{
+    auto_https disable_redirects
+    default_sni {$EMBERFALL_IP}
+}
+
+https://{$EMBERFALL_IP}:{$EMBERFALL_TLS_PORT} {
+    tls force_automate {
+        issuer acme {
+            dir {$EMBERFALL_ACME_CA}
+            profile shortlived
+            disable_tlsalpn_challenge
+        }
+    }
+    encode zstd gzip
+    reverse_proxy emberfall:4173 {
+        flush_interval -1
+    }
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy same-origin
+    }
+}

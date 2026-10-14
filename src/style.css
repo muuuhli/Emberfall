@@ -691,3 +691,70 @@ body:not(.pvp-mode) .hud-heading .minimap-north{display:block;font-size:9px}
 @media(prefers-reduced-motion:reduce){
   .notice,.notice.fading,.vital-bar>div,.nav-item,.small-button,.icon-button,.class-card{animation:none;transition:none}
 }
+
+/* Accounts and invitations extend the compact menu shell without another overlay. */
+.account-toggle.is-authenticated{color:#dce3b0;background:#34442d}
+.game-panel[data-panel=account]{width:min(560px,100%);height:min(680px,100%);grid-template-columns:minmax(0,1fr)}
+.game-panel[data-panel=account] .panel-content{grid-column:1;grid-row:2}
+.account-surface{width:100%;max-width:46ch;margin:0 auto;font-size:14px;line-height:1.65;overflow-wrap:anywhere}
+.account-surface>h3,.account-character h3{font:26px/1.2 var(--serif);color:#e8d5ab;margin:0 0 10px}
+.account-surface>p{color:#d0c3ad;margin:0 0 18px}
+.account-tabs{margin-bottom:15px;gap:20px}.account-tabs button{min-height:44px}
+.account-surface .field-label{font-size:13px;margin-top:16px;color:#e0d0b0}
+.account-surface .field-label>span{color:#c5b89e;font-size:12px}
+.account-surface .game-input{min-height:44px;font-size:16px;caret-color:#f0d896}
+.account-surface .game-input::placeholder{color:#b5c6a2;opacity:1}
+.account-field-hint{display:block;font:12px/1.5 var(--sans);color:#c6bda6;margin-top:5px}
+.account-surface :is(.primary-button,.small-button,.text-button){min-height:44px;font-size:13px}
+.account-surface .primary-button{margin-top:18px;max-width:100%;justify-content:center;text-decoration:none}
+.account-surface form>.primary-button{width:100%}
+.account-feedback{min-height:0;color:#d5caaa;font-size:13px;line-height:1.5;margin:16px 0 0;overflow-wrap:anywhere}
+.account-feedback:empty{display:none}.account-feedback.error{color:#ffb3a1}.account-feedback.success{color:#d3e8b3}
+.account-surface .account-footnote{font-size:12px;line-height:1.5;color:#c6b89f;margin:14px 0 0}
+.account-character{display:flex;align-items:center;gap:14px;margin-bottom:18px;min-width:0}
+.account-character>svg{width:32px;height:38px;flex:none;color:#e1c483}
+.account-character>div{min-width:0}.account-character h3{margin:0 0 5px}.account-character p{font-size:13px;line-height:1.6;color:#cfc1a5;margin:0}
+.account-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:16px}
+.account-actions>.primary-button{margin:0}
+.welcome-account{max-width:540px;margin:0 auto 18px;color:#d5d4af;font-size:13px;line-height:1.5}
+.welcome-account>p{margin:0 0 7px}.welcome-account .small-button{min-height:44px;font-size:12px;text-decoration:none}
+.welcome-account-status{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.welcome-account-status>strong{font:25px var(--serif);color:#e2d3a8;overflow-wrap:anywhere}
+.welcome-account-status>span{font-size:12px;color:#bbcead}
+.welcome-account>.primary-button{min-height:44px;font-size:13px}
+.party-primary-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:18px 0 24px}
+.party-primary-actions .text-button{margin-top:0}
+.party-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 6px}
+.party-section-heading .section-title{margin:0}.party-section-heading .text-button{margin:0}
+.party-invitation{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;margin:12px 0 18px;border-block:1px solid #7b704b}
+.party-invitation h3{font:22px/1.3 var(--serif);color:#e1d2a5;margin:0 0 5px}
+.party-invitation p{font:12px/1.5 var(--sans);color:#c7c5a0;margin:0}
+.party-invitation .small-button{min-height:44px}.welcome-account .party-invitation{text-align:left}
+.party-account-note{display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:13px;line-height:1.6;color:#cfc2a5}
+.party-account-note>svg{width:20px;height:20px;flex:none;color:#d7c383}
+.party-code-join,.party-advanced,.party-duels{margin-top:16px;padding-top:10px;border-top:1px solid #59633f}
+:is(.party-code-join,.party-advanced,.party-duels,.party-code-fallback)>summary{min-height:44px;cursor:pointer;display:list-item;list-style-position:inside;font:13px/1.5 var(--sans);color:#d3c398;padding:11px 0}
+:is(.party-code-join,.party-advanced,.party-duels,.party-code-fallback)>summary:focus-visible{outline:2px solid #e7cd85;outline-offset:3px}
+.party-join-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px}
+.party-join-controls .small-button{margin:0;min-height:44px}
+.party-code-fallback{font-size:12px;text-align:left;margin-top:3px}
+.party-code-fallback strong{font:20px var(--sans);font-variant-numeric:tabular-nums;letter-spacing:.12em;display:block;margin:6px 0;color:#e6d3a0}
+.party-code-fallback .text-button{margin-top:0}.party-room-code{max-width:300px}
+.party-room-code>.small-button{min-height:44px;max-width:100%;white-space:normal;text-align:left}
+.party-room-code #party-copy-feedback{margin-top:6px}.party-room-code #party-copy-feedback:empty{display:none}
+.party-open-groups .party-room-entry strong{font-size:21px;overflow-wrap:anywhere}
+.party-open-groups .party-room-entry{gap:12px}.party-open-groups .party-room-entry>div{min-width:0}
+.party-open-groups .party-room-entry .small-button{min-height:44px;flex:none}
+.party-short-guide{margin-top:20px}.party-advanced .party-forms{margin-top:4px}
+@media(max-width:760px){
+  .game-panel[data-panel=account]{height:100%;width:100%;grid-template-rows:auto minmax(0,1fr)}
+  .account-surface{font-size:16px;line-height:1.6}
+  .account-surface>p{margin-bottom:16px}.account-surface .account-field-hint{font-size:12px}
+  .account-actions{align-items:stretch}.account-actions>.primary-button{flex:1}
+  .party-connection{margin-bottom:12px}.party-room-code{max-width:100%;width:100%}
+  .party-room-code>.small-button{width:100%;justify-content:center}
+  .party-primary-actions{margin:14px 0 20px}.party-primary-actions>.small-button{flex:1;justify-content:center}
+  .party-forms{grid-template-columns:minmax(0,1fr);gap:8px}.party-forms .section-title{margin-top:16px}
+  .party-invitation{gap:10px}.party-invitation>.small-button{width:100%;justify-content:center}
+  .welcome-account{margin-bottom:14px}.welcome-account>.small-button,.welcome-account>.primary-button{width:100%;justify-content:center}
+}

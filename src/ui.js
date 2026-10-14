@@ -47,6 +47,8 @@ const menuGroups=[{id:'hero',name:'Held',icon:'shield',panels:[['character','Cha
 const groupFor=panel=>menuGroups.find(group=>group.panels.some(([id])=>id===panel));
 const panels = {map:['Weltkarte','Regionen, Wege und Reiseziele.'],world:['Weltkarte','Regionen, Wege und Reiseziele.'],character:['Charakter','Ausrüstung, Werte und Klassenaufbau.'],inventory:['Inventar','Beute anlegen, vergleichen und verwalten.'],talents:['Fähigkeiten','Techniken lernen und Talente verteilen.'],craft:['Handwerk','Ausrüstung schmieden und Vorräte herstellen.'],journal:['Quests','Aufgaben, Ziele und regionale Aufträge.'],bestiary:['Bestiarium','Gegner und ihre Bossformen.'],interactions:['Entdeckungen','Altäre, Reliquien und Begegnungen.'],party:['Gruppe','Gemeinsam spielen mit bis zu acht Personen.'],dungeons:['Dungeons','Wege, Bosse und Gruppenvoraussetzungen.'],journey:['Ruf & Gefährten','Orden, Errungenschaften und Begleiter.'],adventures:['Abenteuer','Ereignisse, Prüfungen und Expeditionen.'],settings:['Einstellungen','Ton, Bedienung und Spielstand.']};
 
+panels.account=['Spielerkonto','Dein Charakter und Fortschritt auf dem Spielserver.'];
+
 export class GameUI {
   constructor(game) {
     this.game = game;
@@ -98,6 +100,11 @@ export class GameUI {
     this.previousFocus = null;
     this.pendingClass = game.player?.classId || 'guardian';
     this.networkBusy = false;
+    this.accountBusy = false;
+    this.accountTab = 'login';
+    this.accountMessage = '';
+    this.accountMessageTone = 'info';
+    this.lastAccountState = '';
     this.lastPartyState = '';
     this.lastAbilityClass = '';
     this.lastSeenLevel = game.player?.level || 1;
@@ -107,7 +114,7 @@ export class GameUI {
     this.infoTab = 'history';
     this.infoLastReadReceipt = 0;
     this.elements = {};
-    for (const id of ['welcome-overlay','welcome-classes','start-button','continue-button','panel-overlay','game-panel','panel-title','panel-description','panel-content','close-panel','save-button','save-state','save-import','world-hud','quest-tracker','region-name','region-subtitle','player-name','player-class','player-level','hp-fill','hp-text','hp-shield','party-hud','mana-fill','mana-text','xp-fill','xp-text','gold-count','talent-badge','potion-count','interact-prompt','world-time','world-weather','world-effects','pvp-hud','waypoint-text','notice-stack','info-panel','info-close','info-tabs','info-history','info-objectives','minimap','world']) this.elements[id] = document.getElementById(id);
+    for (const id of ['welcome-overlay','welcome-classes','welcome-account','start-button','continue-button','panel-overlay','game-panel','panel-title','panel-description','panel-content','close-panel','save-button','save-state','save-import','world-hud','quest-tracker','region-name','region-subtitle','player-name','player-class','player-level','hp-fill','hp-text','hp-shield','party-hud','mana-fill','mana-text','xp-fill','xp-text','gold-count','talent-badge','potion-count','interact-prompt','world-time','world-weather','world-effects','pvp-hud','waypoint-text','notice-stack','info-panel','info-close','info-tabs','info-history','info-objectives','minimap','world']) this.elements[id] = document.getElementById(id);
     this.bind();
     window.addEventListener('resize',()=>this.updateHudLayout(true));
     window.visualViewport?.addEventListener('resize',()=>this.updateHudLayout(true));
@@ -116,6 +123,11 @@ export class GameUI {
   }
 
   bind() {
+    document.addEventListener('submit', event => {
+      if (!event.target?.matches?.('[data-account-form]')) return;
+      event.preventDefault();
+      this.submitAccount(event.target);
+    });
     document.addEventListener('click', event => {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;
@@ -212,11 +224,12 @@ export class GameUI {
   syncWelcome() {
     this.elements['welcome-overlay'].hidden = Boolean(this.game.started);
     this.elements['continue-button'].hidden = !this.game.hasSave;
-    this.elements['start-button'].innerHTML = `${this.game.hasSave ? 'Eine neue Reise beginnen' : 'Die Dunkelheit betreten'}${icon('arrow')}`;
-    this.elements['save-state'].textContent = this.game.hasSave ? 'Reise gespeichert' : 'Ein neuer Anfang';
+    this.elements['start-button'].innerHTML = `${this.game.hasSave ? 'Neue lokale Reise' : 'Ohne Anmeldung spielen'}${icon('arrow')}`;
+    this.elements['save-state'].textContent = this.network?.account&&this.network?.online?'Auf dem Server gespeichert':this.game.hasSave ? 'Reise gespeichert' : 'Ein neuer Anfang';
     if (this.elements['welcome-classes']) this.elements['welcome-classes'].innerHTML = this.game.hasSave ? `<p class="welcome-saved-class">${escape(getClass(this.game.player.classId).name)} · Stufe ${format(this.game.player.level)} · Deine gespeicherte Reise</p>` : this.classSelection(this.game.player.classId);
     if (!this.game.started) requestAnimationFrame(() => (this.game.hasSave ? this.elements['continue-button'] : this.elements['start-button']).focus({preventScroll:true}));
     document.body.classList.toggle('reduced-motion', Boolean(this.game.settings?.reducedMotion));
+    this.updateAccount(true);
   }
 
   setText(id, value) { const element = this.elements[id]; if (element && element.textContent !== String(value)) element.textContent = value; }
@@ -303,8 +316,9 @@ export class GameUI {
     const trackerState = JSON.stringify([game.questState || {},game.contracts,game.trackedQuestId,game.endgame,eventState,this.dungeonId()]);
     if (force || trackerState !== this.lastTracker) { this.lastTracker = trackerState; this.renderTracker(); }
     const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.deathPenalty,game.waypoint,game.trackedQuestId,eventSummary.map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]),game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.techniqueSpecializations,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,game.dungeonInstance?.raidRevivesUsed,game.dungeonInstance?.routes?.completed,game.networkRaidResume,this.dungeonId()]);
-    if (force || state !== this.lastState) { this.lastState = state; if (this.activePanel && !['death','victory','reset','settings','party'].includes(this.activePanel)) this.renderPanel(); }
+    if (force || state !== this.lastState) { this.lastState = state; if (this.activePanel && !['death','victory','reset','settings','party','account'].includes(this.activePanel)) this.renderPanel(); }
     this.updateParty();
+    this.updateAccount();
     const now = performance.now();
     if (force || now - this.lastMapAt > 500) { this.lastMapAt = now; this.updateMinimap();if(this.activePanel==='map')this.drawMap(document.getElementById('full-map'),true); }
     const seconds = Number(game.time ?? game.elapsed ?? game.world?.time ?? 0);
@@ -468,6 +482,7 @@ export class GameUI {
     const informationFocus=this.infoOpen?this.informationPreviousFocus:null;
     this.closeInformation({restoreFocus:false});
     if (name === this.activePanel) { this.closePanel(); return; }
+    if(this.activePanel==='account')this.clearAccountPassword();
     if (!this.activePanel) this.previousFocus = informationFocus?.isConnected?informationFocus:document.activeElement;
     this.activePanel = name;
     this.pendingScrollReset=true;
@@ -484,12 +499,13 @@ export class GameUI {
     this.renderPanel();
     this.renderNotice();
     if(name==='party') this.refreshRooms();
-    requestAnimationFrame(() => (name === 'death' ? this.elements['panel-content'].querySelector('button') : this.elements['close-panel'])?.focus({preventScroll:true}));
+    requestAnimationFrame(() => (name === 'death' ? this.elements['panel-content'].querySelector('button') : name==='account' ? this.elements['panel-content'].querySelector('input,button,a[href]') || this.elements['close-panel'] : this.elements['close-panel'])?.focus({preventScroll:true}));
   }
 
   closePanel() {
     if (this.activePanel === 'death' && this.game.player?.hp <= 0 && !this.inPvp) return;
     this.closeInformation({restoreFocus:false});
+    this.clearAccountPassword();
     const previous = this.activePanel;
     this.activePanel = null;
     document.body.classList.remove('panel-open');
@@ -509,6 +525,8 @@ export class GameUI {
     const name = this.activePanel;
     if (!name) return;
     if(this.panelPointers.size||!allowFocusedSelect&&document.activeElement?.matches?.('select')&&this.elements['game-panel'].contains(document.activeElement)){this.pendingPanelRender=true;return;}
+    if(name==='account'&&this.renderedPanel==='account'&&!this.accountExplicitRender&&!this.network?.requiresHTTPS&&document.getElementById('account-form')?.contains(document.activeElement))return;
+    this.accountExplicitRender=false;
     const focused = document.activeElement;
     const focusSearch = focused?.dataset?.uiSearch,focusDraft=focused?.dataset?.uiDraft;
     const focusFilter = focused?.dataset?.uiFilter;
@@ -529,7 +547,7 @@ export class GameUI {
         if(navigation.innerHTML!==markup)navigation.innerHTML=markup;
       }
     }
-    const renderers = {inventory:()=>this.inventory(),character:()=>this.character(),talents:()=>this.talents(),craft:()=>this.craft(),journal:()=>this.journal(),map:()=>this.map(),party:()=>this.party(),dungeons:()=>this.dungeons(),settings:()=>this.settings(),bestiary:()=>this.bestiary(),journey:()=>this.journey(),adventures:()=>this.adventures(),interactions:()=>this.interactions(),dialogue:()=>this.dialogue(),death:()=>this.death(),victory:()=>this.victory(),reset:()=>this.resetConfirmation()};
+    const renderers = {inventory:()=>this.inventory(),character:()=>this.character(),talents:()=>this.talents(),craft:()=>this.craft(),journal:()=>this.journal(),map:()=>this.map(),party:()=>this.party(),account:()=>this.account(),dungeons:()=>this.dungeons(),settings:()=>this.settings(),bestiary:()=>this.bestiary(),journey:()=>this.journey(),adventures:()=>this.adventures(),interactions:()=>this.interactions(),dialogue:()=>this.dialogue(),death:()=>this.death(),victory:()=>this.victory(),reset:()=>this.resetConfirmation()};
     this.elements['panel-content'].innerHTML = (renderers[name] || renderers.inventory)();
     this.lastInformationBadge=null;
     this.elements['game-panel'].dataset.panel=name;
@@ -540,7 +558,7 @@ export class GameUI {
     if(restored&&!resetScroll) { restored.focus({preventScroll:true});if(selection&&restored.setSelectionRange)restored.setSelectionRange(...selection); }
     if (name === 'map') this.drawMap(document.getElementById('full-map'), true);
     if (name === 'character' && this.characterTab!=='build') this.renderHeroPreview();
-    if (name === 'party') { this.lastPartyState=''; this.updateParty(); }
+    if (name === 'party') { this.lastPartyState='';this.lastPartyCode=''; this.updateParty(); }
     if (!resetScroll&&focusId && focusCommand) {
       const target = [...this.elements['panel-content'].querySelectorAll('button')].find(button=>button.dataset.id===focusId&&button.dataset.command===focusCommand);
       if (target && !target.disabled) target.focus({preventScroll:true});
@@ -1006,40 +1024,180 @@ export class GameUI {
     }).join('')}</aside></div>`;
   }
 
+  get inParty() {
+    const network=this.network;
+    return Boolean(network && (typeof network.inParty==='boolean'?network.inParty:network.online&&(!network.account||!network.privateWorld)));
+  }
+
+  secureAccountUrl() {
+    try {
+      const url=new URL(this.network?.secureOrigin);
+      if(url.protocol!=='https:'||url.username||url.password)return null;
+      url.pathname='/';url.search='';url.hash='';
+      const invitation=String(this.network?.pendingInvitation || '').trim().toUpperCase();
+      if(/^[A-Z0-9]{8}$/.test(invitation))url.searchParams.set('join',invitation);
+      return url.href;
+    } catch {return null;}
+  }
+
+  invitationPrompt() {
+    const code=String(this.network?.pendingInvitation || '').trim().toUpperCase();
+    if(!/^[A-Z0-9]{8}$/.test(code)||this.inParty)return '';
+    return `<section class="party-invitation" aria-label="Gruppeneinladung"><div><h3>Du bist eingeladen</h3><p>Gruppe <strong>${escape(code)}</strong> · Der Beitritt beginnt erst mit deinem Klick.</p></div><button type="button" class="small-button" data-command="party-join" data-id="${escape(code)}" ${this.networkBusy||this.accountBusy?'disabled':''}>${icon('group')}Gruppe beitreten</button></section>`;
+  }
+
+  account() {
+    const network=this.network;
+    if(network?.requiresHTTPS) {
+      const url=this.secureAccountUrl();
+      return `<section class="account-surface"><h3>Dein Konto sicher öffnen</h3><p>Die Anmeldung und dein gespeicherter Charakter sind über die verschlüsselte Spieladresse erreichbar.</p>${url?`<a class="primary-button" href="${escape(url)}">${icon('lock')}Anmelden sicher öffnen ${icon('arrow')}</a>`:'<p class="account-feedback error" role="status">Die sichere Spieladresse ist noch nicht verfügbar. Du kannst ohne Anmeldung spielen.</p>'}<button type="button" class="text-button" data-command="account-guest">Ohne Anmeldung spielen</button></section>`;
+    }
+    if(!network||typeof network.loginAccount!=='function'||network.accountStatus==='unavailable')return `<section class="account-surface"><h3>Deine lokale Reise</h3><p>Dieser Spielserver bietet noch keine Anmeldung. Dein Spielstand bleibt in diesem Browser gespeichert.</p><button type="button" class="primary-button" data-command="account-guest">Ohne Anmeldung spielen ${icon('arrow')}</button></section>`;
+    if(network.accountStatus==='checking')return '<section class="account-surface"><p class="account-feedback" role="status">Dein Spielerkonto wird geprüft …</p><button type="button" class="text-button" data-command="account-guest">Ohne Anmeldung spielen</button></section>';
+    if(network.account) {
+      const account=network.account,currentClass=getClass(account.classId || this.game.player.classId);
+      return `<section class="account-surface"><div class="account-character">${icon(classIcons[currentClass.id])}<div><h3>${escape(account.playerName || account.username)}</h3><p>${escape(currentClass.name)} · Stufe ${format(account.level || 1)}<br>Angemeldet als ${escape(account.username)}</p></div></div><p>Dein Charakter, Ausrüstung und Quests werden auf dem Spielserver gespeichert. Melde dich auf einem anderen Gerät mit demselben Konto an, um weiterzuspielen.</p><div class="account-actions"><button type="button" class="primary-button" data-command="account-play" ${this.accountBusy?'disabled':''}>Reise fortsetzen ${icon('arrow')}</button><button type="button" class="small-button" data-panel="party">${icon('group')}Gruppen finden</button></div>${this.invitationPrompt()}<p id="account-feedback" class="account-feedback ${this.accountMessageTone}" role="status" aria-live="polite">${escape(this.accountMessage)}</p><button type="button" class="text-button" data-command="account-logout" ${this.accountBusy?'disabled':''}>${this.accountBusy?'Bitte warten …':'Abmelden'}</button><p class="account-footnote">Deine vorherige lokale Reise bleibt als eigene Reise in diesem Browser erhalten.</p></section>`;
+    }
+    const registering=this.accountTab==='register';
+    return `<section class="account-surface"><nav class="account-tabs panel-tabs" aria-label="Spielerkonto"><button type="button" data-command="account-tab" data-id="login" aria-pressed="${!registering}" ${this.accountBusy?'disabled':''}>Anmelden</button><button type="button" data-command="account-tab" data-id="register" aria-pressed="${registering}" ${this.accountBusy?'disabled':''}>Konto erstellen</button></nav><p>${registering?'Wähle einen Spielernamen und deine erste Klasse. Dein Charakter bleibt auf dem Spielserver gespeichert.':'Melde dich an, um deinen Charakter auf jedem Gerät weiterzuspielen.'}</p><form id="account-form" data-account-form="${registering?'register':'login'}" autocomplete="on"><label class="field-label" for="account-username">Spielername</label><input id="account-username" name="username" class="game-input" type="text" minlength="3" maxlength="24" pattern="[A-Za-z0-9_-]{3,24}" required autocomplete="username" autocapitalize="off" spellcheck="false" aria-describedby="account-username-hint" ${this.accountBusy?'disabled':''}/><small id="account-username-hint" class="account-field-hint">3–24 Zeichen: Buchstaben, Zahlen, _ oder -.</small><label class="field-label" for="account-password">Passwort</label><input id="account-password" name="password" class="game-input" type="password" minlength="12" maxlength="128" required autocomplete="${registering?'new-password':'current-password'}" aria-describedby="account-password-hint" ${this.accountBusy?'disabled':''}/><small id="account-password-hint" class="account-field-hint">Mindestens 12 Zeichen. Verwende ein eigenes Passwort für Emberfall.</small>${registering?`<label class="field-label" for="account-player-name">Charaktername <span>(optional)</span></label><input id="account-player-name" name="playerName" class="game-input" type="text" maxlength="24" autocomplete="nickname" placeholder="Wie dein Spielername" ${this.accountBusy?'disabled':''}/><label class="field-label" for="account-class">Klasse</label><select id="account-class" name="classId" class="game-input" ${this.accountBusy?'disabled':''}>${CLASSES.map(entry=>`<option value="${entry.id}" ${entry.id===this.game.player.classId?'selected':''}>${escape(entry.name)} · ${escape(entry.role)}</option>`).join('')}</select>`:''}<p id="account-feedback" class="account-feedback ${this.accountMessageTone}" role="status" aria-live="polite">${escape(this.accountMessage)}</p><button type="submit" class="primary-button" ${this.accountBusy?'disabled aria-busy="true"':''}>${this.accountBusy?'Bitte warten …':registering?'Konto erstellen':'Anmelden'} ${icon('arrow')}</button></form><p class="account-footnote">Ohne E-Mail. Bewahre deine Zugangsdaten sicher auf.</p><button type="button" class="text-button" data-command="account-guest">Ohne Anmeldung spielen</button></section>`;
+  }
+
+  clearAccountPassword() {
+    const password=document.getElementById('account-password');
+    if(password)password.value='';
+  }
+
+  accountFeedback(message,tone='info') {
+    this.accountMessage=String(message || '');this.accountMessageTone=tone;
+    const element=document.getElementById('account-feedback');
+    if(element){element.textContent=this.accountMessage;element.className=`account-feedback ${tone}`;}
+  }
+
+  updateAccount(force=false) {
+    const network=this.network,account=network?.account;
+    const state=JSON.stringify([network?.accountStatus,account?.id,account?.username,account?.playerName,account?.classId,account?.level,network?.requiresHTTPS,network?.secureOrigin,network?.pendingInvitation]);
+    if(!force&&state===this.lastAccountState)return;
+    this.lastAccountState=state;
+    for(const button of document.querySelectorAll('[data-command="account-open"]')) {
+      button.setAttribute('aria-label',account?`Spielerkonto: ${account.username}`:'Anmelden oder Spielerkonto erstellen');
+      button.setAttribute('title',account?`Angemeldet als ${account.username}`:'Spielerkonto öffnen');
+      button.classList.toggle('is-authenticated',Boolean(account));
+    }
+    const welcome=this.elements['welcome-account'];
+    if(welcome) {
+      const safe=network?.requiresHTTPS,secureUrl=this.secureAccountUrl();
+      welcome.innerHTML=account?`<div class="welcome-account-status"><strong>${escape(account.playerName || account.username)}</strong><span>${escape(getClass(account.classId || this.game.player.classId).name)} · Stufe ${format(account.level || 1)} · Auf dem Spielserver gespeichert</span></div><button type="button" class="primary-button" data-command="account-play" ${this.accountBusy?'disabled':''}>Reise fortsetzen ${icon('arrow')}</button>${this.invitationPrompt()}`:safe?`<p>Melde dich an, um deinen Charakter auf jedem Gerät weiterzuspielen.</p>${secureUrl?`<a class="small-button" href="${escape(secureUrl)}">${icon('lock')}Anmelden sicher öffnen</a>`:'<button type="button" class="small-button" data-command="account-open">Spielerkonto öffnen</button>'}`:network?.accountStatus==='unavailable'||typeof network?.loginAccount!=='function'?'':`<p>Dein Charakter auf jedem Gerät.</p><button type="button" class="small-button" data-command="account-open">${icon('group')}Anmelden / Konto erstellen</button>${this.invitationPrompt()}`;
+      welcome.hidden=!welcome.innerHTML;
+    }
+    if(this.elements['welcome-classes'])this.elements['welcome-classes'].hidden=Boolean(account);
+    if(this.activePanel==='account'&&!this.accountBusy) {
+      const form=document.getElementById('account-form'),hasInput=Array.from(form?.querySelectorAll('input') || []).some(input=>input.value);
+      if(network?.requiresHTTPS||!hasInput&&!form?.contains(document.activeElement)){this.accountExplicitRender=true;this.renderPanel();}
+    }
+  }
+
+  async submitAccount(form) {
+    const network=this.network;
+    if(this.accountBusy||this.networkBusy)return;
+    if(network?.requiresHTTPS){this.clearAccountPassword();this.accountExplicitRender=true;this.renderPanel();return;}
+    if(!network||typeof network.loginAccount!=='function'){this.accountFeedback('Dieser Spielserver bietet noch keine Anmeldung.','error');return;}
+    const username=form.querySelector('[name="username"]')?.value.trim() || '',passwordField=form.querySelector('[name="password"]'),password=passwordField?.value || '';
+    if(!/^[A-Za-z0-9_-]{3,24}$/.test(username)){this.accountFeedback('Dein Spielername benötigt 3–24 Buchstaben, Zahlen, _ oder -.','error');form.querySelector('[name="username"]')?.focus();return;}
+    if(password.length<12||password.length>128){this.accountFeedback('Dein Passwort muss 12–128 Zeichen lang sein.','error');passwordField?.focus();return;}
+    if(new TextEncoder().encode(password).length>128){this.accountFeedback('Dein Passwort ist für den Spielserver zu lang. Kürze es auf mindestens zwölf Zeichen.','error');passwordField?.focus();return;}
+    form.querySelector('[name="username"]').value=username;
+    if(typeof form.reportValidity==='function'&&!form.reportValidity())return;
+    const registering=form.dataset.accountForm==='register',payload={username,password};
+    if(registering){payload.playerName=form.querySelector('[name="playerName"]')?.value.trim() || username;payload.classId=form.querySelector('[name="classId"]')?.value || this.game.player.classId;}
+    this.accountBusy=true;this.accountFeedback(registering?'Dein Konto wird erstellt …':'Du wirst angemeldet …');
+    if(passwordField)passwordField.value='';
+    for(const field of form.querySelectorAll('input,select,button'))field.disabled=true;
+    form.setAttribute('aria-busy','true');
+    let retryPassword=false;
+    try {
+      if(registering)await network.registerAccount(payload);else await network.loginAccount(payload);
+      this.accountFeedback('Du bist angemeldet. Setze deine Reise fort oder tritt einer Gruppe bei.','success');
+      if(this.activePanel==='account'){this.accountExplicitRender=true;this.renderPanel();requestAnimationFrame(()=>document.querySelector('[data-command="account-play"]')?.focus({preventScroll:true}));}
+    } catch(error) {
+      const message=String(error?.message || 'Die Anmeldung ist fehlgeschlagen. Prüfe deine Zugangsdaten und versuche es erneut.').split(password).join('••••');
+      this.accountFeedback(message,'error');
+      retryPassword=true;
+    } finally {
+      this.accountBusy=false;payload.password='';
+      if(form.isConnected){form.setAttribute('aria-busy','false');for(const field of form.querySelectorAll('input,select,button'))field.disabled=false;if(retryPassword)form.querySelector('[name="password"]')?.focus();}
+      this.updateAccount(true);
+    }
+  }
+
+  async accountCommand(name,id) {
+    if(name==='account-open'){
+      this.accountMessage='';this.togglePanel('account');
+      if(this.activePanel==='account'&&!this.accountBusy&&!this.networkBusy&&typeof this.network?.refreshAccount==='function'){
+        await this.network.refreshAccount();
+        if(this.activePanel==='account'&&this.game.started)this.game.paused=true;
+        this.updateAccount(true);
+      }
+      return;
+    }
+    if(name==='account-tab') {
+      if(this.accountBusy)return;
+      this.clearAccountPassword();this.accountTab=id==='register'?'register':'login';this.accountMessage='';this.accountExplicitRender=true;this.renderPanel();requestAnimationFrame(()=>document.getElementById('account-username')?.focus({preventScroll:true}));return;
+    }
+    if(this.accountBusy||this.networkBusy)return;
+    if(name==='account-play'&&this.network?.accountOwned&&this.network?.online&&this.network?.connected){this.closePanel();this.elements.world.focus({preventScroll:true});return;}
+    if(name==='account-guest'&&!this.network?.account){if(!this.game.started)this.begin();else this.closePanel();return;}
+    const network=this.network;
+    if(!network){this.accountFeedback('Die Anmeldung wird vorbereitet. Versuche es erneut.','error');return;}
+    this.accountBusy=true;this.clearAccountPassword();this.accountFeedback(name==='account-logout'?'Du wirst abgemeldet …':'Deine Reise wird verbunden …');
+    for(const button of this.elements['panel-content'].querySelectorAll('[data-command^="account-"]'))button.disabled=true;
+    this.updateAccount(true);
+    try {
+      if(name==='account-play')await network.playAccount();
+      else if(name==='account-logout'||name==='account-guest')await network.logoutAccount();
+      else return;
+      this.closePanel();this.syncWelcome();this.update(true);
+      if(name==='account-guest'&&!this.game.started)this.begin();
+      if(this.game.started)this.elements.world.focus({preventScroll:true});
+    } catch(error) {this.accountFeedback(error?.message || 'Der Spielserver ist nicht erreichbar. Versuche es erneut.','error');}
+    finally {this.accountBusy=false;this.updateAccount(true);}
+  }
+
   party() {
     if(this.inPvp)return this.duelLobby();
-    const network=this.network;
-    const serverAddress=(network?.baseUrl || globalThis.location?.origin || 'http://localhost:4173').replace(/\/\/(localhost|127\.0\.0\.1)(?=:|\/|$)/,'//<Host-IP>');
-    const locked=this.networkBusy||network?.online||['connecting','reconnecting','online'].includes(network?.status);
-    const serverForm=`<section class="party-server"><h3 class="section-title">Dein Spielserver</h3><label class="field-label" for="party-server-address">Spielserveradresse</label><div class="party-server-controls"><input id="party-server-address" type="url" inputmode="url" class="game-input" value="${escape(network?.baseUrl || globalThis.location?.origin || '')}" placeholder="https://…" maxlength="2048" autocomplete="url" autocapitalize="off" spellcheck="false" ${locked?'disabled':''}/><button class="small-button" data-command="party-server-connect" ${locked||typeof network?.setServerAddress!=='function'?'disabled':''} ${this.networkBusy?'aria-busy="true"':''}>${icon('portal')}${this.networkBusy?'Server wird geprüft …':'Server prüfen'}</button></div><p class="panel-note">${network?.online?'Verlasse zuerst die Gruppe, bevor du den Spielserver wechselst.':'Die Adresse wird geprüft, bevor sie für deine nächste Gruppenreise gespeichert wird.'}</p></section>`;
-    return `<div class="party-connection"><div><span class="eyebrow">DEINE GRUPPE</span><h3 id="party-status">Verbindung prüfen</h3><p id="party-connection-error" class="panel-note" role="status"></p></div><div id="party-room-code" class="party-room-code"></div></div>${serverForm}<div id="party-roster" class="party-roster"></div>${this.duelLobby()}<div class="party-forms"><section><h3 class="section-title">Dein Gruppencharakter</h3><label class="field-label" for="party-player-name">Name</label><input id="party-player-name" class="game-input" value="${escape(this.game.player.name || 'Aren')}" maxlength="24" autocomplete="nickname"/><label class="field-label" for="party-class">Klasse</label><select id="party-class" class="game-input">${CLASSES.map(entry=>`<option value="${entry.id}" ${entry.id===this.game.player.classId?'selected':''}>${escape(entry.name)} · ${escape(entry.role)}</option>`).join('')}</select><p class="panel-note">Dein Gruppencharakter hat einen eigenen Fortschritt. Deine Einzelspieler-Reise bleibt gespeichert.</p>${network?.savedSession?'<button class="small-button" data-command="party-resume">Gespeicherte Gruppe fortsetzen</button>':''}</section><section><h3 class="section-title">Eine Gruppe bilden</h3><label class="field-label" for="party-room-name">Gruppenname</label><input id="party-room-name" class="game-input" value="Glutwacht" maxlength="32"/><button class="small-button" data-command="party-create">${icon('group')}Gruppe erstellen</button><label class="field-label" for="party-join-code">Gruppencode</label><input id="party-join-code" class="game-input code-input" placeholder="8 Zeichen" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"/><button class="small-button" data-command="party-join">Gruppe beitreten ${icon('arrow')}</button></section></div><div class="party-actions"><button class="small-button" data-command="party-refresh">Offene Gruppen aktualisieren</button><button class="small-button danger-button" data-command="party-disconnect">Gruppe verlassen</button></div><div id="party-room-list" class="party-room-list"><p class="panel-note">Offene Gruppen werden geladen.</p></div><div class="party-guide"><h3 class="section-title">Gemeinsam losziehen</h3><p>Für Internetgruppen tragt ihr denselben erreichbaren HTTPS-Spielserver ein, erstellt eine Gruppe und teilt den achtstelligen Code. Für eine lokale Gruppe öffnet ihr Emberfall über die WLAN-Adresse des Hosts und verwendet diese Adresse als Spielserver.</p><p class="panel-note">Spieladresse: <code>${escape(serverAddress)}</code>${serverAddress.includes('<Host-IP>')?' · Host-IP durch die lokale IP-Adresse des Hosts ersetzen.':''}</p><p class="panel-note">Bis zu acht Reisende · Geteilte Welt und Kämpfe · Eigene Beute und Klassenpfade · Freiwillige Duelle zwischen verbundenen Mitspielern</p><button class="small-button" data-panel="dungeons">Gruppendungeons ansehen ${icon('portal')}</button></div>`;
+    const network=this.network,inParty=this.inParty,account=network?.account;
+    const locked=this.networkBusy||inParty||['connecting','reconnecting'].includes(network?.status);
+    const guest=`${account?'':`<h3 class="section-title">Dein Gruppencharakter</h3><label class="field-label" for="party-player-name">Name</label><input id="party-player-name" class="game-input" value="${escape(this.game.player.name || 'Aren')}" maxlength="24" autocomplete="nickname"/><label class="field-label" for="party-class">Klasse</label><select id="party-class" class="game-input">${CLASSES.map(entry=>`<option value="${entry.id}" ${entry.id===this.game.player.classId?'selected':''}>${escape(entry.name)} · ${escape(entry.role)}</option>`).join('')}</select><p class="panel-note">Als Gast hat jede Gruppenreise einen eigenen Fortschritt. Melde dich an, um denselben Charakter in allen Gruppen zu spielen.</p><button type="button" class="text-button" data-command="account-open">Spielerkonto öffnen</button>`}<h3 class="section-title">Spielserver</h3><label class="field-label" for="party-server-address">Serveradresse</label><div class="party-server-controls"><input id="party-server-address" type="url" inputmode="url" class="game-input" value="${escape(network?.baseUrl || globalThis.location?.origin || '')}" placeholder="https://…" maxlength="2048" autocomplete="url" autocapitalize="off" spellcheck="false" ${locked||network?.online?'disabled':''}/><button class="small-button" data-command="party-server-connect" ${locked||network?.online||typeof network?.setServerAddress!=='function'?'disabled':''}>${icon('portal')}Server prüfen</button></div><p class="panel-note">${network?.online?'Verlasse zuerst die Gruppe, bevor du den Spielserver wechselst.':'Für Internetgruppen verwendet ihr denselben erreichbaren HTTPS-Spielserver. Für eine lokale Gruppe öffnet ihr Emberfall über die WLAN-Adresse des Hosts.'}</p>`;
+    return `<div class="party-connection"><div><h3 id="party-status">Verbindung prüfen</h3><p id="party-connection-error" class="panel-note" role="status"></p></div><div id="party-room-code" class="party-room-code"></div></div>${this.invitationPrompt()}${account?`<p class="party-account-note">${icon(classIcons[account.classId || this.game.player.classId] || 'shield')}Du spielst als <strong>${escape(account.playerName || account.username)}</strong>. Dein Fortschritt bleibt über Gruppen hinweg erhalten.</p>`:''}<div id="party-roster" class="party-roster" ${inParty?'':'hidden'}></div><div class="party-primary-actions"><button type="button" class="small-button" data-command="party-create" ${locked||network?.serverAvailable===false?'disabled':''}>${icon('group')}Gruppe erstellen</button>${network?.savedSession&&!account?'<button type="button" class="small-button" data-command="party-resume">Gespeicherte Gruppe fortsetzen</button>':''}<button type="button" class="text-button danger-button" data-command="party-disconnect" ${inParty?'':'hidden'}>Gruppe verlassen</button></div><section class="party-open-groups"><div class="party-section-heading"><h3 class="section-title">Offene Gruppen</h3><button type="button" class="text-button" data-command="party-refresh">Aktualisieren</button></div><div id="party-room-list" class="party-room-list"><p class="panel-note">Offene Gruppen werden geladen.</p></div></section><details class="party-code-join"><summary>Mit Gruppencode beitreten</summary><label class="field-label" for="party-join-code">Gruppencode</label><div class="party-join-controls"><input id="party-join-code" class="game-input code-input" placeholder="8 Zeichen" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"/><button type="button" class="small-button" data-command="party-join">Beitreten ${icon('arrow')}</button></div></details><details class="party-advanced"><summary>${account?'Server & Gruppenname':'Gastcharakter, Server & Gruppenname'}</summary><div class="party-forms"><section><label class="field-label" for="party-room-name">Name deiner neuen Gruppe</label><input id="party-room-name" class="game-input" value="Glutwacht" maxlength="32"/></section><section>${guest}</section></div></details>${inParty?`<details class="party-duels"><summary>Freiwillige Duelle</summary>${this.duelLobby()}</details>`:''}<p class="panel-note party-short-guide">Bis zu acht Reisende. Erstelle eine Gruppe und teile den Einladungslink oder tritt einer offenen Gruppe bei.</p><button type="button" class="text-button" data-panel="dungeons">Gruppendungeons ansehen ${icon('portal')}</button>`;
   }
 
   updateParty() {
     const network=this.network;
     const party=this.game.party || [];
     const status=network?.status || 'offline';
-    const state=JSON.stringify([status,network?.serverAvailable,network?.roomCode,network?.error,this.networkBusy,party.map(player=>[player.id,player.name,player.classId,player.level,Math.round(player.hp),player.maxHp,player.dead,player.downed,player.connected])]);
+    const state=JSON.stringify([status,network?.serverAvailable,network?.roomCode,network?.privateWorld,network?.account?.id,network?.pendingInvitation,network?.error,this.networkBusy,this.accountBusy,party.map(player=>[player.id,player.name,player.classId,player.level,Math.round(player.hp),player.maxHp,player.dead,player.downed,player.connected])]);
     if(state===this.lastPartyState)return;
     this.lastPartyState=state;
     const labels={offline:'Du reist allein',connecting:'Gruppe wird verbunden …',online:'Deine Gruppe ist verbunden',reconnecting:'Verbindung wird wiederhergestellt …'};
     const statusElement=document.getElementById('party-status');
-    if(statusElement)statusElement.textContent=labels[status] || status;
+    if(statusElement)statusElement.textContent=network?.online&&!this.inParty?'Du reist mit deinem Spielerkonto':labels[status] || status;
     const errorElement=document.getElementById('party-connection-error');
-    if(errorElement)errorElement.textContent=network?.error || (network?.serverAvailable===false?'Diese Spieladresse bietet deine Einzelspieler-Reise. Gruppen und freiwillige Duelle stehen auf einem verbundenen Emberfall-Spielserver zur Verfügung.':network?.online?'Die Welt läuft weiter, während dieses Fenster geöffnet ist.':'Wähle eine Klasse für deine nächste Gruppenreise.');
+    if(errorElement)errorElement.textContent=network?.error || (network?.serverAvailable===false?'Dieser Spielserver ist nicht erreichbar. Öffne die Serverauswahl und prüfe die Adresse.':this.inParty?'Die gemeinsame Welt läuft weiter, während dieses Fenster geöffnet ist.':network?.account?'Wähle eine offene Gruppe oder erstelle eine eigene. Du behältst deinen Charakter.':'Tritt einer offenen Gruppe bei oder erstelle eine eigene.');
     const codeElement=document.getElementById('party-room-code');
-    if(codeElement)codeElement.innerHTML=network?.roomCode?`<span>GRUPPENCODE</span><strong>${escape(network.roomCode)}</strong><button class="small-button" data-command="party-copy-code">Code kopieren</button>`:'';
+    const codeState=this.inParty?network?.roomCode || '':'';
+    if(codeElement&&codeState!==this.lastPartyCode){this.lastPartyCode=codeState;codeElement.innerHTML=codeState?`<button type="button" class="small-button" data-command="party-copy-link">${icon('group')}Einladungslink kopieren</button><details class="party-code-fallback"><summary>Gruppencode anzeigen</summary><strong>${escape(network.roomCode)}</strong><button type="button" class="text-button" data-command="party-copy-code">Code kopieren</button></details><p id="party-copy-feedback" class="panel-note" role="status" aria-live="polite"></p>`:'';}
     const roster=document.getElementById('party-roster');
-    if(roster)roster.innerHTML=party.length?party.map(player=>this.partyMember(player)).join(''):'<p class="panel-note">Hier erscheinen deine Gefährten nach dem Beitritt.</p>';
+    if(roster){roster.hidden=!this.inParty;roster.innerHTML=party.length?party.map(player=>this.partyMember(player)).join(''):'<p class="panel-note">Hier erscheinen deine Gefährten nach dem Beitritt.</p>';}
     const hud=this.elements['party-hud'];
     if(hud) {
-      hud.hidden=!network?.online || !party.length;
+      hud.hidden=!this.inParty || !party.length;
       hud.innerHTML=party.map(player=>this.partyMember(player,true)).join('');
     }
     if(this.activePanel==='party') {
       for(const button of this.elements['panel-content'].querySelectorAll('[data-command^="party-"]')) {
         const command=button.dataset.command;
-        button.disabled=this.networkBusy || !network || (['party-create','party-join','party-resume'].includes(command)&&(network.online||network.serverAvailable===false)) || (command==='party-disconnect'&&!network.online) || (command==='party-server-connect'&&(network.online||['connecting','reconnecting','online'].includes(network.status)||typeof network.setServerAddress!=='function'));
+        const roomUnavailable=command==='party-join'&&(button.dataset.full==='true'||button.dataset.unavailable==='true');
+        button.disabled=this.networkBusy || this.accountBusy || !network || (['party-create','party-join','party-resume'].includes(command)&&(this.inParty||network.serverAvailable===false||roomUnavailable)) || (command==='party-disconnect'&&!this.inParty) || (command==='party-server-connect'&&(network.online||['connecting','reconnecting','online'].includes(network.status)||typeof network.setServerAddress!=='function'));
+        if(command==='party-disconnect')button.hidden=!this.inParty;
         if(command==='party-server-connect'){button.setAttribute('aria-busy',String(!!this.networkBusy));button.innerHTML=`${icon('portal')}${this.networkBusy?'Server wird geprüft …':'Server prüfen'}`;}
       }
       for(const id of ['party-player-name','party-class']) { const field=document.getElementById(id);if(field)field.disabled=!!network?.online || this.networkBusy; }
@@ -1060,7 +1218,7 @@ export class GameUI {
     try {
       const response=await this.network.catalog();
       if(!list.isConnected)return;
-      list.innerHTML=response.rooms?.length?response.rooms.map(room=>`<div class="party-room-entry"><div><strong>${escape(room.name)}</strong><span>${escape(room.code)} · ${room.players} / ${room.maxPlayers || 8} Reisende</span></div><button class="small-button" data-command="party-join" data-id="${escape(room.code)}" ${room.players>=(room.maxPlayers || 8) || this.network.online?'disabled':''}>Beitreten</button></div>`).join(''):'<p class="panel-note">Noch keine offene Gruppe. Erstelle die erste Glutwacht.</p>';
+      list.innerHTML=response.rooms?.length?response.rooms.map(room=>`<div class="party-room-entry"><div><strong>${escape(room.name)}</strong><span>${room.players} / ${room.maxPlayers || 8} Reisende</span></div><button type="button" class="small-button" data-command="party-join" data-id="${escape(room.code)}" data-full="${room.players>=(room.maxPlayers || 8)}" data-unavailable="${room.joinable===false}" ${room.players>=(room.maxPlayers || 8) || room.joinable===false || this.inParty?'disabled':''}>${room.players>=(room.maxPlayers || 8)?'Gruppe voll':room.joinable===false?'Nicht verfügbar':'Beitreten'}</button></div>`).join(''):'<p class="panel-note">Noch keine offene Gruppe. Erstelle deine eigene und lade Gefährten ein.</p>';
     } catch(error) { if(list.isConnected)list.innerHTML=`<p class="panel-note">Offene Gruppen konnten auf diesem Spielserver nicht geladen werden. ${escape(error.message || 'Prüfe die Serveradresse und versuche es erneut.')}</p>`; }
     this.updateParty();
   }
@@ -1100,7 +1258,7 @@ export class GameUI {
   settings() {
     if(this.inPvp)return `${this.audioControls()}${this.informationLink()}<button class="small-button" data-command="resume">Zum Duellstatus zurück</button>`;
     const abilities=getClass(this.game.player.classId).abilities;
-    return `${this.audioControls()}${this.informationLink()}<div class="settings-row"><div><h3>Weniger Bewegung</h3><p>Reduziert Kamerabewegungen und Animationen in der Oberfläche.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="reducedMotion" ${this.game.settings?.reducedMotion?'checked':''}/>Aktiv</label></div><h3 class="section-title">Dein Spielstand</h3><p class="panel-note">Emberfall speichert deine Einzelspieler-Reise in diesem Browser und deine Gruppenreise auf dem Spielserver. Exportiere deinen Einzelspieler-Spielstand, um ihn zu sichern oder auf einem anderen Gerät weiterzuspielen.</p><div class="settings-actions"><button class="small-button" data-command="save">${icon('save')}Jetzt speichern</button><button class="small-button" data-command="export">Spielstand exportieren</button><button class="small-button" data-command="import">Spielstand laden</button><button class="small-button danger-button" data-panel="reset">Neue Reise</button></div><h3 class="section-title">Deine Hände, deine Fähigkeiten</h3><p class="panel-note">Auf dem Handy: Joystick für acht Richtungen ziehen, Angriff für automatische Wiederholung halten. Bewegung, Angriff und eine weitere Aktion funktionieren gleichzeitig. Angriffe zielen auf den nächsten sichtbaren Gegner.</p><div class="settings-controls"><div class="summary-stat"><span>Bewegen</span><strong>WASD / Pfeiltasten</strong></div><div class="summary-stat"><span>${escape(abilities.attack.name)} / Ausweichen</span><strong>J oder Klick / Leertaste</strong></div><div class="summary-stat"><span>${escape(abilities.nova.name)} / ${escape(abilities.bolt.name)} / Heiltrank</span><strong>F / Q / R</strong></div><div class="summary-stat"><span>Erlernte Zusatzfähigkeiten</span><strong>3 / 4 · Im Talentfenster belegen</strong></div><div class="summary-stat"><span>Sprechen, sammeln, pflanzen & ernten</span><strong>E</strong></div><div class="summary-stat"><span>Inventar / Talente / Handwerk / Questen</span><strong>I / T / B / L</strong></div><div class="summary-stat"><span>Weltkarte / Charakter / Gruppe</span><strong>M / C / P</strong></div><div class="summary-stat"><span>Informationen öffnen</span><strong>H</strong></div></div>`;
+    return `${this.audioControls()}${this.informationLink()}<div class="settings-row"><div><h3>Weniger Bewegung</h3><p>Reduziert Kamerabewegungen und Animationen in der Oberfläche.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="reducedMotion" ${this.game.settings?.reducedMotion?'checked':''}/>Aktiv</label></div><h3 class="section-title">Dein Spielstand</h3><p class="panel-note">${this.network?.account?'Dein angemeldeter Charakter wird auf dem Spielserver gespeichert und kann auf anderen Geräten mit demselben Konto fortgesetzt werden.':'Ohne Anmeldung bleibt deine lokale Reise in diesem Browser. Über ein Spielerkonto kannst du deinen Charakter auf anderen Geräten fortsetzen.'} <button type="button" class="text-button" data-command="account-open">Spielerkonto öffnen</button></p><div class="settings-actions"><button class="small-button" data-command="save">${icon('save')}Jetzt speichern</button><button class="small-button" data-command="export">Spielstand exportieren</button><button class="small-button" data-command="import">Spielstand laden</button><button class="small-button danger-button" data-panel="reset">Neue Reise</button></div><h3 class="section-title">Deine Hände, deine Fähigkeiten</h3><p class="panel-note">Auf dem Handy: Joystick für acht Richtungen ziehen, Angriff für automatische Wiederholung halten. Bewegung, Angriff und eine weitere Aktion funktionieren gleichzeitig. Angriffe zielen auf den nächsten sichtbaren Gegner.</p><div class="settings-controls"><div class="summary-stat"><span>Bewegen</span><strong>WASD / Pfeiltasten</strong></div><div class="summary-stat"><span>${escape(abilities.attack.name)} / Ausweichen</span><strong>J oder Klick / Leertaste</strong></div><div class="summary-stat"><span>${escape(abilities.nova.name)} / ${escape(abilities.bolt.name)} / Heiltrank</span><strong>F / Q / R</strong></div><div class="summary-stat"><span>Erlernte Zusatzfähigkeiten</span><strong>3 / 4 · Im Talentfenster belegen</strong></div><div class="summary-stat"><span>Sprechen, sammeln, pflanzen & ernten</span><strong>E</strong></div><div class="summary-stat"><span>Inventar / Talente / Handwerk / Questen</span><strong>I / T / B / L</strong></div><div class="summary-stat"><span>Weltkarte / Charakter / Gruppe</span><strong>M / C / P</strong></div><div class="summary-stat"><span>Informationen öffnen</span><strong>H</strong></div></div>`;
   }
 
   contractBoard() {
@@ -1180,6 +1338,7 @@ export class GameUI {
     if(name==='dismiss-notice'){this.noticeQueue?.dismiss();this.renderNotice();this.updateHudLayout(true);return;}
     if(name.startsWith('pvp-')){await this.pvpCommand(name,id);return;}
     if(this.inPvp&&name!=='resume'){this.showNotice('Kehre zuerst aus dem Duell zurück.','info');return;}
+    if(name.startsWith('account-')){await this.accountCommand(name,id);return;}
     if(['learnTechniqueSpecialization','selectTechniqueSpecialization','clear-technique'].includes(name)) {
       if(this.techniqueBusy)return;
       const method=this.game[name==='clear-technique'?'selectTechniqueSpecialization':name];if(typeof method!=='function')return;
@@ -1252,7 +1411,7 @@ export class GameUI {
   async networkCommand(name, id) {
     const network=this.network;
     if(!network) {this.showNotice('Die Gruppenverbindung wird vorbereitet. Öffne das Gruppenfenster erneut.','error');return;}
-    if(this.networkBusy)return;
+    if(this.networkBusy||this.accountBusy)return;
     if(name==='party-server-connect'){
       if(network.online||['connecting','reconnecting','online'].includes(network.status)){this.showNotice('Verlasse zuerst deine Gruppe, bevor du den Spielserver wechselst.','error');return;}
       const value=document.getElementById('party-server-address')?.value||'';this.networkBusy=true;this.updateParty();
@@ -1266,13 +1425,26 @@ export class GameUI {
       finally{this.networkBusy=false;this.updateParty();}return;
     }
     if(name==='party-refresh') {await this.refreshRooms();return;}
+    if(name==='party-copy-link') {
+      const feedback=document.getElementById('party-copy-feedback');
+      const url=typeof network.inviteUrl==='function'?network.inviteUrl(network.roomCode):null;
+      if(!url){if(feedback)feedback.textContent='Einladungslink nicht verfügbar. Nutze den Gruppencode.';return;}
+      let copied=false;
+      try {await navigator.clipboard.writeText(url);copied=true;}catch {}
+      const message=copied?'Einladungslink kopiert.':'Wähle den Einladungslink aus und kopiere ihn.';
+      const existing=document.getElementById('party-invite-link');
+      if(feedback&&(!existing||existing.value!==url))feedback.innerHTML=`<span id="party-copy-message">${message}</span><label class="field-label" for="party-invite-link">Einladungslink zum Kopieren</label><input id="party-invite-link" class="game-input" aria-label="Einladungslink zum Kopieren" readonly value="${escape(url)}"/>`;
+      else {const status=document.getElementById('party-copy-message');if(status)status.textContent=message;}
+      if(!copied){const input=document.getElementById('party-invite-link');input?.focus();input?.select();}
+      return;
+    }
     if(name==='party-copy-code') {
       try{await navigator.clipboard.writeText(network.roomCode || '');this.showNotice('Gruppencode kopiert.','success');}catch{this.showNotice(`Dein Gruppencode: ${network.roomCode || ''}`);}return;
     }
     const playerName=document.getElementById('party-player-name')?.value.trim() || this.game.player.name;
     const classId=document.getElementById('party-class')?.value || this.game.player.classId;
     const roomName=document.getElementById('party-room-name')?.value.trim() || 'Glutwacht';
-    const code=id || document.getElementById('party-join-code')?.value.trim();
+    const code=String(id || document.getElementById('party-join-code')?.value || '').trim().toUpperCase();
     this.networkBusy=true;this.updateParty();
     try {
       if(name==='party-create') await network.create({name:roomName,playerName,classId});

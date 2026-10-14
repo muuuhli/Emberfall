@@ -2,7 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Game } from './src/game.js';
+import { createServerGameFactory } from './server/game-factory.mjs';
 import { MultiplayerHub, createFileRoomStorage } from './server/multiplayer.mjs';
 
 const root=fileURLToPath(new URL('.',import.meta.url));
@@ -11,10 +11,12 @@ const sourceExtensions=new Set(['.js','.css','.json']);
 const assetExtensions=new Set(['.png','.webp','.svg','.ico','.json']);
 
 /** Starts one real cooperative server. Importing this module opens no ports. */
-export async function startServer({port=Number(process.env.PORT||4173),host=process.env.HOST||'127.0.0.1',storagePath=path.join(root,'.emberfall-server','rooms.json'),autoTick=true,allowedOrigin=null,health=false,strictStorage=false,maxRooms=32}={}) {
+export async function startServer({port=Number(process.env.PORT||4173),host=process.env.HOST||'127.0.0.1',storagePath=path.join(root,'.emberfall-server','rooms.json'),autoTick=true,allowedOrigin=null,health=false,strictStorage=false,maxRooms=32,accountOptions={}}={}) {
   if(!Number.isInteger(port)||port<0||port>65535)throw new RangeError('PORT muss eine gültige Portnummer sein.');
   const storage=storagePath?createFileRoomStorage(storagePath,{strictRead:strictStorage}):null;
-  const hub=new MultiplayerHub({createGame:()=>new Game({storage:null}),storage,autoStart:autoTick,allowedOrigin,maxRooms,strictRestore:strictStorage});
+  // A public guest-only HTTP installation must never accept passwords by default.
+  const effectiveAccountOptions=!['127.0.0.1','::1'].includes(host)?{...accountOptions,requireSecure:true,cookieSecure:true,...(!accountOptions.secureOrigin?{isSecure:()=>false}:{})}:accountOptions;
+  const hub=new MultiplayerHub({createGame:createServerGameFactory(),storage,autoStart:autoTick,allowedOrigin,maxRooms,strictRestore:strictStorage,accountOptions:effectiveAccountOptions});
   const server=http.createServer(async(req,res)=>{
     try {
       if(health&&req.url?.split('?')[0]==='/healthz'){

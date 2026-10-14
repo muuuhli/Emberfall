@@ -27,6 +27,7 @@ const syncKeys=()=>{game.keys.clear();if(blocked())return;for(const key of keybo
 const clearInput=()=>{keyboardKeys.clear();touchControls.clear();game.keys.clear();game.aim=null;attackRepeat=0;};
 ui.onInputReset=clearInput;
 network.onWorldChange=clearInput;
+network.refreshAccount().then(()=>{ui.syncWelcome();ui.update(true);});
 function performAction(action,autoAim=false) {
   if(blocked())return;
   if(game.worldMode==='pvp'&&!['attack','bolt','nova','dash'].includes(action))return;

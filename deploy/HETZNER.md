@@ -64,7 +64,10 @@ Volume und erhält höchstens acht Gruppenräume in der Standardkonfiguration.
 Das ist keine Zusage für eine bereits gemessene Internet-Spielerkapazität.
 Der Container ist standardmäßig auf 768 MiB RAM und eine halbe CPU begrenzt; Node
 erhält höchstens 384 MiB Heap. Die Containergrenzen stehen in der echten
-`.env.ip` als `EMBERFALL_MEMORY_LIMIT` und `EMBERFALL_CPU_LIMIT`. Vor einer
+`.env.ip` als `EMBERFALL_MEMORY_LIMIT`, `EMBERFALL_CPU_PERIOD` und
+`EMBERFALL_CPU_QUOTA`. Die V12-Konfiguration verwendet 25.000 Mikrosekunden
+Quota je 50.000 Mikrosekunden Periode: weiterhin eine halbe CPU, mit kürzeren
+Drosselpausen bei Anmeldungen. `cpus` nicht gleichzeitig setzen. Vor einer
 Erhöhung den Bedarf der bestehenden Gaming-Dienste erneut prüfen.
 
 Für den öffentlichen Betrieb gelten zehn neue Anmeldeversuche pro IP und Minute bei
@@ -93,8 +96,9 @@ auf Hetzner nicht.
 
 Das explizit benannte Volume `emberfall_data` bleibt bei wechselnden
 Release-Verzeichnissen gleich. Es enthält `/data/rooms.json` mit Gruppendaten
-und Wiederanmeldetokens. Einzelspieler-Spielstände bleiben im Browser des
-jeweiligen Spielers. Niemals `down -v`, `docker volume rm` oder eine pauschale
+und Wiederanmeldetokens. Lokale Gastreisen bleiben im Browser. Angemeldete
+Figuren, Passwortableitungen und Sitzungshashes liegen im selben privaten
+Serverspeicher. Niemals `down -v`, `docker volume rm` oder eine pauschale
 Docker-Bereinigung zum Aktualisieren verwenden.
 
 Vor einer Aktualisierung das laufende Spiel stoppen, damit SIGTERM die Gruppen
@@ -178,3 +182,74 @@ Eine Wiederherstellung zunächst mit separatem Test-Volume und anderem freien
 Port prüfen. Das Produktiv-Volume nicht mit einem ungeprüften Save überschreiben.
 Eine spätere Domain mit HTTPS ist über die bestehende `deploy/compose.yaml`
 möglich; den Wechsel und die übernommenen Volumes vorher ausdrücklich prüfen.
+
+## 5. Konten mit HTTPS direkt über die IP
+
+Passwörter dürfen am öffentlichen HTTP-Port nicht angenommen werden. Der
+zusätzliche Proxy aus `compose.account.yaml` bietet HTTPS auf einem freien
+Port, standardmäßig `9443`. `deploy/.env.account.example` ergänzt die private
+`.env.ip`; die IP, das tatsächliche private Emberfall-Netz und das vorhandene
+Proxy-Netz vor Ort prüfen. `EMBERFALL_PROXY_IP` ist eine freie feste Adresse
+im Spielnetz; `EMBERFALL_TRUSTED_PROXY_CIDR` vertraut genau dieser Adresse mit
+`/32`. Das Docker-Gateway und andere Container gehören nicht dazu.
+`EMBERFALL_TLS_CONFIG` kann auf eine öffentliche
+Konfigurationsdatei außerhalb wechselnder Release-Verzeichnisse zeigen.
+Compose löst relative Mounts vom Verzeichnis der ersten Compose-Datei aus auf.
+
+Der Proxy erhält mit Caddy 2.11.4 und `tls force_automate` ein öffentliches
+IP-Zertifikat von Let's Encrypt mit dem Profil `shortlived`. `default_sni`
+ermöglicht IP-Aufrufe von Clients ohne SNI. Die sechs Tage gültigen
+[IP-Zertifikate](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability)
+werden automatisch erneuert; beide TLS-Volumes müssen erhalten bleiben.
+Die Validierung und jede Erneuerung benötigen weiterhin Port 80.
+
+Wenn dort bereits ein anderer Proxy läuft, ausschließlich den Pfad
+`/.well-known/acme-challenge/*` für die gewählte IP an `emberfall-https:80`
+im gemeinsamen privaten Netz weitergeben. Vor der Änderung die bestehenden
+HTTP-Antworten erfassen, die Konfiguration privat sichern, `caddy validate`
+ausführen und die vorhandenen HTTPS-Routen auf Gleichheit prüfen. Eine
+benötigte bestehende HTTP-Weiterleitung exakt erhalten, anschließend prüfen
+und bei Abweichung zurückrollen. Einen einzelnen Docker-Dateimount durch
+Schreiben in dieselbe Datei erhalten; ein atomarer Dateiaustausch würde seinen
+gebundenen Inode zurücklassen. Den vorhandenen Proxy nur kontrolliert neu laden.
+
+Beide Vorlagen für das bereits geprüfte Release verwenden:
+
+```sh
+ef() {
+  docker compose --project-name emberfall \
+    --env-file /srv/emberfall/.env.ip \
+    -f "$EMBERFALL_SOURCE/deploy/compose.ip.yaml" \
+    -f "$EMBERFALL_SOURCE/deploy/compose.account.yaml" "$@"
+}
+ef config
+ef up -d --no-build --wait emberfall emberfall-https
+curl --fail --silent --show-error https://<SERVER-IP>:9443/healthz
+```
+
+Nur den zusätzlichen Emberfall-TCP-Port freigeben. Browser und curl müssen
+das Zertifikat ohne Sicherheitsausnahme akzeptieren. Die direkten HTTP-Aufrufe
+geben für Konten `requiresHTTPS` und den sicheren Ursprung zurück; Anmeldung
+und Registrierung antworten dort mit 426. Ein gefälschtes
+`X-Forwarded-Proto` von öffentlichen Clients reicht nicht aus: akzeptiert wird
+nur HTTPS mit dem exakt konfigurierten Host und dem angegebenen privaten
+Proxy. Sitzungscookies sind Secure, HttpOnly, SameSite=Strict und auf
+`/api/account` begrenzt. Jeder verbundene Tab bindet seine Befehle zusätzlich
+an seine persönliche Figurenkennung.
+
+Kontoaufnahme: zunächst 32 Konten auf diesem kleinen Server, konfigurierbar
+mit `EMBERFALL_MAX_ACCOUNTS` zwischen 1 und 128. Ein niedrigeres Aufnahmelimit
+entfernt keine bestehenden Figuren. Ausgebautes Gepäck und Lager vergrößern
+die Speicher-Spitzen der atomaren JSON-Sicherung; 128 ausgewachsene Konten
+wurden nicht als Betriebskapazität freigegeben. Acht Sitzungen pro Konto und
+vier gleichzeitige Ereignisverbindungen pro Figur. Die acht aktiven Welten
+umfassen nun auch persönliche Serverwelten. Ruhende Kontowelten simulieren
+nicht. Registrierung ist auf zehn Versuche je IP und Stunde begrenzt; Login
+auf zwanzig Versuche je IP sowie zwölf je Spielername in fünfzehn Minuten.
+Die Passwortableitung verwendet asynchrones scrypt N32768/r8/p3 mit höchstens
+zwei parallelen Jobs. Die [Leistungsprüfung](../docs/hosting-performance-v12.md)
+belegt nur ihre ausdrücklich gemessenen Szenarien.
+
+Ein Rollback auf V11 muss die private Sicherung vor Einführung der Konten
+verwenden: V11 erkennt die optionalen Konto-Metadaten nicht und würde sie beim
+Speichern verlieren. Laufende Konten niemals mit einem alten Server öffnen.

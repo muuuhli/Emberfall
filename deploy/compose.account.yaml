@@ -1,0 +1,41 @@
+services:
+  emberfall:
+    environment:
+      EMBERFALL_AUTH_REQUIRE_HTTPS: "1"
+      EMBERFALL_AUTH_COOKIE_SECURE: "1"
+      EMBERFALL_MAX_ACCOUNTS: ${EMBERFALL_MAX_ACCOUNTS:-32}
+      EMBERFALL_SECURE_ORIGIN: https://${EMBERFALL_IP:?Set the server IP}:${EMBERFALL_TLS_PORT:-9443}
+      EMBERFALL_TRUSTED_PROXY_CIDR: ${EMBERFALL_TRUSTED_PROXY_CIDR:?Set the private game network CIDR}
+  emberfall-https:
+    image: caddy:2.11.4-alpine
+    restart: unless-stopped
+    mem_limit: 128m
+    cpus: 0.25
+    environment:
+      EMBERFALL_IP: ${EMBERFALL_IP:?Set the server IP}
+      EMBERFALL_TLS_PORT: ${EMBERFALL_TLS_PORT:-9443}
+      EMBERFALL_ACME_CA: ${EMBERFALL_ACME_CA:-https://acme-v02.api.letsencrypt.org/directory}
+    ports:
+      - "${EMBERFALL_TLS_PORT:-9443}:${EMBERFALL_TLS_PORT:-9443}"
+    volumes:
+      - ${EMBERFALL_TLS_CONFIG:-./Caddyfile.account}:/etc/caddy/Caddyfile:ro
+      - emberfall_tls_data:/data
+      - emberfall_tls_config:/config
+    networks:
+      default:
+        ipv4_address: ${EMBERFALL_PROXY_IP:?Set a free private IP in the game network}
+      gaming_challenge: {}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  gaming_challenge:
+    external: true
+    name: ${EMBERFALL_CHALLENGE_NETWORK:?Set the existing HTTP proxy network}
+volumes:
+  emberfall_tls_data:
+    name: emberfall_tls_data
+  emberfall_tls_config:
+    name: emberfall_tls_config

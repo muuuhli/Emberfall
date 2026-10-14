@@ -399,7 +399,7 @@
       "sha256": "e35bd4769065bcf0fd5e8ade49e90af37779001a3d1d2eb6c92b1ad2ed26264d"
     }
   ],
-  "version": "11.0.0",
+  "version": "12.0.0",
   "updated": "2026-10-14",
   "developmentStatus": {
     "releaseState": "playable development build",
@@ -441,7 +441,12 @@
       "dungeonRouteStages": 2,
       "choicesPerDungeonStage": 3,
       "snapshotDeltaTransport": true,
-      "dedicatedServerPackage": true
+      "dedicatedServerPackage": true,
+      "playerAccounts": true,
+      "crossDeviceCharacterProgress": true,
+      "canonicalAccountCharacter": true,
+      "groupInvitationLinks": true,
+      "ipHttpsAccountDeployment": true
     },
     "campaignHoursTarget": 200,
     "fullCampaignHoursVerified": 0,

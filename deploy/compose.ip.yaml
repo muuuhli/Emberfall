@@ -8,7 +8,8 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     mem_limit: ${EMBERFALL_MEMORY_LIMIT:-768m}
-    cpus: ${EMBERFALL_CPU_LIMIT:-0.5}
+    cpu_period: ${EMBERFALL_CPU_PERIOD:-50000}
+    cpu_quota: ${EMBERFALL_CPU_QUOTA:-25000}
     environment:
       NODE_OPTIONS: --max-old-space-size=384
       HOST: 0.0.0.0
