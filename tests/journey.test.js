@@ -15,6 +15,8 @@ import { createJourneyState, validateJourneyState, restoreJourneyState, advanceJ
 
 const clone=value=>JSON.parse(JSON.stringify(value));
 const regions=[...STARTING_REGIONS,...EXPANSION_REGIONS];
+const originalAchievementIds=['first_horizons','names_remembered','unbroken_chain','gravebreaker','many_paths','artisan','sealed_promises','depthwalker','black_oaths','faction_friend','three_oaths','shared_torch','last_horizon','echo_librarian','champion_road','worlds_oath'];
+const originalCompanionIds=['cinder_moth','ossuary_hound','root_wisp','rime_lynx','gloam_raven','tide_lantern','iron_beetle','moon_eidolon','blood_weasel','abyss_sentinel'];
 const fresh=(level=100)=>({journey:createJourneyState(),player:{level,hp:100,gold:1000,skillPoints:10},world:{interactions:[]},inCombat:()=>false});
 const emit=(game,kind,target,context={})=>advanceJourney(game,kind,target,1,context);
 function variedJourney(game=fresh()) {
@@ -67,8 +69,9 @@ test('six faction batch recipes require actual reputation and output useful exis
   assert.equal(canCraftJourneyRecipe(fresh(),{...JOURNEY_RECIPES[0],factionRank:0,factionId:null}).ok,false,'Gate data comes from the canonical definition.');
 });
 
-test('sixteen curated achievement rewards need all objectives and are claimed exactly once',()=>{
-  assert.equal(ACHIEVEMENTS.length,16);const game=fresh();
+test('sixteen original achievement rewards and four new chronicles need all objectives and are claimed exactly once',()=>{
+  assert.equal(originalAchievementIds.length,16);assert.deepEqual(ACHIEVEMENTS.slice(0,16).map(a=>a.id),originalAchievementIds);
+  assert.deepEqual(ACHIEVEMENTS.slice(16).map(a=>a.id),['named_hunt_chronicle','expedition_chronicle','trial_chronicle','expanded_world_oath']);assert.equal(ACHIEVEMENTS.length,16+4);const game=fresh();
   emit(game,'explore','daemmerhain');emit(game,'explore','frostgrat');assert.equal(canClaimAchievement(game,'first_horizons').ok,false);
   const update=emit(game,'explore','aschenmoor');assert.ok(update.readyAchievements.includes('first_horizons'));
   assert.deepEqual(claimJourneyAchievement(game,'first_horizons'),{gold:80,resources:{herb:4}});assert.equal(claimJourneyAchievement(game,'first_horizons'),null);
@@ -89,12 +92,14 @@ test('cooperative milestones require shared clears and a real distinct revived t
 });
 
 test('companions are earned from varied milestones and level gates, and only one can supply stats',()=>{
-  assert.equal(COMPANIONS.length,10);const game=fresh(3);
+  assert.equal(originalCompanionIds.length,10);assert.deepEqual(COMPANIONS.slice(0,10).map(c=>c.id),originalCompanionIds);
+  assert.deepEqual(COMPANIONS.slice(10).map(c=>c.id),['whitehorn_fawn','hourglass_moth']);assert.equal(COMPANIONS.length,10+2);const game=fresh(3);
   for(const region of regions.slice(0,2))emit(game,'explore',region.id);emit(game,'interact','encounter-daemmerhain-lore');
   assert.deepEqual(game.journey.ownedCompanions,[]);assert.equal(selectJourneyCompanion(game,'cinder_moth'),false);
   game.player.level=4;const levelup=emit(game,'level',4);assert.deepEqual(levelup.unlockedCompanions,['cinder_moth']);assert.equal(selectJourneyCompanion(game,'cinder_moth'),true);
   assert.deepEqual(getCompanionModifiers(game),{mana:6,manaRegen:.2});assert.equal(getCompanionCombatProfile(game).damageMultiplier,0);
-  const completed=variedJourney();assert.equal(completed.journey.ownedCompanions.length,10);
+  const completed=variedJourney();assert.equal(completed.journey.ownedCompanions.length,12);
+  assert.deepEqual(completed.journey.ownedCompanions.filter(id=>originalCompanionIds.includes(id)).sort(),[...originalCompanionIds].sort());
   for(const companion of COMPANIONS){assert.equal(selectJourneyCompanion(completed,companion.id),true);assert.equal(completed.journey.activeCompanion,companion.id);assert.deepEqual(getCompanionModifiers(completed),companion.stats);}
   completed.inCombat=()=>true;assert.equal(canSelectCompanion(completed,null).ok,false);completed.inCombat=()=>false;
   assert.equal(selectJourneyCompanion(completed,null),true);assert.deepEqual(getCompanionModifiers(completed),{});assert.equal(getCompanionCombatProfile(completed),null);
@@ -105,7 +110,7 @@ test('combat companions have distinct bounded roles and cannot add unowned or in
   for(const companion of COMPANIONS) {selectJourneyCompanion(game,companion.id);const profile=getCompanionCombatProfile(game);roles.add(companion.role);assert.equal(profile.companion,true);assert.equal(profile.visualType,companion.id);
     assert.ok(profile.damageMultiplier>=0&&profile.damageMultiplier<=.07);assert.ok(profile.attackCooldown>=2.1);assert.ok(profile.maximumDamage<=80);assert.ok(companion.stats.armor===undefined||companion.stats.armor<=1.5);
   }
-  assert.equal(roles.size,10);game.journey.ownedCompanions=[];assert.deepEqual(getCompanionModifiers(game),{});assert.equal(getCompanionCombatProfile(game),null);
+  assert.equal(roles.size,COMPANIONS.length);game.journey.ownedCompanions=[];assert.deepEqual(getCompanionModifiers(game),{});assert.equal(getCompanionCombatProfile(game),null);
 });
 
 test('mastery is a genuine paid choice that grows through level, reputation and dungeon variety',()=>{

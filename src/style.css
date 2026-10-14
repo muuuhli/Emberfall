@@ -186,6 +186,7 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 
 /* One status rail owns transient messages; no independent toast offsets. */
 .hud-status-rail,.hud-status-toolbar{display:contents}
+.hud-heading{display:contents}
 .encounter-pressure{position:absolute;top:75px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;border:1px solid #bd754e;background:#251119eb;padding:8px 12px;color:#edbd92;max-width:250px;font-size:11px}
 .encounter-pressure>svg{width:18px;height:18px}.encounter-pressure strong{display:block;font:19px/1.1 var(--serif)}.encounter-pressure small{display:block;font-size:10px;margin-top:4px;color:#d7ab96}.encounter-pressure[data-tier=relentless]{border-color:#d67578;color:#f2a4aa;background:#361019ee}.encounter-pressure[data-stage=warning]{border-style:dashed}
 .notice-stack{pointer-events:none}.notice{display:flex;align-items:center;gap:8px;max-width:100%;padding:0 0 0 13px;text-align:left;animation:none;background:#1e1119f5;border-color:#a47955;box-shadow:0 3px 12px #0005;min-height:44px}.notice-text{min-width:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;line-height:1.5}.notice-dismiss{flex:0 0 44px;align-self:stretch;min-height:44px;border:0;border-left:1px solid #8d654844;background:transparent;font-size:21px;color:#e4c8b1;pointer-events:auto}.notice.error{border-color:#d09375;color:#ffdac1}.notice.danger{border-color:#de777b;color:#ffb7b9;background:#33111ceF}.notice.milestone{border-color:#bc9866;color:#f2d3aa}
@@ -198,11 +199,12 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
   .hud-status-toolbar .exploration-pill.waypoint-active{display:flex}.hud-status-toolbar .exploration-pill>svg{width:14px;height:14px}.hud-status-toolbar .exploration-pill>span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
   .hud-status-toolbar .quest-tracker,.hud-status-toolbar .quest-tracker.tracker-expanded{display:block;position:static;width:44px;max-height:44px;flex:0 0 44px;padding:0;margin-left:auto;overflow:hidden;border:1px solid #98734e;background:#21111aea}
   .hud-status-toolbar .quest-tracker .tracker-heading{min-height:44px;height:44px;padding:0;margin:0}.hud-status-toolbar .tracker-toggle{padding:0!important;justify-content:center!important;min-height:44px;width:44px}.hud-status-toolbar .tracker-toggle>span,.hud-status-toolbar #quest-tracker{display:none!important}.hud-status-toolbar .tracker-toggle svg{width:19px;height:19px;transform:none}.hud-status-toolbar .tracker-heading>span,.hud-status-toolbar .tracker-heading>button:not(.tracker-toggle){display:none}
+  .hud-status-toolbar .quest-tracker,.hud-status-toolbar .quest-tracker.tracker-expanded{border:0;box-shadow:inset 0 0 0 1px #98734e}.hud-status-toolbar .tracker-toggle{width:44px!important;min-width:44px}
   .hud-status-toolbar .encounter-pressure{position:static;transform:none;flex:0 1 100px;min-width:0;max-width:100px;height:44px;gap:5px;padding:5px 6px}.encounter-pressure>svg{width:14px;height:14px}.encounter-pressure>div{min-width:0}.encounter-pressure strong{font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.encounter-pressure small{font-size:9px;white-space:nowrap;margin-top:3px}
   .hud-status-rail .notice-stack{position:static;transform:none;left:auto;top:auto;bottom:auto;right:auto;width:100%;max-width:none;align-items:stretch;margin:0}.hud-status-rail .notice{font-size:11px;width:100%;max-width:none;min-height:44px}.hud-status-rail .notice-text{-webkit-line-clamp:2}
   .interact-prompt,.waypoint-active~.interact-prompt{top:auto;bottom:var(--hud-controls-clearance,208px);left:50%;transform:translateX(-50%);max-width:calc(100% - 28px);max-height:44px;font-size:11px;padding:8px 10px}.interact-prompt>span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;line-height:1.4}.hud-crowded .interact-prompt{display:none}.world-effects,.party-hud{display:none}
   .panel-notice-slot{margin-inline:16px}.panel-notice-slot .notice-text{-webkit-line-clamp:2}.panel-notice-slot .notice{font-size:12px}.notice-history li>p{font-size:13px}
-  .pvp-live-notice{right:14px;top:var(--pvp-notice-top,160px);max-width:44%;width:44%}.pvp-live-notice .notice{font-size:10px}.pvp-live-notice .notice-text{-webkit-line-clamp:3}.pvp-live-notice .notice-dismiss{flex-basis:30px;font-size:19px}.pvp-countdown{top:var(--pvp-countdown-top,220px);transform:translateX(-50%)}.pvp-countdown .notice,.pvp-result-card .notice{font-size:11px;text-align:left}.pvp-result-card{max-height:100%;padding-top:20px;padding-bottom:20px}
+  .pvp-live-notice{right:14px;top:var(--pvp-notice-top,160px);max-width:44%;width:44%}.pvp-live-notice .notice{font-size:10px;padding-left:8px;gap:4px}.pvp-live-notice .notice-text{-webkit-line-clamp:3}.pvp-live-notice .notice-dismiss{flex-basis:44px;font-size:19px}.pvp-countdown{top:var(--pvp-countdown-top,220px);transform:translateX(-50%)}.pvp-countdown .notice,.pvp-result-card .notice{font-size:11px;text-align:left}.pvp-result-card{max-height:100%;padding-top:20px;padding-bottom:20px}
 }
 @media(max-height:650px) and (max-width:600px){
   .player-vitals{top:49px;width:157px}.vitals-info{grid-template-columns:repeat(2,44px);gap:0 9px}.vital-bar{width:44px;height:44px!important}.vital-bar>div{clip-path:circle(20px at 50% calc(100% - 20px))}.vital-bar span,.mana span{font-size:6px}.vitals-name strong{font-size:16px}.portrait{width:26px;height:30px;margin-top:25px}.vitals-name{margin-bottom:5px}.minimap-wrap{width:65px}.minimap-button{width:65px;height:65px}.world-time{display:none}.pvp-mode .player-vitals{top:116px}.pvp-countdown{padding:12px}.pvp-countdown>strong{font-size:55px;margin:3px 0}.pvp-countdown>p{display:none}.pvp-countdown>span{font-size:11px}.pvp-result-card>svg{display:none}.pvp-result-card>h3{font-size:29px}.pvp-result-card>p{font-size:12px;margin:13px 0}.pvp-result-card>.eyebrow{font-size:8px}
@@ -230,6 +232,35 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
   .hud-status-rail{top:var(--hud-rail-top,165px);left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));transform:none;width:auto;align-items:stretch}
   .hud-status-toolbar{display:flex}
   .hud-status-rail .notice-stack{width:100%}
+}
+
+/* Short portrait screens reserve the sprite's space with one measured head row. */
+@media(max-height:650px) and (max-width:600px) and (orientation:portrait){
+  body:not(.pvp-mode) .hud-heading{position:absolute;left:max(12px,env(safe-area-inset-left));right:max(12px,env(safe-area-inset-right));top:0;height:44px;display:grid;grid-template-columns:minmax(0,1fr) 94px 44px 44px;gap:6px;align-items:center}
+  body:not(.pvp-mode) .hud-heading .region-label{position:static;max-width:none;min-width:0;gap:0;display:block;grid-column:1;grid-row:1}
+  body:not(.pvp-mode) .hud-heading .region-rule,body:not(.pvp-mode) .hud-heading .region-label p{display:none}
+  body:not(.pvp-mode) .hud-heading .region-label h1{font-size:18px;line-height:1.2}
+  body:not(.pvp-mode) .hud-heading .player-vitals{position:static;width:94px;height:44px;min-width:0;gap:0;grid-column:2;grid-row:1}
+  body:not(.pvp-mode) .hud-heading .portrait,body:not(.pvp-mode) .hud-heading .vitals-name,body:not(.pvp-mode) .hud-heading .orb-label{display:none}
+  body:not(.pvp-mode) .hud-heading .vitals-info{grid-template-columns:repeat(2,44px);gap:0 6px;height:44px}
+  body:not(.pvp-mode) .hud-heading .vital-bar{width:44px;height:44px!important;margin:0}
+  body:not(.pvp-mode) .hud-heading .vital-bar span{font-size:7px}
+  body:not(.pvp-mode) .hud-heading .hp-shield{left:0;bottom:1px;width:44px;height:10px;line-height:9px;padding:0;font-size:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+  body:not(.pvp-mode) .hud-heading .quick-tools{position:static;width:44px;height:44px;grid-column:3;grid-row:1;gap:0}
+  body:not(.pvp-mode) .hud-heading .gold-counter{display:none}
+  body:not(.pvp-mode) .hud-heading .quick-tools .icon-button{width:44px;height:44px}
+  body:not(.pvp-mode) .hud-heading .minimap-wrap{position:static;width:44px;height:44px;grid-column:4;grid-row:1}
+  body:not(.pvp-mode) .hud-heading .minimap-button{width:44px;height:44px;padding:2px}
+  body:not(.pvp-mode) .hud-heading .minimap-north,body:not(.pvp-mode) .hud-heading .world-time{display:none}
+  body:not(.pvp-mode) .hud-status-rail{gap:0}
+  body:not(.pvp-mode) .hud-status-rail .notice{height:44px;min-height:44px;border:0;box-shadow:inset 0 0 0 1px currentColor,0 3px 12px #0005}
+  .pvp-mode .hud-heading .player-vitals{width:94px;height:44px;gap:0}
+  .pvp-mode .hud-heading .vitals-info{grid-template-columns:repeat(2,44px);gap:0 6px;height:44px}
+  .pvp-mode .hud-heading .portrait,.pvp-mode .hud-heading .vitals-name,.pvp-mode .hud-heading .orb-label{display:none}
+}
+@media(max-height:500px) and (min-width:601px) and (orientation:landscape){
+  body:not(.pvp-mode) .hud-status-rail{top:var(--hud-rail-top,0px);left:var(--hud-landscape-left,200px);right:var(--hud-landscape-right,95px);gap:0}
+  body:not(.pvp-mode) .hud-status-rail .notice{height:44px;min-height:44px;border:0;box-shadow:inset 0 0 0 1px currentColor,0 3px 12px #0005}
 }
 
 /* The journal stays bounded as regional stories and side chains grow. */

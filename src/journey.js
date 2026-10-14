@@ -49,6 +49,10 @@ export const JOURNEY_MASTERIES=Object.freeze([
 ]);
 
 const requirement=(kind,count,options={})=>({kind,count,...options});
+const namedHuntEvents=Object.freeze(['event-sivra','event-irdan','event-orsa','event-vey','event-nera','event-asterion']);
+const newExpeditionEvents=Object.freeze(['expedition-weisshorn','expedition-schilfzug','expedition-zeitbruch','expedition-namenlos']);
+const trialEvents=Object.freeze(['trial-cinderwatch','trial-tidecircle','trial-last-scar']);
+const expandedActivities=Object.freeze([...namedHuntEvents,...newExpeditionEvents,...trialEvents]);
 const companionStories={
   cinder_moth:'Eine letzte Glut wohnt in ihren durchscheinenden Flügeln. Sie folgt denen, die in alten Chroniken noch Namen finden.',
   ossuary_hound:'Unter seinen bleichen Rippen schlägt kein Herz mehr. Befreite Reisende erkennen trotzdem den Hund, der einst ihre Wagen bewachte.',
@@ -60,6 +64,8 @@ const companionStories={
   moon_eidolon:'Ein kleiner Geist aus der Stunde, die dem Mondbruch fehlt. Er lauscht auf den Takt deiner Schritte zwischen zwei verlorenen Sekunden.',
   blood_weasel:'Der Trauermarder trägt rote Bänder aus verlassenen Rettungswagen. Er begleitet jene, die trotz der Nacht noch Menschen nach Hause bringen.',
   abyss_sentinel:'Ein Wächter aus dem kalten Licht hinter dem Riss. Er erkennt den Eid derer, die mit anderen zurückkehrten, und hält die letzte Wache.',
+  whitehorn_fawn:'Das Weißhorn-Kitz trägt den letzten warmen Atem eines verschütteten Dorfs in seinem hellen Fell. Wer Sivras Wiege löst und den Zeugen heimführt, gewinnt sein Vertrauen.',
+  hourglass_moth:'In den Flügeln des Stundenfalters rinnt silberner Sand aus einem ungelebten Morgen. Erst wer Veys verlorene Stunde und den gebrochenen Wachweg bewahrt, hört seinen leisen Takt.',
 };
 const companion=(id,name,role,silhouette,color,minLevel,stats,requirements,combat=null)=>Object.freeze({id,name,role,silhouette,color,minLevel,stats,requirements,combat,
   description:`${companionStories[id]} ${combat?'Unterstützt dich mit seltenen, begrenzten Angriffen.':'Begleitet dich mit einem kleinen passiven Segen.'} Nur ein Reisegefährte kann aktiv sein.`});
@@ -74,6 +80,8 @@ export const COMPANIONS=Object.freeze([
   companion('moon_eidolon','Mondsplittergeist','Zeitflüsterer','eidolon','#b6a1cd',60,{cooldown:.01,manaRegen:.3},[requirement('explored',1,{targets:['mondbruch']}),requirement('dungeons',1,{targets:['uhrwerk']}),requirement('lore',6),requirement('faction',200,{factionId:'archivists'})],{stat:'spellDamage',damageMultiplier:.055,attackCooldown:2.5,range:330,ranged:true,maximumDamage:80}),
   companion('blood_weasel','Trauermarder','Beharrlicher Jäger','weasel','#b2908e',70,{lifeSteal:.004,crit:.007},[requirement('rescued',8),requirement('bosses',12)],{stat:'damage',damageMultiplier:.07,attackCooldown:2.3,range:260,ranged:false,maximumDamage:80}),
   companion('abyss_sentinel','Risshüter','Letzte Wache','sentinel','#a49bbe',90,{armor:1.5,maxHp:24},[requirement('coopDungeons',2),requirement('dungeons',5),requirement('explored',12),requirement('events',12),requirement('faction',400,{factionId:'archivists'})],{stat:'spellDamage',damageMultiplier:.06,attackCooldown:2.7,range:380,ranged:true,maximumDamage:80}),
+  companion('whitehorn_fawn','Weißhorn-Kitz','Frostsegen','fawn','#c3ccd0',8,{maxHp:12,speed:1},[requirement('events',2,{targets:['event-sivra','expedition-weisshorn']})]),
+  companion('hourglass_moth','Stundenfalter','Stundensegen','moth','#bca4cd',54,{mana:10,spellDamage:2},[requirement('events',2,{targets:['event-vey','expedition-zeitbruch']})]),
 ]);
 
 const achievement=(id,name,description,requirements,reward,minLevel=1)=>Object.freeze({id,name,description,requirements,reward,minLevel,icon:'★'});
@@ -94,6 +102,10 @@ export const ACHIEVEMENTS=Object.freeze([
   achievement('echo_librarian','Archivar der verlorenen Welt','Lies alle sechzehn Chroniken und beende fünf unterschiedliche Dungeons.',[requirement('lore',16),requirement('dungeons',5)],{resources:{sapphire:1,dust:24}},60),
   achievement('champion_road','Der Weg der Champions','Besiege 24 verschiedene Bossmächte und erfülle Verträge in acht Regionen.',[requirement('bosses',24),requirement('contracts',8)],{gold:500,resources:{emerald:1}},70),
   achievement('worlds_oath','Acht Tore, ein Eid','Beende alle acht Dungeons und drei unterschiedliche Dungeons gemeinsam.',[requirement('dungeons',8),requirement('coopDungeons',3)],{skillPoints:3,resources:{raidSigil:2}},95),
+  achievement('named_hunt_chronicle','Sechs Namen im Nachtbuch','Beende die Jagden auf Sivra, Irdan, Orsa, Vey, Nera und Asterion. Jede dieser sechs Begegnungen zählt einmal.',[requirement('events',6,{targets:namedHuntEvents})],{gold:100,resources:{dust:4}},100),
+  achievement('expedition_chronicle','Vier unbeendete Wege','Beende Weißhorns Atem, den Schilfzug, Veys ungelebten Morgen und das Wachlicht der Unbenannten.',[requirement('events',4,{targets:newExpeditionEvents})],{gold:90,resources:{dust:4}},78),
+  achievement('trial_chronicle','Drei letzte Wachten','Beende die Wacht der Löschasche, den Kreis der versunkenen Glocke und die Prüfung der letzten Narbe.',[requirement('events',3,{targets:trialEvents})],{gold:120,resources:{crystal:3}},98),
+  achievement('expanded_world_oath','Dreizehn bewahrte Eide','Beende alle sechs benannten Jagden, vier neuen Expeditionen und drei Wellenprüfungen. Wiederholungen ersetzen keinen fehlenden Weg.',[requirement('events',13,{targets:expandedActivities})],{gold:150,skillPoints:1,resources:{dust:6,crystal:2}},100),
 ]);
 
 export function createJourneyState() {

@@ -10,7 +10,7 @@ import { createBestiaryEnemy, bestiaryCombatStats, BESTIARY_ENEMIES } from '../s
 import { WORLD_EVENT_DEFINITIONS, EXPEDITIONS, WORLD_EVENT_ENEMIES } from '../src/world-events.js';
 import { SIDE_STORY_CHAINS } from '../src/side-stories.js';
 import { getContractOffers } from '../src/contracts.js';
-import { advanceJourney, validateJourneyState } from '../src/journey.js';
+import { advanceJourney, validateJourneyState, ACHIEVEMENTS, getAchievementProgress } from '../src/journey.js';
 import { EXPEDITION_CONTENT } from '../src/expedition-content.js';
 import { TRIALS } from '../src/trial-content.js';
 
@@ -123,6 +123,17 @@ async function killEventActors(f,event){
     assert.equal((await f.action(f.first,'attack')).data.accepted,true);assert.equal(actor.alive,false);
   }
   Object.assign(game.player,{x:event.x,y:event.y});f.step(.08);return actors.length;
+}
+async function completeTrial(f,definition){
+  const game=f.game(f.first),event=await startTrial(f,definition.id);
+  for(let index=0;index<definition.waves.length;index++){
+    f.step(6.04);assert.ok(eventActors(game,event).length);await killEventActors(f,event);
+    if(index<definition.waves.length-1){
+      assert.equal(event.phase,'intermission');const rest=game.world.eventObjects.find(object=>object.eventId===event.id&&object.role==='choice'&&object.choice==='rest'&&!object.hidden);assert.ok(rest);
+      Object.assign(game.player,{x:rest.x,y:rest.y});assert.equal((await f.method(f.first,'interactWorldEvent',rest.id)).data.accepted,true);
+    }
+  }
+  assert.equal(event.state,'success');return event;
 }
 async function fulfillObjective(f,quest,index){
   const game=f.game(f.first),objective=quest.objectives[index];if(game.questState[quest.id].counts[index]>=objective.count)return;
@@ -389,5 +400,34 @@ test('a legacy thirty-activity HTTP room retains canonical layout and paid histo
     const forged=await f.post(`/api/session/${f.first.token}/command`,{type:'method',name:'claimWorldEvent',args:[interrupted.id],waveIndex:99,state:'success',bonus:99});assert.equal(forged.status,400);await f.restart();
     restored=f.game(f.first);const failed=restored.world.worldEvents.find(value=>value.id===interrupted.id);assert.equal(failed.state,'failure');assert.ok(failed.readyAt>restored.time);assert.equal(eventActors(restored,failed).length,0);assert.deepEqual(purse(restored),interruptedPurse);
     Object.assign(restored.player,{x:failed.x,y:failed.y});assert.equal((await f.method(f.first,'claimWorldEvent',failed.id)).data.accepted,false);assert.equal((await f.method(f.first,'interactWorldEvent',`${failed.id}:start`)).data.accepted,false);assert.equal(restored.journey.records.events.includes(failed.id),false);
+  }finally{await f.close();}
+});
+
+test('native HTTP completions earn both new passive companions and four exact-set achievements without client-authored progress or replay rewards',async()=>{
+  const f=await fixture();try {
+    const game=f.game(f.first),ids=['named_hunt_chronicle','expedition_chronicle','trial_chronicle','expanded_world_oath'];establishLegacyProgress(game);
+    for(const id of ids)assert.equal((await f.method(f.first,'claimAchievement',id)).data.accepted,false);
+    for(const id of ['whitehorn_fawn','hourglass_moth','forged_pet'])assert.equal((await f.method(f.first,'selectCompanion',id)).data.accepted,false);
+    const forged=await f.post(`/api/session/${f.first.token}/command`,{type:'method',name:'claimAchievement',args:[ids.at(-1)],records:{events:[...namedBossEvents(),...EXPEDITION_CONTENT,...TRIALS].map(value=>value.id)},reward:{gold:999999,skillPoints:99}});assert.equal(forged.status,400);
+    assert.equal((await f.method(f.first,'selectCompanion','whitehorn_fawn',999)).status,400);assert.equal((await f.method(f.first,'event','world_event','event-sivra')).status,400);
+    await completeWorldEvent(f,'event-sivra');assert.equal(game.journey.ownedCompanions.includes('whitehorn_fawn'),false);
+    await completeWorldEvent(f,'expedition-weisshorn');assert.ok(game.journey.ownedCompanions.includes('whitehorn_fawn'));
+    const baseline=game.stats();assert.equal((await f.method(f.first,'selectCompanion','whitehorn_fawn')).data.accepted,true);assert.equal(game.stats().maxHp,baseline.maxHp+12);assert.equal(game.stats().speed,baseline.speed+1);
+    await completeWorldEvent(f,'event-vey');assert.equal(game.journey.ownedCompanions.includes('hourglass_moth'),false);
+    await completeWorldEvent(f,'expedition-zeitbruch');assert.ok(game.journey.ownedCompanions.includes('hourglass_moth'));
+    assert.equal((await f.method(f.first,'selectCompanion','hourglass_moth')).data.accepted,true);assert.equal(game.stats().maxHp,baseline.maxHp);assert.equal(game.stats().speed,baseline.speed);assert.equal(game.stats().mana,baseline.mana+10);assert.equal(game.stats().spellDamage,baseline.spellDamage+2);
+    const completed=new Set(['event-sivra','expedition-weisshorn','event-vey','expedition-zeitbruch']);
+    for(const definition of [...namedBossEvents(),...EXPEDITION_CONTENT])if(!completed.has(definition.id))await completeWorldEvent(f,definition.id);
+    assert.equal(getAchievementProgress(game,'named_hunt_chronicle').complete,true);assert.equal(getAchievementProgress(game,'expedition_chronicle').complete,true);assert.equal(getAchievementProgress(game,'trial_chronicle').complete,false);assert.equal(getAchievementProgress(game,'expanded_world_oath').complete,false);
+    for(const definition of TRIALS)await completeTrial(f,definition);
+    for(const id of ids){
+      assert.equal(getAchievementProgress(game,id).complete,true);const reward=ACHIEVEMENTS.find(value=>value.id===id).reward,before={gold:game.player.gold,skillPoints:game.player.skillPoints,dust:game.resources.dust,crystal:game.resources.crystal};
+      assert.equal((await f.method(f.first,'claimAchievement',id)).data.accepted,true);assert.equal(game.player.gold,before.gold+(reward.gold||0));assert.equal(game.player.skillPoints,before.skillPoints+(reward.skillPoints||0));assert.equal(game.resources.dust,before.dust+(reward.resources?.dust||0));assert.equal(game.resources.crystal,before.crystal+(reward.resources?.crystal||0));
+      const paid={gold:game.player.gold,skillPoints:game.player.skillPoints,dust:game.resources.dust,crystal:game.resources.crystal};assert.equal((await f.method(f.first,'claimAchievement',id)).data.accepted,false);assert.deepEqual({gold:game.player.gold,skillPoints:game.player.skillPoints,dust:game.resources.dust,crystal:game.resources.crystal},paid);
+    }
+    assert.equal((await f.method(f.first,'claimAchievement','forged_achievement')).data.accepted,false);assert.equal((await f.method(f.first,'selectCompanion','forged_pet')).data.accepted,false);
+    const journey=clone(game.journey),paid={gold:game.player.gold,skillPoints:game.player.skillPoints,dust:game.resources.dust,crystal:game.resources.crystal};await f.restart();const restored=await f.get(f.first);
+    assert.deepEqual(restored.journey,journey);assert.equal(restored.journey.activeCompanion,'hourglass_moth');assert.deepEqual({gold:restored.player.gold,skillPoints:restored.player.skillPoints,dust:restored.resources.dust,crystal:restored.resources.crystal},paid);
+    for(const id of ids)assert.equal((await f.method(f.first,'claimAchievement',id)).data.accepted,false);
   }finally{await f.close();}
 });

@@ -704,7 +704,8 @@ export class GameUI {
   journeyRequirement(requirement) {
     const labels={events:'Weltabenteuer abgeschlossen',explored:'Regionen erkundet',rescued:'Reisende befreit',lore:'Chroniken gelesen',bosses:'Bossarten besiegt',dungeons:'Dungeons beendet',puzzles:'Dungeonrätsel gelöst',crafted:'Verschiedene Rezepte gefertigt',contracts:'Regionale Verträge erfüllt',revives:'Gefährten wiederbelebt',coopDungeons:'Gemeinsame Dungeons',encounters:'Verfluchte Vorräte geborgen'};
     if(requirement.kind==='faction')return `${requirement.any?'Ruf bei einem Bund':FACTIONS.find(f=>f.id===requirement.factionId)?.name || 'Fraktionsruf'}`;
-    const targets=(requirement.targets || []).map(id=>REGIONS.find(r=>r.id===id)?.name || DUNGEONS.find(d=>d.id===id)?.name || ENEMY_TYPES[id]?.name || id);
+    const events=this.game.worldEventSummary?.() || [];
+    const targets=(requirement.targets || []).map(id=>REGIONS.find(r=>r.id===id)?.name || DUNGEONS.find(d=>d.id===id)?.name || ENEMY_TYPES[id]?.name || events.find(event=>event.id===id)?.name || id);
     return `${labels[requirement.kind] || requirement.kind}${targets.length?` · ${targets.join(', ')}`:''}`;
   }
 
@@ -1162,7 +1163,7 @@ export class GameUI {
       const forfeit=document.querySelector('.pvp-forfeit'),opponent=document.querySelector('.pvp-opponent');
       stage.style.setProperty('--pvp-notice-top',`${Math.max(bottom(forfeit),bottom(opponent))+8}px`);
       const vitalsRight=visible(vitals)?vitals.getBoundingClientRect().right-bounds.left:0;
-      stage.style.setProperty('--pvp-notice-width',`${Math.max(80,Math.min(235,bounds.width*.44,bounds.width-vitalsRight-22))}px`);
+      stage.style.setProperty('--pvp-notice-width',`${Math.max(80,Math.min(235,bounds.width*.44,bounds.width-vitalsRight-22,bounds.width/2-54))}px`);
       const countdown=document.querySelector('.pvp-countdown');if(countdown){
         const height=countdown.getBoundingClientRect().height;
         stage.style.setProperty('--pvp-countdown-top',`${Math.max(8,Math.min(bounds.height-height-8,Math.max(bottom(vitals)+10,(bounds.height-height)/2)))}px`);
@@ -1170,11 +1171,19 @@ export class GameUI {
       return;
     }
     const headBottom=Math.max(...['.region-label','.player-vitals','.minimap-wrap','.quick-tools'].map(selector=>bottom(document.querySelector(selector))));
-    stage.style.setProperty('--hud-rail-top',`${headBottom+8}px`);
+    const compactPortrait=window.matchMedia('(max-height:650px) and (max-width:600px) and (orientation:portrait)').matches;
+    const shortLandscape=window.matchMedia('(max-height:500px) and (min-width:601px) and (orientation:landscape)').matches;
+    if(shortLandscape){
+      const left=Math.max(...['.region-label','.player-vitals'].map(selector=>{const element=document.querySelector(selector);return visible(element)?element.getBoundingClientRect().right-bounds.left:0;}));
+      const right=Math.min(...['.minimap-wrap','.quick-tools'].map(selector=>{const element=document.querySelector(selector);return visible(element)?element.getBoundingClientRect().left-bounds.left:bounds.width;}));
+      stage.style.setProperty('--hud-landscape-left',`${left+10}px`);
+      stage.style.setProperty('--hud-landscape-right',`${bounds.width-right+10}px`);
+    }
+    stage.style.setProperty('--hud-rail-top',`${shortLandscape?0:headBottom+(compactPortrait?0:8)}px`);
     const controlTop=visible(controls)?controls.getBoundingClientRect().top-bounds.top:bounds.height-12;
     stage.style.setProperty('--hud-controls-clearance',`${Math.max(12,bounds.height-controlTop+8)}px`);
     const prompt=this.elements['interact-prompt'];stage.classList.remove('hud-crowded');
-    if(visible(prompt)&&rail.getBoundingClientRect().bottom+8>prompt.getBoundingClientRect().top)stage.classList.add('hud-crowded');
+    if(compactPortrait||shortLandscape||visible(prompt)&&rail.getBoundingClientRect().bottom+8>prompt.getBoundingClientRect().top)stage.classList.add('hud-crowded');
   }
 
   trapFocus(event) {

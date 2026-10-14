@@ -4,14 +4,26 @@ import { Game } from '../src/game.js';
 import { HUNTS, HUNT_REWARDS, validateEndgameState } from '../src/endgame.js';
 import { ENEMY_TYPES } from '../src/catalog.js';
 import { getRelic } from '../src/relics.js';
+import { DUNGEONS } from '../src/dungeons.js';
+import { WORLD_EVENT_DEFINITIONS } from '../src/world-events.js';
+import { CONTENT_HUNTS, CONTENT_HUNT_REWARDS } from '../src/hunt-content.js';
 const make=(level=12)=>{const game=new Game({storage:null,random:()=>.5});game.start();game.player.level=level;return game;};
 const complete=(game,def)=>{for(const o of def.objectives)game.event(o.kind,o.target,o.count);};
 
-test('every hunt uses real enemies, regional champions and existing dungeons',()=>{
-  assert.equal(HUNTS.length,11);
+test('original hunts remain first and every route uses real enemies, dungeons or named encounters',()=>{
+  const originalIds=[...DUNGEONS.map(d=>`hunt-${d.id}`),'hunt-moon','hunt-blood','hunt-nexus'];
+  assert.equal(originalIds.length,11);
+  assert.deepEqual(HUNTS.slice(0,11).map(h=>h.id),originalIds);
+  assert.equal(HUNTS.length,originalIds.length+CONTENT_HUNTS.length);
+  assert.deepEqual(HUNT_REWARDS.slice(0,5).map(r=>r.id),['hunt-weapon','hunt-armor','hunt-ring','hunt-epic','hunt-dust']);
+  assert.equal(HUNT_REWARDS.length,5+CONTENT_HUNT_REWARDS.length);
   for(const h of HUNTS){
     assert.ok(h.minLevel<=h.maxLevel);
-    for(const o of h.objectives)if(o.kind!=='dungeon')assert.ok(ENEMY_TYPES[o.target]);
+    for(const o of h.objectives){
+      if(o.kind==='dungeon')assert.ok(DUNGEONS.some(d=>d.id===o.target));
+      else if(o.kind==='world_event')assert.ok(WORLD_EVENT_DEFINITIONS.some(e=>e.id===o.target&&e.mode==='boss_hunt'&&ENEMY_TYPES[e.boss]));
+      else assert.ok(ENEMY_TYPES[o.target]);
+    }
   }
   assert.equal(HUNTS.find(h=>h.id==='hunt-nexus').partyRequired,1);
   assert.equal(HUNTS.find(h=>h.id==='hunt-weltenkern').partyRequired,8);

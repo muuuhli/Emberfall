@@ -57,8 +57,8 @@ const LEGACY_EXPEDITIONS = Object.freeze([
   {id:'expedition-schlafgericht',region:'traumsenke',name:'Das Gericht der Schlaflosen',level:78,minLevel:76,at:[.28,.77],mode:'expedition',description:'Ein Gericht urteilt über fremde Träume. Wähle Erinnerung oder Beute, halte das einzelne Wachlicht, zerreiße die Albtraumknoten und stelle dich dem Richter ohne Augen.',stages:[{type:'choice',safe:'Die Erinnerung zurückgeben',risk:'Den fremden Traum nehmen'},{type:'ritual',rule:'hold',duration:5},{type:'ambush',pack:3,traps:2},{type:'boss_hunt',boss:'sleep_judge',tracks:1}]},
 ]);
 export const EXPEDITIONS = Object.freeze([...LEGACY_EXPEDITIONS,...EXPEDITION_CONTENT]);
-// Preserve the placement order of the original twenty activities. New hunts
-// append after them, so saved routes and one-use evidence do not move.
+// Keep shipped activities in chronological placement order. New content
+// appends after them, so saved routes and one-use evidence do not move.
 const allDefinitions = [...REGIONAL_EVENT_DEFINITIONS,...LEGACY_EXPEDITIONS,...NAMED_BOSS_HUNTS,...EXPEDITION_CONTENT,...TRIALS];
 const definitionOf = event => allDefinitions.find(def => def.id === event.id);
 

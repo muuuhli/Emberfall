@@ -672,8 +672,82 @@ function impact(variant,frame,key) {
   return b.finish(key);
 }
 
-export const PIXEL_COMPANION_TYPES = Object.freeze(['cinder_moth','ossuary_hound','root_wisp','rime_lynx','gloam_raven','tide_lantern','iron_beetle','moon_eidolon','blood_weasel','abyss_sentinel']);
+export const PIXEL_COMPANION_TYPES = Object.freeze(['cinder_moth','ossuary_hound','root_wisp','rime_lynx','gloam_raven','tide_lantern','iron_beetle','moon_eidolon','blood_weasel','abyss_sentinel','whitehorn_fawn','hourglass_moth']);
+const EIGHT_FRAME_COMPANIONS = new Set(['whitehorn_fawn','hourglass_moth']);
+
+function companionFrameFor(actor,time) {
+  if(actor.reducedMotion)return 0;
+  if(Number.isFinite(actor.companionFrame))return Math.max(0,Math.min(7,Math.floor(actor.companionFrame)));
+  if(actor.walking===false||actor.moving===false)return 0;
+  return Math.floor(Math.max(0,Number.isFinite(time)?time:0)*8)%8;
+}
+
+function whitehornFawn(frame,mirror,key) {
+  const b=new Brush(48,42,[24,37]),bob=[0,-1,-1,0,0,1,1,0][frame],step=[0,1,2,1,0,-1,-2,-1][frame];
+  const lift=[0,1,2,1,0,0,0,0][frame],otherLift=[0,0,0,0,0,1,2,1][frame];
+  b.shadow(14);
+  // Four thin, jointed deer legs. Far legs are cool shadows; the near pair
+  // shows the alternating hoof contact rather than the wolves' padded gait.
+  for(const [hip,offset,height] of [[-6,-step,otherLift],[7,step,lift]]) {
+    b.line(hip,-13+bob,hip+offset,-7,C.ink,3);b.line(hip+offset,-7,hip+offset+1,-1-height,C.ink,2);
+    b.line(hip,-12+bob,hip+offset,-7,C.iceDark);b.line(hip+offset,-6,hip+offset+1,-2-height,C.iceMid);b.rect(hip+offset,-1-height,3,2,C.ironDark);
+  }
+  b.line(-13,-17+bob,-18,-20+bob+(frame>=4?1:0),C.ink,3);b.line(-13,-18+bob,-18,-21+bob+(frame>=4?1:0),C.white,2);
+  b.poly([[-13,-14+bob],[-14,-20+bob],[-10,-24+bob],[1,-23+bob],[7,-19+bob],[8,-12+bob],[-6,-11+bob]],C.ink);
+  b.poly([[-12,-15+bob],[-12,-20+bob],[-9,-22+bob],[0,-21+bob],[6,-18+bob],[6,-13+bob],[-5,-13+bob]],C.silver);
+  b.poly([[-11,-19+bob],[-8,-22+bob],[0,-21+bob],[5,-18+bob],[1,-15+bob],[-8,-15+bob]],C.white);
+  b.line(-10,-21+bob,-2,-22+bob,C.snow);b.line(-8,-13+bob,3,-13+bob,C.iceMid);
+  for(const [x,y] of [[-9,-18],[-6,-16],[-3,-19],[0,-17]]){b.dot(x,y+bob,C.iceMid);b.dot(x+1,y-1+bob,C.snow);}
+  // The upright neck, large ears and tiny white horn buds distinguish a fawn
+  // from the existing hounds and lynx; the short muzzle keeps a young profile.
+  b.poly([[2,-14+bob],[3,-23+bob],[7,-29+bob],[12,-27+bob],[10,-17+bob],[6,-12+bob]],C.ink);
+  b.poly([[4,-16+bob],[5,-23+bob],[8,-27+bob],[10,-26+bob],[8,-18+bob],[6,-15+bob]],C.white);
+  b.line(8,-25+bob,8,-19+bob,C.snow);b.line(9,-24+bob,8,-17+bob,C.silver);
+  b.poly([[7,-29+bob],[9,-33+bob],[15,-31+bob],[18,-26+bob],[18,-23+bob],[13,-22+bob],[8,-25+bob]],C.ink);
+  b.poly([[9,-29+bob],[10,-31+bob],[14,-29+bob],[16,-25+bob],[16,-24+bob],[13,-24+bob],[10,-26+bob]],C.white);
+  b.line(12,-24+bob,16,-24+bob,C.iceMid);b.dot(17,-24+bob,C.ironDark);b.dot(13,-28+bob,C.ink);b.dot(12,-29+bob,C.iceLight);
+  b.poly([[9,-30+bob],[5,-35+bob],[4,-31+bob],[8,-27+bob]],C.ink);b.poly([[8,-31+bob],[6,-33+bob],[6,-31+bob],[8,-29+bob]],C.iceLight);
+  const ear=[0,0,-1,-1,0,1,1,0][frame];
+  b.poly([[13,-30+bob],[18,-34+bob+ear],[19,-30+bob+ear],[14,-27+bob]],C.ink);b.poly([[14,-30+bob],[17,-32+bob+ear],[17,-30+bob+ear],[14,-29+bob]],C.ivory);
+  b.line(10,-32+bob,10,-35+bob,C.snow);b.dot(11,-35+bob,C.ivory);b.line(13,-31+bob,13,-34+bob,C.white);
+  for(const [hip,offset,height] of [[-10,step,lift],[3,-step,otherLift]]) {
+    b.line(hip,-12+bob,hip+offset,-7,C.ink,3);b.line(hip+offset,-7,hip+offset,-height,C.ink,2);
+    b.line(hip,-11+bob,hip+offset,-7,C.silver);b.line(hip+offset,-6,hip+offset,-2-height,C.white);b.rect(hip+offset-1,-height,3,1,C.iceDark);
+  }
+  return b.finish(key,mirror);
+}
+
+function hourglassMoth(frame,mirror,key) {
+  const b=new Brush(40,42,[20,37]),bob=[0,0,-1,-1,0,1,1,0][frame],flap=[0,-2,-3,-2,0,2,3,2][frame],span=[16,14,11,13,16,15,12,14][frame];
+  b.shadow(9);
+  // Angular panes surround a pinched glass body. Split cyan facets and a thin
+  // brass lead frame make this silhouette independent of the ember moth.
+  for(const side of [-1,1]) {
+    b.poly([[side*3,-27+bob],[side*span,-32+bob+flap],[side*(span+1),-26+bob],[side*10,-19+bob],[side*15,-12+bob+flap],[side*8,-5+bob],[side*3,-14+bob],[side*2,-21+bob]],C.ink);
+    b.poly([[side*4,-26+bob],[side*(span-1),-31+bob+flap],[side*(span-1),-26+bob],[side*8,-20+bob],[side*4,-19+bob]],C.iceDark);
+    b.poly([[side*5,-26+bob],[side*(span-2),-30+bob+flap],[side*(span-3),-26+bob],[side*8,-22+bob]],side===-1?C.iceLight:C.iceMid);
+    b.poly([[side*5,-18+bob],[side*10,-17+bob],[side*12,-12+bob+flap],[side*8,-8+bob],[side*4,-14+bob]],C.ice);
+    b.poly([[side*6,-17+bob],[side*10,-14+bob+flap],[side*8,-10+bob],[side*5,-14+bob]],side===-1?C.snow:C.iceLight);
+    b.line(side*3,-24+bob,side*(span-1),-28+bob+flap,C.sand);b.line(side*3,-21+bob,side*9,-20+bob,C.bark);
+    b.line(side*4,-17+bob,side*8,-8+bob,C.ivory);b.dot(side*(span-3),-28+bob+flap,C.snow);
+  }
+  b.poly([[-4,-29+bob],[4,-29+bob],[4,-24+bob],[1,-18+bob],[4,-12+bob],[4,-6+bob],[-4,-6+bob],[-4,-12+bob],[-1,-18+bob],[-4,-24+bob]],C.ink);
+  b.poly([[-2,-27+bob],[2,-27+bob],[2,-24+bob],[0,-19+bob],[-2,-24+bob]],C.iceMid);
+  b.poly([[0,-17+bob],[2,-12+bob],[2,-8+bob],[-2,-8+bob],[-2,-12+bob]],C.ice);
+  b.rect(-4,-29+bob,9,2,C.sand);b.rect(-4,-7+bob,9,2,C.barkLight);b.dot(-3,-29+bob,C.flame);
+  const sandTop=2-Math.floor(frame/3),sandBottom=1+Math.floor(frame/3);
+  b.poly([[-sandTop,-25+bob],[sandTop,-25+bob],[0,-21+bob]],C.flame);
+  b.poly([[-sandBottom,-9+bob],[0,-11-Math.floor(frame/2)+bob],[sandBottom,-9+bob]],C.sand);
+  b.dot(frame%2?1:0,-20+(frame%4)*2+bob,C.flame);b.dot(-2,-26+bob,C.snow);b.dot(2,-11+bob,C.iceLight);
+  b.rect(-2,-33+bob,5,3,C.ink);b.dot(-1,-32+bob,C.ivory);b.dot(1,-32+bob,C.flame);
+  b.line(-2,-32+bob,-6,-35+bob,C.sand);b.line(2,-32+bob,6,-35+bob,C.ivory);
+  b.line(-3,-14+bob,-6,-8+bob,C.ironDark);b.line(3,-14+bob,6,-9+bob,C.ironDark);
+  return b.finish(key,mirror);
+}
+
 function companion(type,frame,mirror,key) {
+  if(type==='whitehorn_fawn')return whitehornFawn(frame,mirror,key);
+  if(type==='hourglass_moth')return hourglassMoth(frame,mirror,key);
   const quadruped=['ossuary_hound','rime_lynx','blood_weasel'].includes(type),b=new Brush(quadruped?48:40,42,[quadruped?24:20,37]);
   b.shadow(quadruped?15:9);
   if(quadruped){
@@ -786,7 +860,7 @@ export function getPixelSprite(kind, subject = {}, time = 0) {
     return remember(key,()=>impact(variant,frame,key));
   }
   if(kind==='companion'){
-    const type=PIXEL_COMPANION_TYPES.includes(subject.visualType||subject.type)?subject.visualType||subject.type:'root_wisp',frame=frameFor({...subject,moving:subject.walking??subject.moving??true},time),mirror=Math.cos(subject.face||0)<-.25,key=`companion:${type}:${frame}:${mirror?1:0}`;
+    const type=PIXEL_COMPANION_TYPES.includes(subject.visualType||subject.type)?subject.visualType||subject.type:'root_wisp',frame=EIGHT_FRAME_COMPANIONS.has(type)?companionFrameFor(subject,time):frameFor({...subject,moving:subject.walking??subject.moving??true},time),mirror=Math.cos(subject.face||0)<-.25,key=`companion:${type}:${frame}:${mirror?1:0}`;
     return remember(key,()=>companion(type,frame,mirror,key));
   }
   if(kind==='enemy') {

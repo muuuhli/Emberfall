@@ -128,9 +128,9 @@ test('DOM textures are evicted with sprite data after mixed families exhaust the
   } finally {globalThis.document=previous;clearPixelWorldCache();}
 });
 
-test('the ten journey companions have distinct unclipped native artwork and stable feet', async () => {
+test('the original ten and two new journey companions have distinct unclipped native artwork and stable feet', async () => {
   const {PIXEL_COMPANION_TYPES,drawPixelCompanion}=await import('../src/pixel-world.js');
-  assert.equal(PIXEL_COMPANION_TYPES.length,10);const artwork=new Set();
+  assert.equal(PIXEL_COMPANION_TYPES.length,12);const artwork=new Set();
   for(const type of PIXEL_COMPANION_TYPES){
     const idle=getPixelSprite('companion',{type},0);assert.equal(idle.clippedPixels,0,type);
     assert.ok(idle.runs.length>30,type);assert.ok(!artwork.has(digest(idle)),type);artwork.add(digest(idle));

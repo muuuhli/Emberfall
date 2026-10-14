@@ -135,3 +135,11 @@ test('a tracked online trial uses authoritative wave metadata without leaking un
   assert.match(ui.adventureWave(ui.trackedAdventure()).compact,/Welle 1\/4/);
   ui.adventureContentFilter='challenge';const html=ui.adventures();assert.match(html,/data-adventure-id="trial-cinderwatch"/);assert.match(html,/data-phase="wave-warning"/);
 });
+
+test('journey requirements identify named encounters and expeditions through the authoritative summary',()=>{
+  const ui=view(),events=ui.game.worldEventSummary(),ids=['event-sivra','expedition-weisshorn','trial-cinderwatch'];
+  ui.game.networkActive=true;ui.game.networkWorldEventSummary=events;ui.game.world.worldEvents=[];
+  const label=ui.journeyRequirement({kind:'events',count:3,targets:ids});
+  for(const id of ids){assert.ok(label.includes(events.find(event=>event.id===id).name));assert.ok(!label.includes(id));}
+  assert.match(label,/Weltabenteuer abgeschlossen/);
+});

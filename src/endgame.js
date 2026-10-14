@@ -3,6 +3,7 @@ import { REGIONS, ENEMY_TYPES } from './catalog.js';
 import { REGION_ENEMY_POOLS } from './bestiary.js';
 import { ITEM_BASES, generateLoot } from './loot.js';
 import { equipmentSlot } from './equipment-system.js';
+import { CONTENT_HUNTS, CONTENT_HUNT_REWARDS } from './hunt-content.js';
 
 export const MAX_ACTIVE_HUNTS = 2;
 const regionFor = dungeon => REGIONS.find(r => dungeon.entrance.x >= r.x && dungeon.entrance.x < r.x+r.w && dungeon.entrance.y >= r.y && dungeon.entrance.y < r.y+r.h)?.id || 'sonnensteppe';
@@ -18,13 +19,15 @@ export const HUNTS = Object.freeze([
     return {id,name:`Schwarze Jagd · ${REGIONS.find(r=>r.id===region).name}`,description:'Zwei verschiedene Schreckensfürsten und zwei Arten der offenen Welt. Allein oder gemeinsam spielbar.',minLevel:level,maxLevel:Math.min(100,level+22),region,partyRequired:1,
       objectives:[objective('kill',species[0],3),objective('kill',species[1],3),objective('boss',species[3],1),objective('boss',species[4],1)],reward:{tokens:8+index*3,dust:14+index*6},waypoint:{kind:'region',id:region}};
   }),
+  ...CONTENT_HUNTS,
 ]);
 export const HUNT_REWARDS = Object.freeze([
-  {id:'hunt-weapon',name:'Gebundene Jagdwaffe',description:'Eine passende seltene Klassenwaffe deiner aktuellen Stufe. Keine Siegel-Lotterie.',cost:12,minLevel:12,slot:'weapon',rarity:'rare'},
-  {id:'hunt-armor',name:'Jägerrüstung',description:'Seltene Körperrüstung deiner aktuellen Stufe.',cost:10,minLevel:12,slot:'armor',rarity:'rare'},
-  {id:'hunt-ring',name:'Ring der schwarzen Jagd',description:'Ein seltener Ring deiner aktuellen Stufe.',cost:8,minLevel:12,slot:'ring',rarity:'rare'},
-  {id:'hunt-epic',name:'Waffe des Aschenschwurs',description:'Eine garantierte epische Klassenwaffe. Hebe Siegel für diesen gezielten Fund auf.',cost:45,minLevel:45,slot:'weapon',rarity:'epic'},
+  {id:'hunt-weapon',name:'Gebundene Jagdwaffe',description:'Eine passende seltene Klassenwaffe auf der durch abgeschlossene Jagden verdienten Beutestufe, höchstens auf deiner Charakterstufe. Keine Siegel-Lotterie.',cost:12,minLevel:12,slot:'weapon',rarity:'rare'},
+  {id:'hunt-armor',name:'Jägerrüstung',description:'Seltene Körperrüstung auf der durch abgeschlossene Jagden verdienten Beutestufe, höchstens auf deiner Charakterstufe.',cost:10,minLevel:12,slot:'armor',rarity:'rare'},
+  {id:'hunt-ring',name:'Ring der schwarzen Jagd',description:'Ein seltener Ring auf der durch abgeschlossene Jagden verdienten Beutestufe, höchstens auf deiner Charakterstufe.',cost:8,minLevel:12,slot:'ring',rarity:'rare'},
+  {id:'hunt-epic',name:'Waffe des Aschenschwurs',description:'Eine garantierte epische Klassenwaffe auf der durch abgeschlossene Jagden verdienten Beutestufe, höchstens auf deiner Charakterstufe. Hebe Siegel für diesen gezielten Fund auf.',cost:45,minLevel:45,slot:'weapon',rarity:'epic'},
   {id:'hunt-dust',name:'Vorrat für die Schmiede',description:'40 Arkanstaub für Sockel und Aufwertungen.',cost:6,minLevel:12,dust:40},
+  ...CONTENT_HUNT_REWARDS,
 ]);
 export const createEndgameState = () => ({version:1,tokens:0,totalClaims:0,active:[],completed:{}});
 const record=v=>v&&typeof v==='object'&&!Array.isArray(v);
