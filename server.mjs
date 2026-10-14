@@ -11,12 +11,17 @@ const sourceExtensions=new Set(['.js','.css','.json']);
 const assetExtensions=new Set(['.png','.webp','.svg','.ico','.json']);
 
 /** Starts one real cooperative server. Importing this module opens no ports. */
-export async function startServer({port=Number(process.env.PORT||4173),host=process.env.HOST||'127.0.0.1',storagePath=path.join(root,'.emberfall-server','rooms.json'),autoTick=true,allowedOrigin=null}={}) {
+export async function startServer({port=Number(process.env.PORT||4173),host=process.env.HOST||'127.0.0.1',storagePath=path.join(root,'.emberfall-server','rooms.json'),autoTick=true,allowedOrigin=null,health=false,strictStorage=false,maxRooms=32}={}) {
   if(!Number.isInteger(port)||port<0||port>65535)throw new RangeError('PORT muss eine gültige Portnummer sein.');
-  const storage=storagePath?createFileRoomStorage(storagePath):null;
-  const hub=new MultiplayerHub({createGame:()=>new Game({storage:null}),storage,autoStart:autoTick,allowedOrigin});
+  const storage=storagePath?createFileRoomStorage(storagePath,{strictRead:strictStorage}):null;
+  const hub=new MultiplayerHub({createGame:()=>new Game({storage:null}),storage,autoStart:autoTick,allowedOrigin,maxRooms,strictRestore:strictStorage});
   const server=http.createServer(async(req,res)=>{
     try {
+      if(health&&req.url?.split('?')[0]==='/healthz'){
+        if(!['GET','HEAD'].includes(req.method)){res.writeHead(405,{'Allow':'GET, HEAD'}).end();return;}
+        const ready=!hub.lastStorageError,body=JSON.stringify({status:ready?'ready':'degraded',protocol:1,service:'emberfall-authority'});
+        res.writeHead(ready?200:503,{'Content-Type':'application/json; charset=utf-8','Content-Length':Buffer.byteLength(body),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}).end(req.method==='HEAD'?undefined:body);return;
+      }
       if(await hub.handle(req,res))return;
       if(!['GET','HEAD'].includes(req.method)){res.writeHead(405,{'Allow':'GET, HEAD'}).end();return;}
       const url=new URL(req.url,'http://localhost');

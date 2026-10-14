@@ -3,11 +3,12 @@ import { Renderer } from './renderer.js';
 import { GameUI } from './ui.js';
 import { GameAudio } from './audio.js';
 import { NetworkClient } from './network.js';
+import { readPreferredServerAddress } from './server-address.js';
 import { MobileInput, bindMobileControls, nearestVisibleEnemy } from './mobile-input.js';
 import { ENEMY_TYPES } from './catalog.js';
 
 const game=new Game();
-const network=new NetworkClient(game);game.networkClient=network;
+const network=new NetworkClient(game,{baseUrl:readPreferredServerAddress()});game.networkClient=network;
 const renderer=new Renderer(document.getElementById('world'),game.world);
 const ui=new GameUI(game);
 const audio=new GameAudio(game);

@@ -43,7 +43,7 @@ async function raid(id='sturmzitadelle',storage=null) {
   const leader=members[0].game,instance=leader.dungeonInstance,boss=leader.world.enemies.find(e=>e.id===`${id}:boss`),room=members[0].room;
   // Isolate transport and checkpoint behavior from the already-tested entrance
   // puzzles/trash. HP, damage and class stats remain the real product budgets.
-  leader.world.enemies=[boss];instance.gateOpened=true;instance.bossEngaged=true;
+  leader.world.enemies=leader.world.enemies.filter(enemy=>enemy===boss||enemy.routeGuard);instance.gateOpened=true;instance.bossEngaged=true;
   for(const puzzle of instance.puzzles)puzzle.solved=true;
   const gate=leader.world.structures.find(s=>s.type==='dungeon_gate');gate.open=true;gate.blocking=false;
   for(const [index,member]of members.entries())Object.assign(member.game.player,{x:boss.x+40+index*10,y:boss.y});

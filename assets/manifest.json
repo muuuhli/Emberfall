@@ -145,8 +145,8 @@
       "source": "Original code-native graphics and atlas animation",
       "published": true,
       "status": "Integrated with pixel-characters, pixel-npcs and native pixel-world sprites",
-      "bytes": 101477,
-      "sha256": "45207e5832e9ebb1e228e9f1123e11008a4f9642189a01e4a21a3f4feb217127"
+      "bytes": 109369,
+      "sha256": "88efa91baca7d6c99b55c5f86d9e0febc04810433ef738057ed6e43c72d3a041"
     },
     {
       "file": "../src/audio.js",
@@ -399,7 +399,7 @@
       "sha256": "e35bd4769065bcf0fd5e8ade49e90af37779001a3d1d2eb6c92b1ad2ed26264d"
     }
   ],
-  "version": "9.0.0",
+  "version": "10.0.0",
   "updated": "2026-10-14",
   "developmentStatus": {
     "releaseState": "playable development build",
@@ -431,7 +431,13 @@
         2,
         3
       ],
-      "persistentRaidWarnings": true
+      "persistentRaidWarnings": true,
+      "techniqueSpecializations": 16,
+      "dungeonLayoutVersion": 2,
+      "dungeonRouteStages": 2,
+      "choicesPerDungeonStage": 3,
+      "snapshotDeltaTransport": true,
+      "dedicatedServerPackage": true
     },
     "campaignHoursTarget": 200,
     "fullCampaignHoursVerified": 0,

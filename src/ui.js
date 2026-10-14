@@ -16,9 +16,12 @@ import { FACTIONS, FACTION_RANKS, ACHIEVEMENTS, COMPANIONS, JOURNEY_RECIPES, JOU
 import { EQUIPMENT_SLOTS, equipmentSlot, getEquipmentShopStock, scaleEquipmentStats } from './equipment-system.js';
 import { applyTalentAbilityProfile, applyTalentAttackProfile, describeTalentCombatEffects } from './talent-combat.js';
 import { deriveCharacterAppearance } from './character-appearance.js';
-import { drawCharacterSprite, loadCharacterSpriteAssets } from './renderer.js';
+import { drawCharacterSprite, loadCharacterSpriteAssets, dungeonRoutePresentation } from './renderer.js';
+import { dungeonRouteSummary } from './dungeon-routes.js';
 import { RAID_PROFILES, raidReviveSummary, raidReturnBlocked } from './raid-encounters.js';
 import { raidHudPresentation } from './raid-visuals.js';
+import { classPowerMultiplier } from './balance.js';
+import { techniqueSpecializationSummary, getTechniqueSpecialization, canSelectTechniqueSpecialization } from './technique-specializations.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const icon = (name, classes = '') => `<svg class="${classes}" aria-hidden="true"><use href="#i-${name}" /></svg>`;
@@ -79,6 +82,7 @@ export class GameUI {
     this.talentFiltersOpen = false;
     this.heroFacing = 0;
     this.rescueBusy = false;
+    this.techniqueBusy = false;
     this.panelPointers = new Set();
     this.questTab = 'active';
     this.questPage = 0;
@@ -291,11 +295,11 @@ export class GameUI {
     const eventState=eventSummary.filter(event=>event.state==='active'||this.adventureRewardReady(event)).map(event=>[event.id,event.state,event.phase,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]);
     const trackerState = JSON.stringify([game.questState || {},game.contracts,game.trackedQuestId,game.endgame,eventState,this.dungeonId()]);
     if (force || trackerState !== this.lastTracker) { this.lastTracker = trackerState; this.renderTracker(); }
-    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.deathPenalty,game.waypoint,game.trackedQuestId,eventSummary.map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]),game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,game.dungeonInstance?.raidRevivesUsed,game.networkRaidResume,this.dungeonId()]);
+    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.deathPenalty,game.waypoint,game.trackedQuestId,eventSummary.map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]),game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.techniqueSpecializations,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,game.dungeonInstance?.raidRevivesUsed,game.dungeonInstance?.routes?.completed,game.networkRaidResume,this.dungeonId()]);
     if (force || state !== this.lastState) { this.lastState = state; if (this.activePanel && !['death','victory','reset','settings','party'].includes(this.activePanel)) this.renderPanel(); }
     this.updateParty();
     const now = performance.now();
-    if (force || now - this.lastMapAt > 500) { this.lastMapAt = now; this.updateMinimap(); }
+    if (force || now - this.lastMapAt > 500) { this.lastMapAt = now; this.updateMinimap();if(this.activePanel==='map')this.drawMap(document.getElementById('full-map'),true); }
     const seconds = Number(game.time ?? game.elapsed ?? game.world?.time ?? 0);
     const minutes = Math.floor((8 * 60 + seconds / 3) % (24 * 60));
     this.setText('world-time', `${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`);
@@ -321,7 +325,7 @@ export class GameUI {
     if(this.inPvp){this.updatePvpCooldowns();return;}
     const currentClass = getClass(this.game.player?.classId);
     const factor=1-(stats.cooldown||0),mods=this.game.combatTalentModifiers?.() || {};
-    const profiles=Object.fromEntries(Object.entries(currentClass.abilities).map(([action,ability])=>[action,action==='attack'?applyTalentAttackProfile(ability,mods):applyTalentAbilityProfile(ability,mods,{action})]));
+    const profiles=Object.fromEntries(Object.entries(currentClass.abilities).map(([action,ability])=>[action,action==='attack'?applyTalentAttackProfile(ability,mods):this.game.coreAbilityProfile?.(action)||applyTalentAbilityProfile(ability,mods,{action})]));
     const maxCooldown = {attack:profiles.attack.cooldown,dash:Math.max(.4,1.35*(1-(stats.dodgeCooldown||0))),nova:profiles.nova.cooldown*factor,bolt:profiles.bolt.cooldown*factor,potion:3};
     if(this.lastAbilityClass!==currentClass.id) {
       this.lastAbilityClass=currentClass.id;
@@ -335,7 +339,7 @@ export class GameUI {
       }
     }
     for(const [action,ability] of Object.entries(profiles)) {
-      for(const control of document.querySelectorAll(`.ability[data-action="${action}"],[data-touch-action="${action}"]`))control.title=`${ability.name}${ability.cost?` · ${statValue('mana',ability.cost)} Mana`:""} · ${seconds(maxCooldown[action])} Sek. Abklingzeit`;
+      for(const control of document.querySelectorAll(`.ability[data-action="${action}"],[data-touch-action="${action}"]`))control.title=`${ability.name}${ability.specializationName?` · ${ability.specializationName}`:''}${ability.cost?` · ${statValue('mana',ability.cost)} Mana`:""} · ${seconds(maxCooldown[action])} Sek. Abklingzeit`;
       const button=document.querySelector(`[data-touch-action="${action}"]`);if(!button)continue;
       button.querySelector('use').setAttribute('href',`#i-${abilityIcon(ability,currentClass.id)}`);button.setAttribute('aria-label',ability.name);
       if(action==='attack')button.querySelector('span').textContent='Angriff halten';
@@ -663,7 +667,7 @@ export class GameUI {
   buildOverview() {
     const cls=getClass(this.game.player.classId),stats=this.game.stats(),learned=getLearnedAbilities(this.game),safe=this.game.inSettlement?.()&&!this.game.inCombat?.();
     const mods=this.game.combatTalentModifiers?.() || {};
-    const slots=[...Object.entries(cls.abilities).map(([key,definition])=>{const ability=key==='attack'?applyTalentAttackProfile(definition,mods):applyTalentAbilityProfile(definition,mods,{action:key});return {name:ability.name,key:key==='attack'?'J':key==='bolt'?'Q / 1':'F / 2',cost:ability.cost || 0,cooldown:ability.cooldown*(key==='attack'?1:1-(stats.cooldown || 0)),glyph:abilityIcon(ability,cls.id)};}),...[0,1].map(slot=>{const ability=applyTalentAbilityProfile(getAbility(this.game.abilityLoadout?.[slot]),mods,{action:'learned'});return {name:ability?.name || 'Kein Skill belegt',key:String(slot+3),cost:ability?.cost || 0,cooldown:ability?.cooldown*(1-(stats.cooldown || 0)) || 0,glyph:ability?learnedIcon(ability):'tree',empty:!ability};})];
+    const slots=[...Object.entries(cls.abilities).map(([key,definition])=>{const ability=key==='attack'?applyTalentAttackProfile(definition,mods):this.game.coreAbilityProfile?.(key)||applyTalentAbilityProfile(definition,mods,{action:key});return {name:ability.name,key:key==='attack'?'J':key==='bolt'?'Q / 1':'F / 2',cost:ability.cost || 0,cooldown:ability.cooldown*(key==='attack'?1:1-(stats.cooldown || 0)),glyph:abilityIcon(ability,cls.id)};}),...[0,1].map(slot=>{const ability=applyTalentAbilityProfile(getAbility(this.game.abilityLoadout?.[slot]),mods,{action:'learned'});return {name:ability?.name || 'Kein Skill belegt',key:String(slot+3),cost:ability?.cost || 0,cooldown:ability?.cooldown*(1-(stats.cooldown || 0)) || 0,glyph:ability?learnedIcon(ability):'tree',empty:!ability};})];
     const cost=20+this.game.player.level*5,invested=Object.values(this.game.skills || {}).some(rank=>rank>0);
     return `<h3 class="section-title">Dein Kampfstil</h3><div class="build-action-grid">${slots.map(slot=>`<article class="build-action ${slot.empty?'empty':''}"><kbd>${slot.key}</kbd>${icon(slot.glyph)}<h4>${escape(slot.name)}</h4><span>${slot.empty?'In Talenten einen Zusatzskill wählen':`${statValue('mana',slot.cost)} Mana · ${seconds(slot.cooldown)} Sek.`}</span></article>`).join('')}</div><div class="build-summary"><span>${learned.length} aktive Techniken erlernt</span><span>${Object.values(this.game.skills || {}).reduce((sum,rank)=>sum+Number(rank || 0),0)} Talentränge verteilt</span><button class="small-button" data-panel="talents">Fähigkeiten & Talente bearbeiten</button></div><h3 class="section-title">Gespeicherte Kampfaufbauten <small>${(this.game.loadouts || []).length} / 3</small></h3><p class="panel-note">Presets wechseln deine sieben Ausrüstungsplätze und die Zusatzskills 3 und 4. Deine verteilten Talentränge bleiben dabei bestehen.</p><div class="loadout-save"><label><span>Name des Aufbaus</span><input class="game-input" data-ui-draft="loadoutName" value="${escape(this.loadoutName || '')}" maxlength="28" placeholder="z. B. Bossjäger oder Seelenschutz" autocomplete="off" /></label><button class="small-button" data-command="save-loadout" ${(this.game.loadouts || []).length>=3?'disabled':''}>${icon('save')}Aktuellen Aufbau speichern</button></div><div class="loadout-list">${(this.game.loadouts || []).map(loadout=>{
       const missing=Object.values(loadout.equipment || {}).filter(id=>id&&!(this.game.inventory?.[id]>0));
@@ -721,11 +725,38 @@ export class GameUI {
   activeAbilities() {
     const stats=this.game.stats(),learned=getLearnedAbilities(this.game),collection=this.skillRecords('abilities');
     const loadout=`<div class="ability-loadout">${[0,1].map(slot=>{const active=getAbility(this.game.abilityLoadout?.[slot]);return `<label class="loadout-slot"><span><kbd>${slot+3}</kbd> PLATZ ${slot+3} · ${active?'BELEGT':'FREI'}</span><select class="game-input" data-ability-loadout="${slot}" aria-label="Fähigkeit auf Platz ${slot+3}"><option value="">Keine Fähigkeit</option>${learned.map(ability=>`<option value="${ability.id}" ${active?.id===ability.id?'selected':''}>${escape(ability.name)}</option>`).join('')}</select><small>${active?escape(active.branch || 'Klassentechniken'):'Lerne eine Technik und wähle sie für diesen Platz.'}</small></label>`;}).join('')}</div>`;
-    return `${loadout}<p class="panel-note">Q und F bleiben deine Basisaktionen. Die Plätze 3 und 4 gehören deinem eigenen Aufbau; Belegen kostet keine Punkte.</p>${this.skillTools('abilities',collection)}<p class="journal-results" role="status" aria-live="polite">${collection.filtered.length} Techniken · ${collection.shown.length} sichtbar</p><div class="learnable-abilities skill-catalog">${collection.shown.map(ability=>{
+    return `${loadout}<p class="panel-note">Q und F bleiben deine Basisaktionen. Die Plätze 3 und 4 gehören deinem eigenen Aufbau; Belegen kostet keine Punkte.</p>${this.techniqueSpecializations()}${this.skillTools('abilities',collection)}<p class="journal-results" role="status" aria-live="polite">${collection.filtered.length} Techniken · ${collection.shown.length} sichtbar</p><div class="learnable-abilities skill-catalog">${collection.shown.map(ability=>{
       const known=Boolean(this.game.learnedAbilities?.[ability.id]),check=canLearnAbility(this.game,ability.id),required=ability.requires?getAbility(ability.requires):null;
       const profile=applyTalentAbilityProfile(ability,this.game.combatTalentModifiers?.() || {},{action:'learned'}),occupied=(this.game.abilityLoadout || []).findIndex(id=>id===ability.id);
       return `<article class="learnable-ability ${known?'learned':check.ok?'learnable':'locked'}" data-ability-id="${escape(ability.id)}"><div class="learnable-heading"><div class="item-icon">${icon(learnedIcon(ability))}</div><div><span class="skill-branch-label">${escape(ability.branch || 'Klassentechniken')}</span><h3>${escape(ability.name)}</h3><span class="ability-state">${known?occupied>=0?`ERLERNT · AUF PLATZ ${occupied+3}`:'ERLERNT':check.ok?'LERNBAR':this.game.player.level<ability.level?`AB STUFE ${ability.level}`:'VORAUSSETZUNG FEHLT'}</span></div></div><span class="skill-description-label">GRUNDWIRKUNG</span><p>${escape(ability.description)}</p><span class="skill-description-label">MIT DEINEM AKTUELLEN AUFBAU</span><div class="ability-facts"><span>Stufe ${ability.level}</span><span>${statValue('mana',profile.cost)} Mana</span><span>${seconds(profile.cooldown*(1-stats.cooldown))} Sek. Abklingzeit</span>${profile.targetRange || profile.range || profile.length?`<span>${statValue('mana',profile.targetRange || profile.range || profile.length)} Reichweite</span>`:''}${profile.impactRange || profile.radius?`<span>${statValue('mana',profile.impactRange || profile.radius)} Wirkungsradius</span>`:''}${required?`<span>Benötigt ${escape(required.name)}</span>`:''}</div>${known?`<div class="ability-equip-actions">${[0,1].map(slot=>`<button class="small-button ${occupied===slot?'subtle-button':''}" data-command="assign-ability" data-id="${ability.id}" data-slot="${slot}" ${occupied===slot?'disabled':''}>${occupied===slot?`Auf ${slot+3} belegt`:`Auf ${slot+3} belegen`}</button>`).join('')}</div>`:`<button class="small-button" data-command="learnAbility" data-id="${ability.id}" ${check.ok?'':'disabled'}>Lernen · ${ability.talentCost} Talentpunkt${ability.talentCost===1?'':'e'}</button>${!check.ok?`<p class="talent-requirement">${escape(check.reason)}</p>`:''}`}</article>`;
     }).join('') || '<p class="panel-note">Für diese Suche gibt es keine Techniken. Setze die Filter zurück, um deinen ganzen Klassenpfad zu sehen.</p>'}</div>${this.skillPagination(collection)}`;
+  }
+
+  techniqueProfileFacts(profile) {
+    const stats=this.game.stats(),classId=this.game.player.classId,power=classPowerMultiplier(classId,profile.kind==='summon'?'summon':'spell');
+    const facts=[['cost','Mana',profile.cost,statValue('mana',profile.cost)],['cooldown','Abklingzeit',profile.cooldown,`${seconds(profile.cooldown*(1-(stats.cooldown||0)))} s`]];
+    if(profile.damageMultiplier>0)facts.push(['damageMultiplier',profile.kind==='summon'?'Dienertreffer':'Trefferschaden',profile.damageMultiplier,statValue('mana',stats[profile.stat||'spellDamage']*profile.damageMultiplier*power)]);
+    if(profile.healMultiplier>0&&profile.kind!=='drain')facts.push(['healMultiplier','Sofortige Heilung',profile.healMultiplier,statValue('mana',stats.spellDamage*profile.healMultiplier*classPowerMultiplier(classId,'heal'))]);
+    if(profile.shieldMultiplier>0)facts.push(['shieldMultiplier','Lebensschild',profile.shieldMultiplier,percent(profile.shieldMultiplier*classPowerMultiplier(classId,'shield'))]);
+    if(profile.regenerationMultiplier>0)facts.push(['regenerationMultiplier','Heilung / Sekunde',profile.regenerationMultiplier,statValue('mana',stats.spellDamage*profile.regenerationMultiplier*classPowerMultiplier(classId,'heal'))]);
+    for(const [field,label,unit] of [['radius','Wirkungsradius',''],['range','Reichweite',''],['splashRadius','Spritzradius',''],['duration','Dauer',' s'],['summonRange','Dienerreichweite',''],['summonAttackCooldown','Diener-Angriffspause',' s'],['piercing','Ziele in einer Linie','']]) {
+      if(field==='radius'&&!['heal','shield','aoe','trap','dashstrike'].includes(profile.kind))continue;
+      if(field==='range'&&!['projectile','drain','dashstrike'].includes(profile.kind))continue;
+      if(Number.isFinite(profile[field])&&profile[field]>0)facts.push([field,label,profile[field],`${statValue('mana',profile[field])}${unit}`]);
+    }
+    if(profile.slow>0)facts.push(['slow','Verlangsamung',profile.slow,percent(profile.slow)]);
+    return facts;
+  }
+
+  techniqueSpecializations() {
+    const summary=this.game.techniqueSpecializationSummary?.()||techniqueSpecializationSummary(this.game),active=getTechniqueSpecialization(summary.active),clear=canSelectTechniqueSpecialization(this.game,null),busy=!!this.techniqueBusy;
+    const opened=this.game.player.level>=summary.minLevel||summary.offers.some(offer=>offer.learned);
+    return `<details class="technique-section" ${opened?'open':''}><summary>${icon('gem')}<span>Technikprägung <small>${active?escape(active.name):`Ab Stufe ${summary.minLevel} · eine aktive Variante`}</small></span><b>${format(summary.sigils)} Quellensiegel</b></summary><div class="technique-body"><p class="panel-note">Erlerne eine Variante mit Quellensiegeln, dann präge sie für Q oder F. Eine Wahl ist aktiv. Du wechselst kostenlos in einer Siedlung außerhalb des Kampfes; laufende Abklingzeiten bleiben bestehen. Im Duell ruhen Prägungen.</p><div class="technique-active-choice" role="status"><span>${active?`${escape(active.actionLabel)} · ${escape(active.techniqueName)}<strong>${escape(active.name)}</strong>`:'Deine Grundtechnik ist aktiv.'}</span>${active?`<button class="text-button" data-command="clear-technique" ${!busy&&clear.ok?'':'disabled'} aria-busy="${busy}">Prägung entfernen</button>`:''}</div><div class="technique-variants">${summary.offers.map(offer=>{
+      const before=this.techniqueProfileFacts(offer.baseProfile),after=this.techniqueProfileFacts(offer.modifiedProfile),afterMap=new Map(after.map(fact=>[fact[0],fact]));
+      const facts=before;
+      const check=offer.learned?offer.selection:offer.learning,command=offer.learned?'selectTechniqueSpecialization':'learnTechniqueSpecialization';
+      return `<article class="technique-variant ${offer.active?'active':''}" data-technique-id="${escape(offer.id)}"><div class="technique-variant-heading"><kbd>${offer.actionLabel}</kbd><div><span class="eyebrow">${escape(offer.techniqueName)} · ${offer.active?'GEPRÄGT':offer.learned?'ERLERNT':`STUFE ${offer.minLevel}`}</span><h4>${escape(offer.name)}</h4></div></div><p>${escape(offer.description)}</p><div class="technique-comparison-heading"><span>Mit deinem Aufbau</span><span>Grundtechnik → Variante</span></div><dl class="technique-comparison">${facts.map(([field,label,,value])=>`<div data-technique-field="${field}"><dt>${escape(label)}</dt><dd><span>${escape(value)}</span><i aria-hidden="true">→</i><strong>${escape(afterMap.get(field)?.[3])}</strong></dd></div>`).join('')}</dl><button class="small-button" data-command="${command}" data-id="${escape(offer.id)}" ${!busy&&check.ok&&!offer.active?'':'disabled'} aria-busy="${busy}">${busy?'Antwort abwarten…':offer.active?'Geprägt':offer.learned?'Variante prägen':`Erlernen · ${offer.sigilCost} Quellensiegel`}</button>${!offer.active&&!check.ok?`<p class="talent-requirement">${escape(check.reason)}</p>`:''}</article>`;
+    }).join('')}</div><p class="panel-note technique-comparison-note">Trefferschaden vor Gegnerabwehr. Heilwerte vor Wunden und fehlendem Leben; Lebensschilde richten sich nach dem maximalen Leben des geschützten Gefährten.</p></div></details>`;
   }
 
   craft() {
@@ -943,7 +974,9 @@ export class GameUI {
 
   map() {
     const dungeon=DUNGEONS.find(entry=>entry.id===this.dungeonId());
-    if(dungeon)return `<div class="map-layout"><div><canvas id="full-map" class="world-map" width="900" height="580" aria-label="Dungeonkarte mit Rätselkammern, Toren und deiner Position"></canvas><p class="panel-note">Erkunde die Kammern und lies die Inschriften mit E.</p></div><aside><h3 class="section-title">${escape(dungeon.name)}</h3><p class="panel-note">${escape(dungeon.subtitle)}<br>Stufe ${dungeon.minLevel} · ${dungeon.partyRequired} Reisende</p><details class="dungeon-journal"><summary>Inschrift lesen</summary><p>${escape(dungeon.hint)}</p></details><button class="small-button" data-panel="dungeons">Expedition ansehen</button></aside></div>`;
+    if(dungeon){const route=!!this.game.dungeonInstance?.routes;
+      return `<div class="map-layout"><div><canvas id="full-map" class="world-map ${route?'dungeon-route-map':''}" width="${route?420:900}" height="${route?896:580}" aria-label="Dungeonkarte mit Rätselkammern, Toren und deiner Position"></canvas>${route?'<div class="map-legend"><span>W · Wachtkampf</span><span>G · Glutstaffel</span><span>T · Wandelgang</span><span>✓ · Gemeistert</span><span>◆ · Boss</span></div>':''}<p class="panel-note">${route?'Der Eingang liegt im Süden. Zwei Wegsiegel führen nach Norden zu den alten Erinnerungen und zum Boss.':'Erkunde die Kammern und lies die Inschriften mit E.'}</p></div><aside><h3 class="section-title">${escape(dungeon.name)}</h3><p class="panel-note">${escape(dungeon.subtitle)}<br>Stufe ${dungeon.minLevel} · ${dungeon.partyRequired} Reisende</p>${route?this.routeGuide():''}<details class="dungeon-journal"><summary>Inschrift lesen</summary><p>${escape(dungeon.hint)}</p></details><button class="small-button" data-panel="dungeons">Expedition ansehen</button></aside></div>`;
+    }
     return `<div class="map-layout"><div><canvas id="full-map" class="world-map" width="900" height="580" aria-label="Weltkarte mit deiner Position, Schreinen, Gegnern und Interaktionsobjekten"></canvas><div class="map-legend"><span><i class="legend-dot"></i>Du & Glutwacht</span><span><i class="legend-dot blue"></i>Glutschrein</span><span><i class="legend-dot red"></i>Gefahr</span><span><i class="legend-dot relic"></i>Spuren & Reliquien</span></div><p class="panel-note">Die Welt steht dir offen. Entdeckte Glutschreine sind deine Ankerpunkte: Reise zwischen ihnen, erhole dich und setze deinen Weg fort.</p></div><aside class="map-regions"><h3 class="section-title">Deine Horizonte</h3>${REGIONS.map(region=> {
       const discovered = (this.game.discovered || []).includes(region.id);
       const shrine = (this.game.world?.shrines || []).find(entry=>entry.region===region.id || entry.regionId===region.id || entry.x>=region.x&&entry.x<region.x+region.w&&entry.y>=region.y&&entry.y<region.y+region.h);
@@ -956,7 +989,9 @@ export class GameUI {
     if(this.inPvp)return this.duelLobby();
     const network=this.network;
     const serverAddress=(network?.baseUrl || globalThis.location?.origin || 'http://localhost:4173').replace(/\/\/(localhost|127\.0\.0\.1)(?=:|\/|$)/,'//<Host-IP>');
-    return `<div class="party-connection"><div><span class="eyebrow">DEINE GRUPPE</span><h3 id="party-status">Verbindung prüfen</h3><p id="party-connection-error" class="panel-note" role="status"></p></div><div id="party-room-code" class="party-room-code"></div></div><div id="party-roster" class="party-roster"></div>${this.duelLobby()}<div class="party-forms"><section><h3 class="section-title">Dein Gruppencharakter</h3><label class="field-label" for="party-player-name">Name</label><input id="party-player-name" class="game-input" value="${escape(this.game.player.name || 'Aren')}" maxlength="24" autocomplete="nickname"/><label class="field-label" for="party-class">Klasse</label><select id="party-class" class="game-input">${CLASSES.map(entry=>`<option value="${entry.id}" ${entry.id===this.game.player.classId?'selected':''}>${escape(entry.name)} · ${escape(entry.role)}</option>`).join('')}</select><p class="panel-note">Dein Gruppencharakter hat einen eigenen Fortschritt. Deine Einzelspieler-Reise bleibt gespeichert.</p>${network?.savedSession?'<button class="small-button" data-command="party-resume">Gespeicherte Gruppe fortsetzen</button>':''}</section><section><h3 class="section-title">Eine Gruppe bilden</h3><label class="field-label" for="party-room-name">Gruppenname</label><input id="party-room-name" class="game-input" value="Glutwacht" maxlength="32"/><button class="small-button" data-command="party-create">${icon('group')}Gruppe erstellen</button><label class="field-label" for="party-join-code">Gruppencode</label><input id="party-join-code" class="game-input code-input" placeholder="8 Zeichen" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"/><button class="small-button" data-command="party-join">Gruppe beitreten ${icon('arrow')}</button></section></div><div class="party-actions"><button class="small-button" data-command="party-refresh">Offene Gruppen aktualisieren</button><button class="small-button danger-button" data-command="party-disconnect">Gruppe verlassen</button></div><div id="party-room-list" class="party-room-list"><p class="panel-note">Offene Gruppen werden geladen.</p></div><div class="party-guide"><h3 class="section-title">Gemeinsam losziehen</h3><p>Öffnet Emberfall auf demselben Spielserver, erstellt eine Gruppe und teilt den achtstelligen Code. Im selben WLAN verwendet ihr auf den weiteren Geräten die LAN-Adresse des Hosts.</p><p class="panel-note">Spieladresse: <code>${escape(serverAddress)}</code>${serverAddress.includes('<Host-IP>')?' · Host-IP durch die lokale IP-Adresse des Hosts ersetzen.':''}</p><p class="panel-note">Bis zu acht Reisende · Geteilte Welt und Kämpfe · Eigene Beute und Klassenpfade · Freiwillige Duelle zwischen verbundenen Mitspielern</p><button class="small-button" data-panel="dungeons">Gruppendungeons ansehen ${icon('portal')}</button></div>`;
+    const locked=this.networkBusy||network?.online||['connecting','reconnecting','online'].includes(network?.status);
+    const serverForm=`<section class="party-server"><h3 class="section-title">Dein Spielserver</h3><label class="field-label" for="party-server-address">Spielserveradresse</label><div class="party-server-controls"><input id="party-server-address" type="url" inputmode="url" class="game-input" value="${escape(network?.baseUrl || globalThis.location?.origin || '')}" placeholder="https://…" maxlength="2048" autocomplete="url" autocapitalize="off" spellcheck="false" ${locked?'disabled':''}/><button class="small-button" data-command="party-server-connect" ${locked||typeof network?.setServerAddress!=='function'?'disabled':''} ${this.networkBusy?'aria-busy="true"':''}>${icon('portal')}${this.networkBusy?'Server wird geprüft …':'Server prüfen'}</button></div><p class="panel-note">${network?.online?'Verlasse zuerst die Gruppe, bevor du den Spielserver wechselst.':'Die Adresse wird geprüft, bevor sie für deine nächste Gruppenreise gespeichert wird.'}</p></section>`;
+    return `<div class="party-connection"><div><span class="eyebrow">DEINE GRUPPE</span><h3 id="party-status">Verbindung prüfen</h3><p id="party-connection-error" class="panel-note" role="status"></p></div><div id="party-room-code" class="party-room-code"></div></div>${serverForm}<div id="party-roster" class="party-roster"></div>${this.duelLobby()}<div class="party-forms"><section><h3 class="section-title">Dein Gruppencharakter</h3><label class="field-label" for="party-player-name">Name</label><input id="party-player-name" class="game-input" value="${escape(this.game.player.name || 'Aren')}" maxlength="24" autocomplete="nickname"/><label class="field-label" for="party-class">Klasse</label><select id="party-class" class="game-input">${CLASSES.map(entry=>`<option value="${entry.id}" ${entry.id===this.game.player.classId?'selected':''}>${escape(entry.name)} · ${escape(entry.role)}</option>`).join('')}</select><p class="panel-note">Dein Gruppencharakter hat einen eigenen Fortschritt. Deine Einzelspieler-Reise bleibt gespeichert.</p>${network?.savedSession?'<button class="small-button" data-command="party-resume">Gespeicherte Gruppe fortsetzen</button>':''}</section><section><h3 class="section-title">Eine Gruppe bilden</h3><label class="field-label" for="party-room-name">Gruppenname</label><input id="party-room-name" class="game-input" value="Glutwacht" maxlength="32"/><button class="small-button" data-command="party-create">${icon('group')}Gruppe erstellen</button><label class="field-label" for="party-join-code">Gruppencode</label><input id="party-join-code" class="game-input code-input" placeholder="8 Zeichen" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"/><button class="small-button" data-command="party-join">Gruppe beitreten ${icon('arrow')}</button></section></div><div class="party-actions"><button class="small-button" data-command="party-refresh">Offene Gruppen aktualisieren</button><button class="small-button danger-button" data-command="party-disconnect">Gruppe verlassen</button></div><div id="party-room-list" class="party-room-list"><p class="panel-note">Offene Gruppen werden geladen.</p></div><div class="party-guide"><h3 class="section-title">Gemeinsam losziehen</h3><p>Für Internetgruppen tragt ihr denselben erreichbaren HTTPS-Spielserver ein, erstellt eine Gruppe und teilt den achtstelligen Code. Für eine lokale Gruppe öffnet ihr Emberfall über die WLAN-Adresse des Hosts und verwendet diese Adresse als Spielserver.</p><p class="panel-note">Spieladresse: <code>${escape(serverAddress)}</code>${serverAddress.includes('<Host-IP>')?' · Host-IP durch die lokale IP-Adresse des Hosts ersetzen.':''}</p><p class="panel-note">Bis zu acht Reisende · Geteilte Welt und Kämpfe · Eigene Beute und Klassenpfade · Freiwillige Duelle zwischen verbundenen Mitspielern</p><button class="small-button" data-panel="dungeons">Gruppendungeons ansehen ${icon('portal')}</button></div>`;
   }
 
   updateParty() {
@@ -983,9 +1018,11 @@ export class GameUI {
     if(this.activePanel==='party') {
       for(const button of this.elements['panel-content'].querySelectorAll('[data-command^="party-"]')) {
         const command=button.dataset.command;
-        button.disabled=this.networkBusy || !network || (['party-create','party-join','party-resume'].includes(command)&&(network.online||network.serverAvailable===false)) || (command==='party-disconnect'&&!network.online);
+        button.disabled=this.networkBusy || !network || (['party-create','party-join','party-resume'].includes(command)&&(network.online||network.serverAvailable===false)) || (command==='party-disconnect'&&!network.online) || (command==='party-server-connect'&&(network.online||['connecting','reconnecting','online'].includes(network.status)||typeof network.setServerAddress!=='function'));
+        if(command==='party-server-connect'){button.setAttribute('aria-busy',String(!!this.networkBusy));button.innerHTML=`${icon('portal')}${this.networkBusy?'Server wird geprüft …':'Server prüfen'}`;}
       }
       for(const id of ['party-player-name','party-class']) { const field=document.getElementById(id);if(field)field.disabled=!!network?.online || this.networkBusy; }
+      const serverField=document.getElementById('party-server-address');if(serverField)serverField.disabled=!!network?.online||this.networkBusy||['connecting','reconnecting','online'].includes(network?.status);
     }
   }
 
@@ -1003,7 +1040,7 @@ export class GameUI {
       const response=await this.network.catalog();
       if(!list.isConnected)return;
       list.innerHTML=response.rooms?.length?response.rooms.map(room=>`<div class="party-room-entry"><div><strong>${escape(room.name)}</strong><span>${escape(room.code)} · ${room.players} / ${room.maxPlayers || 8} Reisende</span></div><button class="small-button" data-command="party-join" data-id="${escape(room.code)}" ${room.players>=(room.maxPlayers || 8) || this.network.online?'disabled':''}>Beitreten</button></div>`).join(''):'<p class="panel-note">Noch keine offene Gruppe. Erstelle die erste Glutwacht.</p>';
-    } catch(error) { if(list.isConnected)list.innerHTML=`<p class="panel-note">Gruppenspiel startet über den lokalen Emberfall-Spielserver. Teile anschließend dessen WLAN-Adresse mit deinen Gefährten.</p>`; }
+    } catch(error) { if(list.isConnected)list.innerHTML=`<p class="panel-note">Offene Gruppen konnten auf diesem Spielserver nicht geladen werden. ${escape(error.message || 'Prüfe die Serveradresse und versuche es erneut.')}</p>`; }
     this.updateParty();
   }
 
@@ -1011,7 +1048,7 @@ export class GameUI {
     const activeId=this.dungeonId();
     const current=DUNGEONS.find(dungeon=>dungeon.id===activeId);
     const party=this.network?.online?(this.game.party || []):[{...this.game.player,dead:this.game.dead}];
-    const active=current?`<div class="dungeon-active"><div><span class="eyebrow">AKTUELLE EXPEDITION</span><h3>${escape(current.name)} · Tiefe ${this.game.dungeonInstance?.tier || this.game.world?.tier || 1}</h3><p>${escape(current.subtitle)}</p></div><button class="small-button" data-command="leave-dungeon">Zur offenen Welt</button></div><details class="dungeon-journal"><summary>Inschrift und Rätselhinweis lesen</summary><p>${escape(this.game.dungeonJournal?.description || current.hint)}</p></details>${current.raid?this.raidJournal(current,{open:true}):''}`:'';
+    const active=current?`<div class="dungeon-active"><div><span class="eyebrow">AKTUELLE EXPEDITION</span><h3>${escape(current.name)} · Tiefe ${this.game.dungeonInstance?.tier || this.game.world?.tier || 1}</h3><p>${escape(current.subtitle)}</p></div><button class="small-button" data-command="leave-dungeon">Zur offenen Welt</button></div>${this.routeGuide()}<details class="dungeon-journal"><summary>Inschrift und Rätselhinweis lesen</summary><p>${escape(this.game.dungeonJournal?.description || current.hint)}</p></details>${current.raid?this.raidJournal(current,{open:true}):''}`:'';
     return `${active}<p class="panel-note">Betritt Dungeons an ihrem Tor in der Welt. Nach einem Sieg öffnet sich die nächste Tiefe bis 30. Raids verlangen mehrere lebende Gefährten, die ihre Mechaniken gemeinsam lösen.</p><div class="dungeon-grid">${DUNGEONS.map(dungeon=>{
       const entrance=(this.game.world.dungeonEntrances || []).find(entry=>(entry.dungeonId || entry.id)===dungeon.id) || dungeon.entrance;
       const distance=entrance?Math.hypot(this.game.player.x-entrance.x,this.game.player.y-entrance.y):Infinity;
@@ -1024,6 +1061,12 @@ export class GameUI {
       const enabled=near && levelMet && partyMet;
       return `<article class="dungeon-card ${dungeon.raid?'raid-card':''}"><div class="dungeon-card-heading">${icon(dungeon.raid?'group':'portal')}<span>${dungeon.raid?'RAID':'DUNGEON'} · STUFE ${dungeon.minLevel}</span></div><h3>${escape(dungeon.name)}</h3><p>${escape(dungeon.subtitle)}</p><div class="dungeon-facts"><span>${dungeon.partyRequired===1?'Allein oder in einer Gruppe':`${dungeon.partyRequired} Reisende benötigt`}</span><span>${best?`Beste Tiefe: ${best}`:'Noch nicht gemeistert'}</span><span>${near?'Du stehst am Tor':`Tor bei ${format(entrance?.x)}, ${format(entrance?.y)}`}</span></div>${dungeon.raid&&dungeon.id!==activeId?this.raidJournal(dungeon):''}<button class="small-button" data-command="enterDungeon" data-id="${dungeon.id}" data-tier="${tier}" ${enabled?'':'disabled'}>${!levelMet?`Benötigt Stufe ${dungeon.minLevel}`:!partyMet?`${dungeon.partyRequired} Gefährten benötigt`:!near?'Am Tor betreten':`Tiefe ${tier} betreten`}</button>${best>0 && tier>1 && near && levelMet && partyMet?`<button class="text-button" data-command="enterDungeon" data-id="${dungeon.id}" data-tier="1">Tiefe 1 wiederholen</button>`:''}</article>`;
     }).join('')}</div>${!this.network?.online?'<p class="panel-note"><button class="small-button" data-panel="party">Für Raids eine Gruppe bilden</button></p>':''}`;
+  }
+
+  routeGuide() {
+    const instance=this.game.dungeonInstance,summary=dungeonRouteSummary(instance);if(!summary)return '';
+    const symbols={mond:'Mond',blatt:'Blatt',glut:'Glut',frost:'Frost',stern:'Stern'};
+    return `<details class="raid-journal route-journal"><summary>${icon('map')}Dein Weg · ${summary.sigils}/2 Wegsiegel · ${summary.completed}/${summary.total} Kammern</summary><div class="raid-journal-content"><p>Im Süden wählst du auf jeder der beiden Ebenen einen von drei Wegen. Ein gemeisterter Weg öffnet alle Tore seiner Ebene. Weitere Wege sind freiwillig und öffnen ihre eigenen Vorratskisten. Nach zwei Siegeln löst du die alten Erinnerungen vor dem Bosstor.</p>${['A','B'].map(stage=>`<h5>${stage==='A'?'Erste':'Zweite'} Wegwahl</h5><dl>${instance.routes.chambers.filter(chamber=>chamber.stage===stage).sort((a,b)=>a.lane-b.lane).map(chamber=>`<div data-route-chamber="${escape(chamber.id)}"><dt>${['Links','Mitte','Rechts'][chamber.lane]} · ${escape(chamber.title)}${instance.routes.completed.includes(chamber.id)?' · GEMEISTERT':''}</dt><dd>${escape(chamber.hint)}${chamber.kind==='relay'?`<br><strong>Folge: ${chamber.sequence.map(symbol=>escape(symbols[symbol]||symbol)).join(' → ')} · ${chamber.seconds} Sekunden · derselbe Träger.</strong>`:''}</dd></div>`).join('')}</dl>`).join('')}</div></details>`;
   }
 
   raidJournal(dungeon,{open=false}={}) {
@@ -1115,6 +1158,15 @@ export class GameUI {
     if(name==='dismiss-notice'){this.noticeQueue?.dismiss();this.renderNotice();this.updateHudLayout(true);return;}
     if(name.startsWith('pvp-')){await this.pvpCommand(name,id);return;}
     if(this.inPvp&&name!=='resume'){this.showNotice('Kehre zuerst aus dem Duell zurück.','info');return;}
+    if(['learnTechniqueSpecialization','selectTechniqueSpecialization','clear-technique'].includes(name)) {
+      if(this.techniqueBusy)return;
+      const method=this.game[name==='clear-technique'?'selectTechniqueSpecialization':name];if(typeof method!=='function')return;
+      this.techniqueBusy=true;this.renderPanel();
+      try {await method.call(this.game,name==='clear-technique'?null:id);}
+      catch(error){this.showNotice(error.message||'Die Technikprägung konnte nicht geändert werden. Versuche es erneut.','error');}
+      finally {this.techniqueBusy=false;this.update(true);}
+      return;
+    }
     if(name==='open-hunts'){this.journeyTab='hunts';this.togglePanel('journey');return;}
     if(name==='talent-filters'){this.talentFiltersOpen=!this.talentFiltersOpen;this.renderPanel();return;}
     if(name==='talent-page'){this.talentPage=Math.max(0,Number(id)||0);this.pendingScrollReset=true;this.renderPanel();return;}
@@ -1178,6 +1230,19 @@ export class GameUI {
   async networkCommand(name, id) {
     const network=this.network;
     if(!network) {this.showNotice('Die Gruppenverbindung wird vorbereitet. Öffne das Gruppenfenster erneut.','error');return;}
+    if(this.networkBusy)return;
+    if(name==='party-server-connect'){
+      if(network.online||['connecting','reconnecting','online'].includes(network.status)){this.showNotice('Verlasse zuerst deine Gruppe, bevor du den Spielserver wechselst.','error');return;}
+      const value=document.getElementById('party-server-address')?.value||'';this.networkBusy=true;this.updateParty();
+      try{
+        if(typeof network.setServerAddress!=='function')throw new Error('Die Serverauswahl wird vorbereitet. Öffne das Gruppenfenster erneut.');
+        await network.setServerAddress(value);
+        if(this.activePanel==='party')this.renderPanel();
+        await this.refreshRooms();
+        this.showNotice('Spielserver geprüft. Erstelle eine Gruppe oder gib deinen Gruppencode ein.','success');
+      }catch(error){const message=error.message||'';this.showNotice(/fetch|networkerror|load failed|network request failed/i.test(message)?'Der Spielserver ist nicht erreichbar. Prüfe die vollständige Adresse und ob er läuft.':message||'Der Spielserver konnte nicht geprüft werden. Prüfe die vollständige Serveradresse.','error');}
+      finally{this.networkBusy=false;this.updateParty();}return;
+    }
     if(name==='party-refresh') {await this.refreshRooms();return;}
     if(name==='party-copy-code') {
       try{await navigator.clipboard.writeText(network.roomCode || '');this.showNotice('Gruppencode kopiert.','success');}catch{this.showNotice(`Dein Gruppencode: ${network.roomCode || ''}`);}return;
@@ -1237,14 +1302,20 @@ export class GameUI {
 
   updateEncounter() {
     const element=document.getElementById('encounter-pressure');if(!element)return;
-    const raid=raidHudPresentation(this.game);
-    const toolbar=element.parentElement;toolbar?.classList?.toggle('raid-active',!!raid&&!this.inPvp);
+    const raid=raidHudPresentation(this.game),route=raid?null:dungeonRoutePresentation(this.game);
+    const toolbar=element.parentElement;toolbar?.classList?.toggle('raid-active',!!(raid||route)&&!this.inPvp);
     if(raid&&!this.inPvp){
       element.hidden=false;const digest=JSON.stringify(['raid',raid]);if(digest===this.lastEncounterHud)return;this.lastEncounterHud=digest;
       element.dataset.mode='raid';element.dataset.stage=raid.waiting?'paused':raid.warning?'warning':'active';element.dataset.tier='raid';element.dataset.support=String(raid.pressure);
       const name=raid.pressure?`${raid.name} · Phase ${raid.phase}`:raid.name;
       element.innerHTML=`${icon(raid.waiting?'group':raid.pressure?'shield':raid.objectiveCount?'gem':'crown')}<div><strong>${escape(name)}</strong><small><span class="raid-cast-detail">${escape(raid.detail)}</span>${raid.revives?`<span class="raid-revive-budget" title="Noch ${raid.revives.remaining} von ${raid.revives.limit} gemeinsamen Kampfbelebungen">Kampfbelebungen ${raid.revives.remaining}/${raid.revives.limit}</span>`:''}</small></div>`;
       element.setAttribute('aria-label',`${name}: ${raid.detail}${raid.pressure&&raid.objectiveCount?`, ${raid.objectiveCount} ${raid.objectiveLabel}`:''}${raid.revives?`, noch ${raid.revives.remaining} von ${raid.revives.limit} Kampfbelebungen`:''}`);element.title=element.getAttribute('aria-label');return;
+    }
+    if(route&&!this.inPvp){
+      element.hidden=false;const digest=JSON.stringify(['route',route.name,route.detail,route.sequence]);if(digest===this.lastEncounterHud)return;this.lastEncounterHud=digest;
+      element.dataset.mode='route';element.dataset.stage=route.kind;element.dataset.tier='route';element.dataset.support='false';
+      element.innerHTML=`${icon(route.kind==='relay'?'flame':route.kind==='martial'?'sword':route.kind==='tactical'?'dash':'map')}<div><strong>${escape(route.name)}</strong><small>${escape(route.detail)}</small></div>`;
+      element.setAttribute('aria-label',`${route.name}: ${route.detail}${route.sequence?`. Folge ${route.sequence.join(', ')}`:''}`);element.title=element.getAttribute('aria-label');return;
     }
     element.dataset.mode='world';
     element.dataset.support='false';
@@ -1339,9 +1410,28 @@ export class GameUI {
       }
     }
     if(inDungeon) {
-      for(const room of world.rooms || []) {ctx.fillStyle=room.color || '#3b4742';ctx.fillRect(mapX(room.x),mapY(room.y),room.w*scale,room.h*scale);if(full){ctx.fillStyle='#c5c9af';ctx.font='14px Georgia';ctx.textAlign='center';ctx.fillText(room.name,mapX(room.x+room.w/2),mapY(room.y+room.h/2),room.w*scale-10);}}
-      for(const wall of world.structures || []) {if(wall.blocking===false)continue;const box=wall.collision || wall;ctx.fillStyle=wall.type==='dungeon_gate'?'#b49d63':'#17221c';ctx.fillRect(mapX(box.x),mapY(box.y),box.w*scale,box.h*scale);}
-      for(const puzzle of world.puzzleObjects || []) {ctx.fillStyle='#b99ddd';ctx.fillRect(mapX(puzzle.x)-2,mapY(puzzle.y)-2,4,4);}
+      const routes=this.game.dungeonInstance?.routes,routeRooms=new Map((routes?.chambers||[]).map(chamber=>[chamber.id,chamber]));
+      for(const room of world.rooms || []) {
+        ctx.fillStyle=room.color || '#3b4742';ctx.fillRect(mapX(room.x),mapY(room.y),room.w*scale,room.h*scale);
+        if(full){
+          const chamber=routeRooms.get(room.id),completed=chamber&&routes.completed.includes(chamber.id);
+          ctx.fillStyle=completed?'#baddad':'#c5c9af';ctx.font=chamber?'12px sans-serif':'14px Georgia';ctx.textAlign='center';
+          const name=chamber?`${chamber.stage} · ${completed?'✓':({martial:'W',relay:'G',tactical:'T'})[chamber.kind]} ${chamber.title}`:room.name;
+          ctx.fillText(name,mapX(room.x+room.w/2),mapY(room.y+room.h/2),Math.max(8,room.w*scale-10));
+        }
+      }
+      const walls=full&&this.game.networkActive&&this.game.networkDungeonLayout?.structures?this.game.networkDungeonLayout.structures:world.structures||[];
+      for(const wall of walls) {
+        const routeOpen=wall.type==='dungeon_route_gate'&&routes?.chambers.some(chamber=>chamber.stage===wall.routeStage&&routes.completed.includes(chamber.id));
+        const bossOpen=wall.type==='dungeon_gate'&&wall.id===`${this.dungeonId()}:gate`&&this.game.dungeonInstance?.gateOpened;
+        if(routeOpen||bossOpen||wall.blocking===false)continue;const box=wall.collision || wall;ctx.fillStyle=['dungeon_gate','dungeon_route_gate'].includes(wall.type)?'#b49d63':'#17221c';ctx.fillRect(mapX(box.x),mapY(box.y),box.w*scale,box.h*scale);
+      }
+      const mapObjects=full&&this.game.networkDungeonCheckpoint?.id===this.dungeonId()?this.game.networkDungeonCheckpoint.objects||world.puzzleObjects||[]:world.puzzleObjects||[];
+      for(const puzzle of mapObjects) {ctx.fillStyle=puzzle.active?'#baddad':'#b99ddd';ctx.fillRect(mapX(puzzle.x)-2,mapY(puzzle.y)-2,4,4);}
+      if(full&&routes){
+        const destination=world.dungeonExit||this.game.dungeonInstance.exit;
+        if(destination){ctx.fillStyle='#dcc79f';ctx.font='11px sans-serif';ctx.textAlign='left';ctx.fillText('Ausgang',mapX(destination.x)+7,mapY(destination.y)+4);}
+      }
     }
     ctx.strokeStyle='#9e996b70';ctx.lineCap='round';
     for(const path of world.paths || []) {
@@ -1358,13 +1448,16 @@ export class GameUI {
       const x=mapX(shrine.x),y=mapY(shrine.y);ctx.fillStyle='#8fc8c7';ctx.beginPath();ctx.moveTo(x,y-4);ctx.lineTo(x+3,y);ctx.lineTo(x,y+4);ctx.lineTo(x-3,y);ctx.closePath();ctx.fill();
       if (full) {ctx.fillStyle='#c5dbbd';ctx.font='10px sans-serif';ctx.textAlign='left';ctx.fillText(shrine.name || 'Glutschrein',x+9,y+3);}
     }
-    for (const enemy of (world.enemies || [])) {
+    const mapEnemies=full&&inDungeon&&this.game.networkDungeonCheckpoint?.id===this.dungeonId()?this.game.networkDungeonCheckpoint.enemies||world.enemies||[]:world.enemies||[];
+    for (const enemy of mapEnemies) {
       if (enemy.dead || enemy.alive===false || enemy.hp<=0) continue;
       const boss=enemy.boss || ENEMY_TYPES[enemy.type]?.boss;
       if (full && !boss) continue;
       const region=REGIONS.find(entry=>enemy.x>=entry.x&&enemy.x<entry.x+entry.w&&enemy.y>=entry.y&&enemy.y<entry.y+entry.h);
       if (!inDungeon && !(this.game.discovered || []).includes(region?.id)) continue;
-      ctx.fillStyle=boss?'#ec9069':'#bd7254';const size=boss?4:2;ctx.fillRect(mapX(enemy.x)-size/2,mapY(enemy.y)-size/2,size,size);
+      ctx.fillStyle=boss?'#ec9069':'#bd7254';const size=boss?4:2;
+      if(full&&inDungeon&&boss){const x=mapX(enemy.x),y=mapY(enemy.y);ctx.beginPath();ctx.moveTo(x,y-5);ctx.lineTo(x+4,y);ctx.lineTo(x,y+5);ctx.lineTo(x-4,y);ctx.closePath();ctx.fill();ctx.font='11px sans-serif';ctx.textAlign='center';ctx.fillText('Boss',x,y-9);}
+      else ctx.fillRect(mapX(enemy.x)-size/2,mapY(enemy.y)-size/2,size,size);
     }
     for(const object of world.interactions || []) {
       if(object.used||!(this.game.discovered || []).includes(object.region))continue;

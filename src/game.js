@@ -3,9 +3,11 @@ import { makeWorld } from './world.js';
 import { expandWorld } from './expansion.js';
 import { CLASSES, getClass, getTalentModifiers, canLearnTalent, validateCombatTalentState } from './classes.js';
 import { MAX_LEVEL, xpToNext } from './progression.js';
-import { basePlayerStats, classStatModifiers, capCombatStats, incomingDamage, classPowerMultiplier, normalEnemyStats, enemyXpReward, COMBAT_SUSTAIN } from './balance.js';
+import { basePlayerStats, classStatModifiers, capCombatStats, incomingDamage, classPowerMultiplier, normalEnemyStats, enemyXpReward, dungeonCompletionXp, COMBAT_SUSTAIN } from './balance.js';
 import { generateLoot, computeItemStats, validateLootItem, salvageYield, computeSetBonuses, GEM_TYPES, ITEM_BASES } from './loot.js';
 import { DUNGEONS, createDungeon, interactPuzzle, updateDungeon, validateDungeonEchoes, restoreDungeonEchoes } from './dungeons.js';
+import { interactDungeonRoute, captureDungeonRoutes, validateDungeonRouteSave, restoreDungeonRoutes, dungeonRouteSummary, dungeonRouteRewardCandidates, isInBossArena } from './dungeon-routes.js';
+import { hitShape } from './encounter-geometry.js';
 import { MAX_ACTIVE_CONTRACTS, getContractOffers, createContract, advanceContract, resolveContractOffer, validateContractState, restoreContractState } from './contracts.js';
 import { ABILITIES, getAbility, canLearnAbility, validateAbilityState } from './abilities.js';
 import { BESTIARY_ENEMIES, REGION_ENEMY_POOLS, createBestiaryEnemy } from './bestiary.js';
@@ -27,6 +29,7 @@ import { updateRaidEncounter, captureRaidEncounter, validateRaidEncounterSave, r
 import { createDeathPenaltyState, validateDeathPenaltyState, restoreDeathPenaltyState, chargeDeathPenalty, completeDeathRescue, creditGold, deathSummary } from './death-penalty.js';
 import { createCharacterPresentation } from './character-animation.js';
 import { getTalentCombatModifiers, applyTalentAttackProfile, applyTalentAbilityProfile } from './talent-combat.js';
+import { createTechniqueSpecializationState, validateTechniqueSpecializations, restoreTechniqueSpecializations, captureTechniqueSpecializations, canLearnTechniqueSpecialization, canSelectTechniqueSpecialization, learnTechniqueSpecialization as learnTechnique, selectTechniqueSpecialization as selectTechnique, applyTechniqueSpecialization, techniqueCooldownCeiling, techniqueSpecializationSummary } from './technique-specializations.js';
 import { preflightMasteryAbility, executeMasteryAbility, updateMasteryAbilities, cancelMasteryChannel,
   clearMasteryAbilities, onMasteryHit, onMasteryDamaged } from './ability-runtime.js';
 
@@ -75,6 +78,7 @@ export class Game {
     this.equipment=createEmptyEquipment();this.itemFlags={};this.stash={};this.loadouts=[];this.trackedQuestId='';this.waypoint=null;
     this.skills = {}; this.questState = {}; this.discovered = ['daemmerhain']; this.unlockedShrines = [];
     this.learnedAbilities={};this.abilityLoadout=[null,null];
+    this.techniqueSpecializations=createTechniqueSpecializationState();
     this.contracts={active:[],completed:{}};
     this.journey=createJourneyState();advanceJourney(this,'explore','daemmerhain');
     this.endgame=createEndgameState();this.worldMode='overworld';this.pvp=null;this.pvpStats=null;this._pvpTravelSave=null;
@@ -99,6 +103,21 @@ export class Game {
   }
   combatTalentModifiers() {
     return this.worldMode==='pvp'?{}:getTalentCombatModifiers(this.skills,this.player.classId);
+  }
+  coreAbilityProfile(action) {
+    if(!['bolt','nova'].includes(action))return null;
+    return applyTechniqueSpecialization(applyTalentAbilityProfile(getClass(this.player.classId).abilities[action],this.combatTalentModifiers(),{action}),this,{action});
+  }
+  techniqueSpecializationSummary(){return techniqueSpecializationSummary(this);}
+  learnTechniqueSpecialization(id) {
+    const check=canLearnTechniqueSpecialization(this,id);if(!check.ok){this.notice(check.reason);return false;}
+    if(!learnTechnique(this,id))return false;
+    this.notice('Technikprägung erlernt. Wähle sie in deinen Talenten, um sie zu verwenden.','quest');this.change();this.save(false);return true;
+  }
+  selectTechniqueSpecialization(id) {
+    const check=canSelectTechniqueSpecialization(this,id);if(!check.ok){this.notice(check.reason);return false;}
+    if(!selectTechnique(this,id))return false;
+    this.notice(id?'Technikprägung gewählt. Deine laufenden Abklingzeiten bleiben bestehen.':'Du verwendest wieder deine ursprüngliche Klassentechnik.','quest');this.change();this.save(false);return true;
   }
   stats(equipmentOverride=this.equipment) {
     if(this.worldMode==='pvp'&&this.pvpStats)return {...this.pvpStats};
@@ -153,7 +172,7 @@ export class Game {
   }
   regionAt(x=this.player.x,y=this.player.y) {
     if(this.worldMode==='pvp')return {id:'ashen_arena',name:'Arena der schwarzen Eide',subtitle:'Freiwilliges Duell · gleiche Kampfwerte',color:'#9b6d9c',level:1};
-    if(this.dungeonInstance) return {id:this.dungeonInstance.id,name:this.dungeonInstance.definition.name,subtitle:`Dungeon · Stufe ${this.dungeonInstance.definition.minLevel} · Tiefe ${this.dungeonInstance.tier||1}`,color:this.dungeonInstance.definition.color||'#9a86b1',level:this.dungeonInstance.definition.minLevel};
+    if(this.dungeonInstance) {const route=dungeonRouteSummary(this.dungeonInstance);return {id:this.dungeonInstance.id,name:this.dungeonInstance.definition.name,subtitle:`Dungeon · Stufe ${this.dungeonInstance.definition.minLevel} · Tiefe ${this.dungeonInstance.tier||1}${route?` · Wegsiegel ${route.sigils}/2`:''}`,color:this.dungeonInstance.definition.color||'#9a86b1',level:this.dungeonInstance.definition.minLevel};}
     return REGIONS.find(r=>x>=r.x && x<r.x+r.w && y>=r.y && y<r.y+r.h)||REGIONS[0];
   }
   inSettlement(x=this.player.x,y=this.player.y) {
@@ -586,6 +605,10 @@ export class Game {
     if(n.kind==='exit') {this.exitDungeon();return;}
     if(n.kind==='revive') { const ally=this.partyGames.find(g=>g.player===o);if(!ally?.dead||!spendRaidRevive(this))return false;ally.dead=false;ally.paused=false;completeDeathRescue(ally);ally.player.hp=ally.stats().maxHp*.4;ally.player.invulnerable=3;ally.onRevived?.();this.event('revive',o.id||o.name);this.notice(`${o.name} wiederbelebt`);for(const game of this.partyGames){game.change();game.save(false);}return true;}
     if(n.kind==='puzzle') {
+      if(o.routeChamberId||o.routeGuide) {
+        const result=interactDungeonRoute(this.dungeonInstance,o.id,(this.partyGames||[this]).filter(g=>!g.dead&&g.player.hp>0).map(g=>({...g.player,human:true,alive:true})));
+        this.notice(result.message||'Wegzeichen betätigt',result.success?'quest':'info');this.change();return result.success;
+      }
       const result=interactPuzzle(this.dungeonInstance,o.id,this.partyGames.filter(g=>!g.dead).map(g=>g.player),this.time);
       this.notice(result.message||'Mechanismus betätigt');if(result.event)for(const ally of this.partyGames)ally.event(result.event,result.target||this.dungeonInstance.id);
       this.change();return;
@@ -835,7 +858,7 @@ export class Game {
       p.dashAngle=dx||dy?Math.atan2(dy,dx):p.face;
       this.effect('burst',p.x,p.y,{color:'#c6dfd5',radius:22,life:.3}); this.onSound('dash');
     } else if(name==='bolt'||name==='nova') {
-      const skill=applyTalentAbilityProfile(cls.abilities[name],this.combatTalentModifiers(),{action:name});if(skill.kind==='summon'&&!this.summonSlots()){this.notice('Deine acht Diener stehen bereits im Feld.');return false;}if(p.mana<skill.cost) {this.notice('Nicht genug Mana.');return false;}
+      const skill=this.coreAbilityProfile(name);if(skill.kind==='summon'&&!this.summonSlots()){this.notice('Deine acht Diener stehen bereits im Feld.');return false;}if(p.mana<skill.cost) {this.notice('Nicht genug Mana.');return false;}
       cancelMasteryChannel(this);
       p.mana-=skill.cost;this.cooldowns[name]=skill.cooldown*(1-s.cooldown);p.castUntil=this.time+.3;
       this.presentAction(skill.kind==='shield'?'shield':skill.kind==='heal'?'heal':skill.kind==='dashstrike'?'melee':
@@ -881,7 +904,8 @@ export class Game {
   hitEnemy(e,damage,knockback=20) {
     if(!e.alive||!Number.isFinite(damage)||damage<=0)return 0;
     const required=ENEMY_TYPES[e.type]?.minPlayers||1;
-    const living=new Set((this.partyGames||[this]).filter(g=>!g.dead&&g.player.hp>0).map(g=>g.player.id||g));
+    const raidBoss=this.dungeonInstance?.definition.raid&&e.id===`${this.dungeonInstance.id}:boss`;
+    const living=new Set((this.partyGames||[this]).filter(g=>!g.dead&&g.player.hp>0&&(!raidBoss||isInBossArena(this.dungeonInstance,g.player))).map(g=>g.player.id||g));
     if(required>1&&living.size<required) {this.text(e.x,e.y-24,'Gruppe unvollständig','#b9acda');return 0;}
     if(e.shielded||e.shieldDamageMultiplier===0) {this.text(e.x,e.y-24,'Geschützt','#b9acda');return 0;}
     const crit=this.random()<this.stats().crit;
@@ -1001,18 +1025,26 @@ export class Game {
     }
     for(const companion of this.summons.filter(s=>s.companion))if(!living.some(g=>(g.player.id||'local')===companion.actorId))companion.life=0;
     if(this.dungeonInstance) {
+      this.hazards=this.hazards.filter(hazard=>!hazard.routeHazard);
       const events=updateDungeon(this.dungeonInstance,dt,living.map(g=>({...g.player,human:true,alive:true})));
       for(const event of events) {
         if(event.hazards)this.hazards.push(...event.hazards);
         if(event.zones)for(const zone of event.zones)for(const ally of living)if(dist(ally.player,zone)<zone.radius)ally.damagePlayer(zone.damage,{attackerLevel:this.dungeonInstance.definition.minLevel});
+        for(const impact of event.damageEvents||[])for(const ally of living)if(String(ally.player.id||'local')===impact.actorId&&hitShape(impact.shape,ally.player))ally.damagePlayer(ally.stats().maxHp*impact.damageFraction,{attackerLevel:impact.attackerLevel,attackerId:impact.attackerId});
         for(const ally of partyGames) {
         if(event.event!=='mechanic')ally.event(event.event,event.target);
         if(event.message)ally.notice(event.message,'quest');
+        if(event.event==='dungeon-route'&&event.routeReward){ally.resources.dust+=event.routeReward.dust||0;ally.save(false);}
         if(event.event==='dungeon') {
           const old=ally.dungeonRecords[event.target]||{runs:0,bestTier:0,bestTime:Infinity};
           ally.dungeonRecords[event.target]={runs:old.runs+1,bestTier:Math.max(old.bestTier,this.dungeonInstance.tier),bestTime:Math.min(old.bestTime,this.dungeonInstance.elapsed)};
           const rewards=this.dungeonInstance.rewards||{completionXp:ENEMY_TYPES[this.dungeonInstance.definition.boss].xp,raidSigils:this.dungeonInstance.definition.raid?1:0};
-          ally.gainXp(rewards.completionXp);ally.gainGold(rewards.completionGold||0);ally.resources.dust+=rewards.dust||0;ally.resources.raidSigil+=rewards.raidSigils||0;
+          const experience=dungeonCompletionXp(rewards.completionXp,{dungeonLevel:this.dungeonInstance.definition.level,playerLevel:ally.player.level,tier:this.dungeonInstance.tier,firstClear:old.runs===0});
+          ally.gainXp(experience);ally.gainGold(rewards.completionGold||0);ally.resources.dust+=rewards.dust||0;ally.resources.raidSigil+=rewards.raidSigils||0;
+          for(const routeReward of dungeonRouteRewardCandidates(this.dungeonInstance)) {
+            const token=`${routeReward.id}:tier-${routeReward.tier}`;
+            if(!(ally.ledger[`route-sigil:${token}`]>0)){ally.resources.raidSigil+=routeReward.raidSigils;ally.event('route-sigil',token);}
+          }
           ally.save(false);
         }
       }
@@ -1181,6 +1213,7 @@ export class Game {
     const instance=this.dungeonInstance;
     return {
       id:instance.id,tier:instance.tier,seed:instance.seed,returnPoint:this.returnPoint,
+      layoutVersion:instance.layoutVersion||1,routes:captureDungeonRoutes(instance),
       elapsed:instance.elapsed,bossTime:instance.bossTime,bossEngaged:instance.bossEngaged,affixState:instance.affixState,gateOpened:instance.gateOpened,bossDefeated:instance.bossDefeated,puzzles:instance.puzzles,
       shieldHold:instance.shieldHold,vulnerabilityUntil:instance.vulnerabilityUntil,raidWipes:instance.raidWipes||0,raidRevivesUsed:instance.raidRevivesUsed||0,raidEncounter:captureRaidEncounter(instance),pendingGeneric:captureRaidGeneric(instance),
       ...(instance.definition.raid?{raidBalanceVersion:RAID_BALANCE_VERSION}:{}),
@@ -1201,7 +1234,7 @@ export class Game {
     const {presentation,...persistentPlayer}=this.player;
     return {version:2,savedAt:Date.now(),player:{...persistentPlayer,walking:false,raidDebuffs:captureRaidDebuffs(this.player,this.time)},inventory:this.inventory,resources:this.resources,equipment:this.equipment,generatedItems:this.generatedItems,lootPity:this.lootPity,lootSerial:this.lootSerial,dungeonRecords:this.dungeonRecords,dungeon,contracts:this.contracts,skills:this.skills,
       stash:{...this.stash},itemFlags:this.itemFlags,loadouts:this.loadouts,trackedQuestId:this.trackedQuestId,waypoint:this.waypoint?{kind:this.waypoint.kind,id:this.waypoint.id}:null,journey:this.journey,endgame:this.endgame,relicCooldown:this.cooldowns.relic||0,
-      learnedAbilities:{...this.learnedAbilities},abilityLoadout:[...this.abilityLoadout],abilityCooldowns,deathPenalty:restoreDeathPenaltyState(this.deathPenalty),
+      learnedAbilities:{...this.learnedAbilities},abilityLoadout:[...this.abilityLoadout],abilityCooldowns,techniqueSpecializations:captureTechniqueSpecializations(this),deathPenalty:restoreDeathPenaltyState(this.deathPenalty),
       combatCooldowns:Object.fromEntries(['attack','dash','bolt','nova'].map(key=>[key,this.cooldowns[key]||0])),
       leechCredit:this.currentLeechCredit(),
       consumableCooldowns:{potion:this.cooldowns.potion||0,food:this.cooldowns.food||0},
@@ -1230,11 +1263,12 @@ export class Game {
     if(!validateInventoryExtensions(data)||data.trackedQuestId!==undefined&&typeof data.trackedQuestId!=='string'||data.waypoint!==undefined&&data.waypoint!==null&&(!record(data.waypoint)||!['npc','shrine','quest','event','interaction','dungeon','region'].includes(data.waypoint.kind)||typeof data.waypoint.id!=='string'))throw new Error('Ungültige Inventar- oder Reisedaten.');
     if(data.player.afflictions!==undefined&&(!Array.isArray(data.player.afflictions)||data.player.afflictions.length>3||new Set(data.player.afflictions.map(a=>a?.kind)).size!==data.player.afflictions.length||data.player.afflictions.some(a=>!record(a)||!['venom','burn','bleed'].includes(a.kind)||!Number.isFinite(a.damage)||a.damage<0||a.damage>500||!Number.isFinite(a.expiresAt)||a.expiresAt<0||!Number.isFinite(a.nextTick)||a.nextTick<0||!Number.isInteger(a.attackerLevel)||a.attackerLevel<1||a.attackerLevel>MAX_LEVEL)))throw new Error('Ungültige Wunddaten.');
     const abilityState=validateAbilityState(data);
+    if(!validateTechniqueSpecializations(data.techniqueSpecializations,{classId:getClass(data.player.classId).id,level:data.player.level}))throw new Error('Ungültige Technikprägung.');
     if(!validateRaidDebuffs(data.player.raidDebuffs))throw new Error('Ungültige Raidwunde.');
     if(!validateDeathPenaltyState(data.deathPenalty))throw new Error('Ungültiger Rettungsbeleg.');
     if(data.leechCredit!==undefined&&(!Number.isFinite(data.leechCredit)||data.leechCredit<0||data.leechCredit>1))throw new Error('Ungültiges Lebensraubbudget.');
     const core=getClass(data.player.classId).abilities;
-    if(data.combatCooldowns!==undefined&&(!record(data.combatCooldowns)||Object.entries(data.combatCooldowns).some(([key,value])=>!['attack','dash','bolt','nova'].includes(key)||!Number.isFinite(value)||value<0||value>(key==='dash'?2.295:core[key].cooldown*2.56)+.001)))throw new Error('Ungültige Kampfabklingzeit.');
+    if(data.combatCooldowns!==undefined&&(!record(data.combatCooldowns)||Object.entries(data.combatCooldowns).some(([key,value])=>!['attack','dash','bolt','nova'].includes(key)||!Number.isFinite(value)||value<0||value>(key==='dash'?2.295:core[key].cooldown*2.56*techniqueCooldownCeiling(data.techniqueSpecializations,getClass(data.player.classId).id,key))+.001)))throw new Error('Ungültige Kampfabklingzeit.');
     if(!validateCombatTalentState(data))throw new Error('Ungültige neue Talententscheidung.');
     for(const key of ['inventory','resources','equipment','skills','questState','flags','ledger','settings']) {
       if(data[key]!==undefined&&!record(data[key])) throw new Error(`Ungültiges Feld: ${key}`);
@@ -1264,6 +1298,8 @@ export class Game {
       if(d.objects!==undefined&&(!Array.isArray(d.objects)||d.objects.some(o=>!record(o)||typeof o.id!=='string'||!Number.isFinite(o.x)||!Number.isFinite(o.y))))throw new Error('Ungültige Rätseldaten.');
       if(d.returnPoint!==undefined&&(!record(d.returnPoint)||!Number.isFinite(d.returnPoint.x)||!Number.isFinite(d.returnPoint.y)))throw new Error('Ungültiger Rückweg.');
       if(d.bossTime!==undefined&&(!Number.isFinite(d.bossTime)||d.bossTime<0))throw new Error('Ungültige Kampfzeit.');
+      if(d.layoutVersion!==undefined&&![1,2].includes(d.layoutVersion))throw new Error('Ungültige Dungeonkarte.');
+      validateDungeonRouteSave(d.routes,{id:d.id,tier:d.tier,seed:d.seed,layoutVersion:d.layoutVersion||1,enemies:d.enemies,openedChests:d.openedChests});
       if(d.affixState!==undefined&&(!record(d.affixState)||!Array.isArray(d.affixState.rifts)||d.affixState.rifts.some(r=>!record(r)||!Number.isFinite(r.x)||!Number.isFinite(r.y)||!Number.isFinite(r.explodeAt)||!Number.isFinite(r.radius)||!Number.isFinite(r.damage))))throw new Error('Ungültige Dungeonaffixe.');
       validateDungeonEchoes(d.enemies,d.id,d.tier);
       if(!validateRaidHealthSave(d))throw new Error('Ungültiges Raid-Lebensbudget.');
@@ -1279,6 +1315,7 @@ export class Game {
     this.player.name=typeof p.name==='string'?p.name.slice(0,24):'Aren';this.player.classId=getClass(p.classId).id;
     if(typeof p.id==='string'&&p.id.length>0&&p.id.length<=120)this.player.id=p.id;
     this.classId=this.player.classId;
+    this.techniqueSpecializations=restoreTechniqueSpecializations(data.techniqueSpecializations,{classId:this.player.classId,level:this.player.level});
     this.journey=restoreJourneyState(data.journey,{level:this.player.level,legacy:data});
     this.endgame=restoreEndgameState(data.endgame);this.cooldowns.relic=data.relicCooldown||0;this.deathPenalty=restoreDeathPenaltyState(data.deathPenalty);
     for(const [key,value] of Object.entries(data.combatCooldowns||{}))this.cooldowns[key]=value;
@@ -1331,7 +1368,7 @@ export class Game {
       const saved=data.world.championRespawns?.find(s=>s.id===enemy.id);enemy.respawnAt=this.time+(saved?.remaining??360);
     }
     if(data.dungeon) {
-      const d=data.dungeon;const instance=createDungeon(d.id,{tier:d.tier,seed:d.seed,partySize:1});
+      const d=data.dungeon;const instance=createDungeon(d.id,{tier:d.tier,seed:d.seed,partySize:1,layoutVersion:d.layoutVersion||1});
       instance.elapsed=validNum(d.elapsed,0);instance.bossDefeated=!!d.bossDefeated;
       instance.bossTime=validNum(d.bossTime,0);instance.bossEngaged=!!d.bossEngaged;
       instance.shieldHold=d.shieldHold||0;instance.vulnerabilityUntil=d.vulnerabilityUntil||0;instance.raidWipes=d.raidWipes||0;instance.raidRevivesUsed=d.raidRevivesUsed||0;
@@ -1348,10 +1385,11 @@ export class Game {
       }
       for(const object of instance.world.puzzleObjects){const saved=d.objects?.find(o=>o.id===object.id);if(saved){object.active=!!saved.active;if(object.kind==='lens')object.rotation=Math.floor(validNum(saved.rotation,0,0,3));if(object.kind==='crate'){object.x=validNum(saved.x,object.x,40,1040);object.y=validNum(saved.y,object.y,40,1420);const body=instance.world.structures.find(s=>s.id===object.id);body.x=object.x-20;body.y=object.y-20;body.collision.x=body.x;body.collision.y=body.y;}}}
       restoreDungeonEchoes(instance,d.enemies);
-      for(const enemy of instance.world.enemies) {const saved=d.enemies.find(e=>e.id===enemy.id);if(saved){enemy.hp=clamp(restoreRaidBossHealth(instance,enemy,saved,d.raidBalanceVersion),0,enemy.maxHp);enemy.alive=saved.alive!==false&&enemy.hp>0;enemy.x=validNum(saved.x,enemy.x,30,1770);enemy.y=validNum(saved.y,enemy.y,30,1470);}}
+      for(const enemy of instance.world.enemies) {const saved=d.enemies.find(e=>e.id===enemy.id);if(saved){enemy.hp=clamp(restoreRaidBossHealth(instance,enemy,saved,d.raidBalanceVersion),0,enemy.maxHp);enemy.alive=saved.alive!==false&&enemy.hp>0;enemy.x=validNum(saved.x,enemy.x,30,instance.world.width-30);enemy.y=validNum(saved.y,enemy.y,30,instance.world.height-30);}}
       for(const chest of instance.world.chests){chest.opened=d.openedChests.includes(chest.id);if(instance.bossDefeated&&chest.requiresBoss)chest.locked=false;}
       if(instance.puzzles.every(p=>p.solved)){instance.gateOpened=true;const gate=instance.world.structures.find(s=>s.type==='dungeon_gate');gate.open=true;gate.blocking=false;}
       this.world=instance.world;this.dungeonInstance=instance;this.npcs=[];this.returnPoint=d.returnPoint||{...instance.definition.entrance};
+      restoreDungeonRoutes(instance,d.routes);
       restoreRaidEncounter(this,instance,d.raidEncounter);
       restoreRaidGeneric(this,instance,d.pendingGeneric);
     }

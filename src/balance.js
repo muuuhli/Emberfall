@@ -81,12 +81,25 @@ export function normalEnemyStats(level = 1, {tier = 1} = {}) {
     xp:Math.round(35+current*current*2.3),attackPeriod:1.65};
 }
 
-/** Gray farm kills lose XP; quests and dungeon-completion rewards never call this. */
+/** Gray farm kills lose XP; discovery and quest rewards use separate rules. */
 export function enemyXpReward(baseXp, {enemyLevel = 1,playerLevel = 1,boss = false} = {}) {
   const amount=Math.max(0,finite(baseXp)),gap=levelOf(playerLevel)-levelOf(enemyLevel);
   if(gap<=5)return Math.round(amount);
   const factor=gap>=20?0:gap>=15?.1:gap>=10?.25:.6;
   return Math.round(amount*(boss?Math.max(.1,factor):factor));
+}
+
+/** First dungeon discovery retains its authored reward. Repeat experience
+ * follows the challenge's level, while gear, dust and earned seals remain.
+ * Higher depths gain one relevant level per two completed depth steps.
+ */
+export function dungeonCompletionXp(baseXp,{dungeonLevel=1,playerLevel=1,tier=1,firstClear=false}={}) {
+  const amount=Math.max(0,finite(baseXp));
+  if(firstClear)return Math.round(amount);
+  const depth=clamp(Math.floor(finite(tier,1)),1,30),challengeLevel=Math.min(MAX_LEVEL,levelOf(dungeonLevel)+Math.floor((depth-1)/2));
+  const gap=levelOf(playerLevel)-challengeLevel;
+  const factor=gap<=5?1:gap>=20?0:gap>=15?.1:gap>=10?.25:.6;
+  return Math.round(amount*factor);
 }
 
 /** Reproducible stationary-target benchmark with explicitly declared assumptions. */

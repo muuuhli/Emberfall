@@ -185,6 +185,7 @@ test('eight HTTP sessions must hold distinct raid seals before the shared gate a
     await fixture.post(route,{type:'input',keys:[],angle:0});await fixture.post(route,{type:'action',name:'attack'});assert.equal(boss.hp,hp,'A solo damage dealer cannot bypass the raid shield');
     const bossPlates=room.world.puzzleObjects.filter(o=>o.kind==='boss_plate');assert.equal(bossPlates.length,4);
     for(let i=0;i<4;i++)Object.assign(members[i+1].game.player,{x:bossPlates[i].x,y:bossPlates[i].y});
+    for(let i=5;i<8;i++)Object.assign(members[i].game.player,{x:boss.x+80,y:boss.y+(i-5)*45});
     for(let frame=0;frame<55;frame++)fixture.hub.tick(.04);
     assert.equal(boss.shielded,false,'Four distinct companions create the shared damage window');
     Object.assign(members[0].game.player,{x:boss.x-50,y:boss.y});

@@ -191,9 +191,9 @@ export class PvpArena {
       else if(duel.remaining<=0)this.finish(duel,null,'Zeitlimit');
     }
   }
-  summary(member) {
+  summary(member,{availability=value=>this.availability(value)}={}) {
     const duel=this.duel(member),opponent=duel?.members.find(m=>m!==member);
-    return {rules:PVP_RULES,roster:[...member.room.members.values()].filter(m=>m!==member).map(m=>({id:m.id,name:m.game.player.name,classId:m.game.classId,available:this.availability(m)==='Bereit',reason:this.availability(m)})),
+    return {rules:PVP_RULES,roster:[...member.room.members.values()].filter(m=>m!==member).map(m=>({id:m.id,name:m.game.player.name,classId:m.game.classId,available:availability(m)==='Bereit',reason:availability(m)})),
       invites:[...this.invites.values()].filter(i=>i.from===member||i.to===member).map(i=>({id:i.id,fromId:i.from.id,fromName:i.from.game.player.name,toId:i.to.id,toName:i.to.game.player.name,expiresAt:i.expiresAt,remaining:Math.max(0,(i.expiresAt-this.clock())/1000),outgoing:i.from===member})),
       duel:duel?{id:duel.id,state:duel.state,countdown:Math.max(0,3-duel.elapsed),timeLeft:duel.remaining,opponentId:opponent.id,opponentName:opponent.game.player.name,winnerId:duel.winnerId,result:duel.state==='finished'?duel.winnerId===null?'draw':duel.winnerId===member.id?'victory':'defeat':null,reason:duel.reason,returnIn:duel.returnIn}:null,lastResult:member.pvpLastResult||null};
   }

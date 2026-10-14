@@ -29,7 +29,7 @@ async function raidFixture(id) {
   const instance=fixture.members[0].game.dungeonInstance,boss=fixture.room.world.enemies.find(e=>e.type===definition.boss);
   // Isolate the authored boss from trash enemies and travel. All mutations here
   // are fixture setup inside the authority; browsers cannot submit these values.
-  fixture.room.world.enemies=[boss];instance.gateOpened=true;
+  fixture.room.world.enemies=fixture.room.world.enemies.filter(enemy=>enemy===boss||enemy.routeGuard);instance.gateOpened=true;
   for(const puzzle of instance.puzzles)puzzle.solved=true;
   const gate=fixture.room.world.structures.find(s=>s.type==='dungeon_gate');gate.open=true;gate.blocking=false;
   return {...fixture,definition,instance,boss};

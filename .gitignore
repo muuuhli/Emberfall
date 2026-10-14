@@ -4,4 +4,7 @@ dist/
 .DS_Store
 .openai/.local/
 .emberfall-server/
+.env
+.env.*
+!.env.example
 assets/*.blend1

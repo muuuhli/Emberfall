@@ -1,9 +1,11 @@
 import { isCharacterAppearance } from './character-appearance.js';
+import { SnapshotAccumulator, cloneSnapshot } from './network-snapshots.js';
+import { normalizeServerAddress, SERVER_ADDRESS_KEY } from './server-address.js';
 
 const SESSION_KEY='emberfall.network.v1';
 const INPUT_KEYS=new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
-const REMOTE_METHODS=['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward'];
-const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame','deathPenalty'];
+const REMOTE_METHODS=['questAccept','questTurnIn','learn','learnAbility','learnTechniqueSpecialization','selectTechniqueSpecialization','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward'];
+const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','techniqueSpecializations','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame','deathPenalty'];
 
 /** Browser transport; the server owns combat, progression, drops and movement. */
 export class NetworkClient {
@@ -13,6 +15,7 @@ export class NetworkClient {
     this.serverAvailable=null;
     this._methods=new Map();this._lastInputAt=-Infinity;this._inputPending=null;this._inputSending=false;this._lastEventId=0;this._sequence=-1;this._actionQueue=Promise.resolve();
     this._targetPlayer=null;this._targets=new Map();this._enemyTargets=new Map();
+    this._snapshotState=new SnapshotAccumulator();
   }
   get online(){return this.active||!!this._disconnecting;}
   get connected(){return this.status==='online';}
@@ -25,13 +28,32 @@ export class NetworkClient {
     try {const data=await this._request('/api/rooms');if(!Array.isArray(data.rooms))throw new Error('Hier ist kein Gruppenserver eingerichtet.');this.serverAvailable=true;return data;}
     catch(error){this.serverAvailable=false;throw error;}
   }
+  async setServerAddress(value){
+    if(this.online||['connecting','reconnecting','online'].includes(this.status))throw new Error('Beende zuerst deine Gruppenverbindung, bevor du den Spielserver wechselst.');
+    const candidate=normalizeServerAddress(value,{pageUrl:globalThis.location?.href||''});
+    const controller=typeof AbortController==='function'?new AbortController():null;
+    const operation=Symbol('server-address');
+    let timer;this._status('connecting');this._addressProbe=controller;this._addressOperation=operation;
+    try{
+      const timeout=new Promise((_,reject)=>{timer=setTimeout(()=>{reject(new Error('Der Spielserver antwortet nicht. Prüfe die Adresse und versuche es erneut.'));controller?.abort();},8000);});
+      const data=await Promise.race([this._request('/api/rooms',undefined,{baseUrl:candidate,signal:controller?.signal}),timeout]);
+      if(this._addressOperation!==operation||controller?.signal.aborted||this.active)throw new Error('Der Spielserverwechsel wurde beendet.');
+      if(data.protocol!==1||!Array.isArray(data.rooms))throw new Error('Diese Adresse bietet keinen unterstützten Emberfall-Spielserver.');
+      this.baseUrl=candidate;this.serverAvailable=true;
+      try{this.storage?.setItem(SERVER_ADDRESS_KEY,candidate);}catch{}
+      this._status('offline');return candidate;
+    }catch(error){this._status('offline',error.message);throw error;}
+    finally{clearTimeout(timer);if(this._addressOperation===operation){this._addressProbe=null;this._addressOperation=null;}}
+  }
   async create({name='Glutgruppe',playerName=this.game.player.name,classId=this.game.classId||this.game.player.classId||'guardian'}={}) {
+    if(this._addressOperation)throw new Error('Die Spielserveradresse wird noch geprüft.');
     this._status('connecting');
     try {
       const data=await this._request('/api/rooms',{name,playerName,classId});await this.connect(data);return data;
     } catch(error){this._status('offline',error.message);throw error;}
   }
   async join(code,{playerName=this.game.player.name,classId=this.game.classId||this.game.player.classId||'guardian'}={}) {
+    if(this._addressOperation)throw new Error('Die Spielserveradresse wird noch geprüft.');
     const roomCode=String(code).trim().toUpperCase();if(!/^[A-F0-9]{8}$/.test(roomCode))throw new Error('Der Gruppencode besteht aus 8 Zeichen.');
     this._status('connecting');
     try {
@@ -39,6 +61,7 @@ export class NetworkClient {
     } catch(error){this._status('offline',error.message);throw error;}
   }
   async resume() {
+    if(this._addressOperation)throw new Error('Die Spielserveradresse wird noch geprüft.');
     const saved=this.savedSession;if(!saved)throw new Error('Auf diesem Browser gibt es keine gespeicherte Gruppensitzung.');
     this._status('connecting');
     try {
@@ -46,25 +69,35 @@ export class NetworkClient {
     } catch(error){this._status('offline',error.message);throw error;}
   }
   async connect({token,roomCode,snapshot}) {
+    if(this._addressOperation)throw new Error('Die Spielserveradresse wird noch geprüft.');
     if(!this.EventSourceImpl)throw new Error('Dieser Browser unterstützt keine Gruppenverbindung.');
     this.source?.close();
     if(!this._offlineSave){this._offlineSave=JSON.parse(JSON.stringify(this.game.capture()));this._offlineStarted=this.game.started;}
-    this.token=token;this.roomCode=roomCode;this.active=true;this.serverAvailable=true;this._lastEventId=0;this._sequence=-1;
+    this.token=token;this.roomCode=roomCode;this.active=true;this.serverAvailable=true;this._lastEventId=0;this._sequence=-1;this._snapshotState.reset();
     try{this.storage?.setItem(SESSION_KEY,JSON.stringify({token,roomCode,baseUrl:this.baseUrl}));}catch{}
     this._install();this.game.network=this;this.game.networkActive=true;this.game.started=true;this.game.paused=false;this.game.keys.clear();this.game.aim=null;
     if(snapshot)this.applySnapshot(snapshot);
     this._status('connecting');
-    const source=new this.EventSourceImpl(`${this.baseUrl}/api/session/${token}/events`);this.source=source;
-    source.onopen=()=>{if(this.source!==source)return;this._sequence=-1;this._status('online');};
+    this._openSnapshotStream();
+    return this;
+  }
+  _openSnapshotStream(){
+    if(!this.active)return;
+    const source=new this.EventSourceImpl(`${this.baseUrl}/api/session/${this.token}/events?deltas=1`);this.source=source;
+    source.onopen=()=>{if(this.source!==source)return;this._sequence=-1;this._snapshotState.reset();this._status('online');};
     source.addEventListener('snapshot',event=>{
       if(this.source!==source)return;
-      try{this.applySnapshot(JSON.parse(event.data));if(this.status!=='online')this._status('online');}catch(error){this._status('reconnecting',error.message);}
+      try{this.applySnapshot(JSON.parse(event.data));if(this.status!=='online')this._status('online');}catch(error){
+        // A missing baseline must not turn later patches into stale inventory,
+        // actors or cast deadlines. A fresh stream always begins with full state.
+        this.game.keys.clear();this._status('reconnecting',error.message);source.close();
+        if(!this._resyncTimer)this._resyncTimer=setTimeout(()=>{this._resyncTimer=null;if(this.active&&this.source===source)this._openSnapshotStream();},1200);
+      }
     });
     source.onerror=()=>{
       if(this.source!==source)return;
       this.game.keys.clear();this._status('reconnecting','Verbindung unterbrochen. Dein Servercharakter bleibt gespeichert.');
     };
-    return this;
   }
   _install() {
     if(this._methods.size)return;
@@ -75,16 +108,22 @@ export class NetworkClient {
     };
     intercept('action',name=>{this.sendAction(name);return true;});
     intercept('interact',()=>{this.sendAction('interact');return true;});
-    for(const name of REMOTE_METHODS)intercept(name,(...args)=>{if(name==='respawn')return this.command(name,...args);this.command(name,...args);return true;});
+    for(const name of REMOTE_METHODS)intercept(name,(...args)=>{if(['respawn','learnTechniqueSpecialization','selectTechniqueSpecialization'].includes(name))return this.command(name,...args);this.command(name,...args);return true;});
     intercept('save',manual=>{if(manual)this.game.notice('Dein Gruppencharakter wird automatisch auf dem Spielserver gespeichert.','quest');return true;});
     intercept('importSave',()=>{this.game.notice('Beende die Gruppenverbindung, um einen Einzelspieler-Spielstand zu importieren.');return false;});
     intercept('reset',()=>{this.game.notice('Beende zuerst die Gruppenverbindung, um eine neue Einzelspieler-Reise zu beginnen.');return false;});
     intercept('selectClass',()=>{this.game.notice('Deine Gruppenklasse wurde bei der Charaktererstellung festgelegt.');return false;});
   }
   applySnapshot(snapshot) {
-    if(snapshot.protocol!==1||!snapshot.player||!snapshot.world)throw new Error('Unbekannte Spielserver-Antwort.');
-    if(snapshot.leechCredit!==undefined&&(!Number.isFinite(snapshot.leechCredit)||snapshot.leechCredit<0||snapshot.leechCredit>1))throw new Error('Ungültiges Lebensraubbudget vom Spielserver.');
-    if(Number.isFinite(snapshot.sequence)&&snapshot.sequence<this._sequence)return;
+    const layoutProvided=snapshot.snapshotDelta===undefined&&snapshot.layout!==undefined;
+    const authoritative=this._snapshotState.accept(snapshot,state=>{
+      if(state.protocol!==1||!state.player||!state.world)throw new Error('Unbekannte Spielserver-Antwort.');
+      if(state.leechCredit!==undefined&&(!Number.isFinite(state.leechCredit)||state.leechCredit<0||state.leechCredit>1))throw new Error('Ungültiges Lebensraubbudget vom Spielserver.');
+    });
+    if(!authoritative)return;
+    // Game/render objects may interpolate, sort or rebuild their arrays. None
+    // may become the next delta's canonical baseline, including portable saves.
+    snapshot=cloneSnapshot(authoritative);
     this._sequence=snapshot.sequence;
     const game=this.game,previous={x:game.player.x,y:game.player.y},isPvp=snapshot.worldMode==='pvp';
     const arenaId=snapshot.pvp?.duel?.id||snapshot.layout?.pvpArenaId||snapshot.world.pvpArenaId;
@@ -97,7 +136,7 @@ export class NetworkClient {
     this._targetPlayer={x:snapshot.player.x,y:snapshot.player.y};Object.assign(game.player,snapshot.player);
     if(this._hasSnapshot&&!worldChanged&&Math.hypot(previous.x-game.player.x,previous.y-game.player.y)<250){game.player.x=previous.x;game.player.y=previous.y;}
     const previousEnemies=new Map((worldChanged?[]:game.world.enemies).map(e=>[e.id,e]));
-    if(snapshot.layout) {
+    if(layoutProvided) {
       // PvP sends a full layout every frame. Reuse its object so the renderer
       // retains static terrain chunks throughout one isolated duel.
       if(isPvp&&!worldChanged&&game.world.isPvp&&game.world.pvpArenaId===arenaId)Object.assign(game.world,snapshot.layout);
@@ -112,6 +151,10 @@ export class NetworkClient {
     for(const key of PERSONAL_FIELDS)if(snapshot[key]!==undefined)game[key]=snapshot[key];
     game.time=snapshot.time;game.effects=snapshot.effects||[];game.projectiles=snapshot.projectiles||[];game.drops=snapshot.drops||[];game.hazards=snapshot.hazards||[];game.summons=snapshot.summons||[];
     game.dungeonInstance=snapshot.dungeonInstance?{...snapshot.dungeonInstance,world:game.world}:null;
+    if(!isPvp&&game.dungeonInstance){
+      if(layoutProvided)game.networkDungeonLayout=cloneSnapshot(snapshot.layout);
+      else if(worldChanged)game.networkDungeonLayout=null;
+    }else game.networkDungeonLayout=null;
     game.networkDungeonCheckpoint=isPvp?null:snapshot.authoritativeDungeonCheckpoint||null;
     game.networkRaidResume=isPvp?null:snapshot.raidResume||null;
     if(!game.dungeonInstance&&!isPvp)game.overworld=game.world;
@@ -178,9 +221,10 @@ export class NetworkClient {
     return this._actionQueue;
   }
   async disconnect({leave=true,forget=false}={}) {
+    this._addressOperation=null;this._addressProbe?.abort();this._addressProbe=null;
     this.game.keys.clear();
     this._disconnecting=true;
-    this.active=false;this.source?.close();this.source=null;this._inputPending=null;
+    this.active=false;this.source?.close();this.source=null;this._inputPending=null;clearTimeout(this._resyncTimer);this._resyncTimer=null;this._snapshotState.reset();
     // Drain already submitted requests before marking the server actor dormant;
     // a late movement POST must not accidentally reactivate a departed player.
     await Promise.allSettled([this._actionQueue,this._inputFlight]);
@@ -191,14 +235,15 @@ export class NetworkClient {
     this.game.networkInteractionSummary=null;
     this.game.networkWorldEventSummary=null;
     this.game.networkEncounterDirectorSave=null;
+    this.game.networkDungeonLayout=null;
     this.game.pvp=null;this.game.pvpStats=null;this.game._pvpTravelSave=null;this.game.worldMode='overworld';
     if(this._offlineSave){this.game.applySave(this._offlineSave);this.game.started=this._offlineStarted;this.game.paused=false;this._offlineSave=null;}
     if(forget)try{this.storage?.removeItem(SESSION_KEY);}catch{}
     this._disconnecting=false;
     this._status('offline');
   }
-  async _request(route,body) {
-    const response=await this.fetchImpl(`${this.baseUrl}${route}`,body===undefined?{cache:'no-store'}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  async _request(route,body,{baseUrl=this.baseUrl,signal}={}) {
+    const response=await this.fetchImpl(`${baseUrl}${route}`,body===undefined?{cache:'no-store',...(signal?{signal}:{})}:{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),...(signal?{signal}:{})});
     let data;try{data=await response.json();}catch{throw new Error('Kein Multiplayer-Server erreichbar. Starte Emberfall über den Node-Spielserver.');}
     if(!response.ok)throw new Error(data.error||`Spielserver-Fehler ${response.status}`);
     return data;

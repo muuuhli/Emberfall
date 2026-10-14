@@ -1,0 +1,43 @@
+services:
+  emberfall:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4173
+      EMBERFALL_DATA_DIR: /data
+      EMBERFALL_MAX_ROOMS: ${EMBERFALL_MAX_ROOMS:-8}
+      EMBERFALL_ALLOWED_ORIGIN: ${EMBERFALL_ALLOWED_ORIGIN:-}
+    volumes:
+      - emberfall_data:/data
+    expose:
+      - "4173"
+    stop_grace_period: 15s
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+  https:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      EMBERFALL_DOMAIN: ${EMBERFALL_DOMAIN:?Set the existing game hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      emberfall:
+        condition: service_healthy
+volumes:
+  emberfall_data:
+  caddy_data:
+  caddy_config:

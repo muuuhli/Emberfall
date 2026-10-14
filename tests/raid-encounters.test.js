@@ -16,7 +16,7 @@ function fixture(id='sturmzitadelle') {
   });
   const leader=games[0];for(const game of games)game.partyGames=games;
   assert.equal(leader.enterDungeon(id),true);const instance=leader.dungeonInstance,boss=instance.world.enemies.find(enemy=>enemy.boss);
-  instance.world.enemies=[boss];instance.gateOpened=true;instance.bossEngaged=true;
+  instance.world.enemies=instance.world.enemies.filter(enemy=>enemy===boss||enemy.routeGuard);instance.gateOpened=true;instance.bossEngaged=true;
   instance.puzzles.forEach(puzzle=>{puzzle.solved=true;});const gate=instance.world.structures.find(structure=>structure.type==='dungeon_gate');gate.open=true;gate.blocking=false;
   games.forEach((game,index)=>{Object.assign(game.player,{x:boss.x-160+index%3*90,y:boss.y+165+Math.floor(index/3)*100,invulnerable:0});});
   return {leader,games,instance,boss,definition};
@@ -210,6 +210,8 @@ test('support pressure waits for an existing unique warning and its recovery ins
 test('V8 raid HP is migrated by its fraction at every legal depth; V9 stamps prevent repeated multiplication',()=>{
   for(const [dungeonId,oldMaximum] of [['sturmzitadelle',125000],['nachtschlund',245000],['weltenkern',850000]]) {
     const f=fixture(dungeonId),data=checkpoint(f);delete data.dungeon.raidBalanceVersion;delete data.dungeon.raidEncounter;delete data.dungeon.pendingGeneric;
+    // This genuinely represents V8: its small map had no V10 route actors.
+    delete data.dungeon.layoutVersion;delete data.dungeon.routes;data.dungeon.enemies=data.dungeon.enemies.filter(enemy=>!enemy.id.includes(':route:'));
     const boss=data.dungeon.enemies.find(enemy=>enemy.id===`${dungeonId}:boss`);delete boss.maxHp;boss.hp=oldMaximum*.6;
     const restored=new Game({storage:null});restored.applySave(data);const current=restored.world.enemies.find(enemy=>enemy.boss);assert.equal(current.hp,current.maxHp*.6);
     const again=new Game({storage:null});again.applySave(JSON.parse(JSON.stringify(restored.capture())));assert.equal(again.world.enemies.find(enemy=>enemy.boss).hp,current.hp);

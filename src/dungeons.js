@@ -1,5 +1,7 @@
 // Authored instanced dungeons. Puzzles and cooperative seals are simulation data,
 // independent of canvas rendering and network transport.
+import { installDungeonRoutes, updateDungeonRoutes, isInBossArena } from './dungeon-routes.js';
+import { normalEnemyStats } from './balance.js';
 export const DUNGEONS = [
   { id: 'wurzelgewoelbe', name: 'Wurzelgewölbe', subtitle: 'Der Eid unter der Kornwacht', minLevel: 12, level: 15, partyRequired: 1, boss: 'root_matron', color: '#7f9e65', entrance: { x: 4740, y: 970 }, puzzles: ['sequence'], symbols: ['mond', 'blatt', 'glut'], hint: 'Mond lässt das Blatt wachsen. Das Blatt nährt die Glut. Berühre die Runen in dieser Reihenfolge.' },
   { id: 'salzarchiv', name: 'Salzarchiv', subtitle: 'Die Bibliothek der Ertrunkenen', minLevel: 25, level: 30, partyRequired: 1, boss: 'drowned_archon', color: '#8cb5bf', entrance: { x: 11140, y: 970 }, puzzles: ['crate'], hint: 'Die Fracht gehört auf die östliche Waage. Stelle dich westlich der Kiste und schiebe sie vier Schritte. Das Rückstellrad hilft bei Fehlern.' },
@@ -48,7 +50,7 @@ export const DUNGEON_ENEMIES = Object.fromEntries(bosses.map(([id, name, level, 
     description: 'Ein gelockter Geschossring eröffnet den Kampf. Bei 65 Prozent Leben folgt ein gezielter Fächer, bei 30 Prozent wird deine letzte Position markiert. Verlasse die vollständigen Warnungen vor dem Einschlag.',
   },
 }]));
-DUNGEON_ENEMIES.echo_guard = { name: 'Siegelwächter', hp: 650, damage: 56, speed: 69, range: 40, xp: 3400, gold: 110, color: '#a0a4bd', level: 40, boss: false, dropTable: 'dungeon' };
+DUNGEON_ENEMIES.echo_guard = { name: 'Siegelwächter', hp: 650, damage: 56, speed: 69, range: 40, xp: normalEnemyStats(40).xp, gold: 105, color: '#a0a4bd', level: 40, boss: false, dropTable: 'dungeon' };
 
 export const DUNGEON_AFFIXES = [
   { id: 'fractured', name: 'Zerklüftet', minTier: 4, color: '#d68ba4', description: 'Alle 18 Kampfsekunden reißen unter lebenden Reisenden Spalten auf. Nach 1,6 Sekunden explodieren die markierten Flächen.' },
@@ -79,8 +81,14 @@ function enemy(type, id, x, y, tier, level) {
   // The same guard appears at levels 15 through 100. Keep its level-40 budget
   // while avoiding stronger guards than the first boss and trivial late echoes.
   const baseDamage=definition.boss?definition.damage:Math.round(definition.damage*(.4+level*.015));
+  // A level-15 guard must not pay the level-40 catalogue's flat XP, while a
+  // level-100 guard deserves its real challenge-level reward. Ordinary actors
+  // share the same canonical level budget as the rest of the world; the
+  // existing depth premium stays proportional and boss rewards stay authored.
+  const baseXp=definition.boss?definition.xp:normalEnemyStats(level).xp;
+  const baseGold=definition.boss?definition.gold:Math.round(5+level*2.5);
   return { id, type, x, y, homeX: x, homeY: y, hp, maxHp: hp, level, tier, healthMultiplier, damageMultiplier,
-    damage: Math.round(baseDamage * damageMultiplier), xp: Math.round(definition.xp * rewardMultiplier), gold: Math.round(definition.gold * rewardMultiplier),
+    damage: Math.round(baseDamage * damageMultiplier), xp: Math.round(baseXp * rewardMultiplier), gold: Math.round(baseGold * rewardMultiplier),
     lootLevel: Math.min(100, level + Math.floor((tier - 1) / 2)), lootTier: tier,
     boss: definition.boss, alive: true, attackTimer: 0, phase: 'idle', respawnAt: 0, shielded: definition.minPlayers > 1, mechanics: copy(definition.mechanics || {}), dungeon: true };
 }
@@ -115,7 +123,8 @@ export function restoreDungeonEchoes(instance, savedEnemies) {
   return echoes.length;
 }
 
-export function createDungeon(id, { tier = 1, seed = 826404, partySize = 1 } = {}) {
+export function createDungeon(id, { tier = 1, seed = 826404, partySize = 1, layoutVersion = 2 } = {}) {
+  if(![1,2].includes(layoutVersion))throw new RangeError('Unbekannte Dungeonkarte.');
   const definition = DUNGEONS.find(d => d.id === id);
   if (!definition) throw new RangeError(`Unbekannter Dungeon: ${id}`);
   if (!Number.isFinite(tier) || tier < 1 || tier > 30 || Math.floor(tier) !== tier) throw new RangeError('Dungeonstufe muss eine ganze Zahl von 1 bis 30 sein.');
@@ -183,7 +192,8 @@ export function createDungeon(id, { tier = 1, seed = 826404, partySize = 1 } = {
       world.puzzleObjects.push({ id: `${id}:boss-plate-${i}`, kind: 'boss_plate', x: 1460 + Math.cos(angle) * 215, y: 780 + Math.sin(angle) * 300, radius: 34, active: false, label: `Quellsiegel ${i + 1} · Schild brechen` });
     }
   }
-  return instance;
+  instance.layoutVersion=1;world.layoutVersion=1;
+  return layoutVersion===2?installDungeonRoutes(instance):instance;
 }
 
 function completePuzzle(instance, puzzle) {
@@ -291,7 +301,7 @@ export function updateDungeon(instance, dt, players = []) {
   // Summoned echoes are encounter actors, never persistent respawn locations.
   // Their drops have already moved into Game.drops when they die.
   instance.world.enemies = instance.world.enemies.filter(e => !e.affixEcho || e.alive);
-  const events = [];
+  const events = updateDungeonRoutes(instance, step, players);
   for (const puzzle of instance.puzzles) {
     if (puzzle.type !== 'pressure' || puzzle.solved) continue;
     const objects = instance.world.puzzleObjects.filter(o => o.puzzle === puzzle.id && o.kind === 'plate');
@@ -300,7 +310,7 @@ export function updateDungeon(instance, dt, players = []) {
     if (puzzle.hold >= puzzle.holdSeconds) events.push(completePuzzle(instance, puzzle));
   }
   const boss = instance.world.enemies.find(e => e.id === `${instance.id}:boss`);
-  if (boss.alive && instance.gateOpened && players.some(p => alive(p) && p.x > 1120 && distance(p, boss) < 650)) instance.bossEngaged = true;
+  if (boss.alive && instance.gateOpened && players.some(p => alive(p) && isInBossArena(instance,p) && distance(p, boss) < 650)) instance.bossEngaged = true;
   if (boss.alive && instance.bossEngaged) instance.bossTime += step;
   if (!boss.alive && !instance.bossDefeated) {
     instance.bossDefeated = true;
@@ -314,7 +324,7 @@ export function updateDungeon(instance, dt, players = []) {
   if (boss.alive && instance.definition.raid) {
     const mechanics = DUNGEON_ENEMIES[boss.type].mechanics;
     const objects = instance.world.puzzleObjects.filter(o => o.kind === 'boss_plate');
-    const occupancy = sealOccupants(objects, players);
+    const occupancy = sealOccupants(objects, players.filter(p=>isInBossArena(instance,p)));
     boss.insufficientParty = occupancy.humans < instance.definition.partyRequired;
     instance.shieldHold = instance.gateOpened && occupancy.full && !boss.insufficientParty ? instance.shieldHold + step : 0;
     if (instance.shieldHold >= mechanics.shield.holdSeconds && instance.elapsed >= instance.vulnerabilityUntil) {

@@ -1,0 +1,12 @@
+{$EMBERFALL_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy emberfall:4173 {
+        # Flush each event immediately; proxies must not collect raid warnings.
+        flush_interval -1
+    }
+    header {
+        X-Content-Type-Options nosniff
+        Referrer-Policy same-origin
+    }
+    # Access logging is deliberately absent: session URLs contain bearer tokens.
+}

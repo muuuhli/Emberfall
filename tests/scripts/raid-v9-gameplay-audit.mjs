@@ -16,7 +16,7 @@ const args = Object.fromEntries(process.argv.slice(2).reduce((pairs, arg, i, all
 }, []));
 const root = path.resolve(args.source || path.join(path.dirname(fileURLToPath(import.meta.url)), '../..'));
 const load = name => import(pathToFileURL(path.join(root, 'src', name)).href);
-const [{ Game }, { DUNGEONS, interactPuzzle }, { CLASSES }, { ABILITIES }, { generateLoot, ITEM_BASES }, { EQUIPMENT_SLOT_IDS, equipmentSlot }, { hitShape }, { cumulativeXp, applyExperience }, { enemyXpReward }] = await Promise.all([
+const [{ Game }, { DUNGEONS, interactPuzzle }, { CLASSES }, { ABILITIES }, { generateLoot, ITEM_BASES }, { EQUIPMENT_SLOT_IDS, equipmentSlot }, { hitShape }, { cumulativeXp, applyExperience }, { enemyXpReward, dungeonCompletionXp }] = await Promise.all([
   load('game.js'), load('dungeons.js'), load('classes.js'), load('abilities.js'), load('loot.js'), load('equipment-system.js'), load('encounter-geometry.js'), load('progression.js'), load('balance.js'),
 ]);
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -139,16 +139,24 @@ function recordDamage(game, metrics) {
   game.hitEnemy = (enemy, amount, knockback) => { const before = enemy.alive, applied = originalHit(enemy, amount, knockback); metrics.damage += applied; if (before && !enemy.alive && enemy.bossObjectiveId) metrics.objectiveKills++; return applied; };
 }
 
-export async function runRaidAudit({ id, mode = 'reactive', team = 'balanced', seconds = 850, supplies = 20, verifyRespawn = false } = {}) {
+export async function runRaidAudit({ id, mode = 'reactive', team = 'balanced', seconds = 850, supplies = 20, verifyRespawn = false, techniqueVariant = null } = {}) {
   const definition = DUNGEONS.find(d => d.id === id); assert.ok(definition?.raid);
   assert.ok(Number.isInteger(supplies) && supplies >= 0 && supplies <= 20);
   const classes = composition(definition.partyRequired, team), games = classes.map((c, i) => fixtureCharacter(c, definition.level, i, supplies));
+  if(techniqueVariant!==null) {
+    assert.ok([0,1].includes(techniqueVariant));
+    const {TECHNIQUE_SPECIALIZATIONS}=await load('technique-specializations.js');
+    for(const game of games){const choice=TECHNIQUE_SPECIALIZATIONS.filter(d=>d.classId===game.player.classId)[techniqueVariant];
+      game.resources.raidSigil+=choice.sigilCost;
+      assert.equal(game.learnTechniqueSpecialization(choice.id),true);assert.equal(game.selectTechniqueSpecialization(choice.id),true);
+    }
+  }
   games.forEach(g => { g.partyGames = games; Object.assign(g.player, definition.entrance); });
   assert.equal(games[0].enterDungeon(id, 1), true);
   const authority = games[0], instance = authority.dungeonInstance, boss = authority.world.enemies.find(e => e.id === `${id}:boss`), startingBossHp = boss.maxHp;
   // Boss audit only: trash is removed before the pull. Puzzle interaction and
   // occupancy still use the real dungeon implementation, not solved flags.
-  authority.world.enemies = [boss]; games.forEach(g => { g.world = authority.world; });
+  authority.world.enemies = authority.world.enemies.filter(enemy=>enemy===boss||enemy.routeGuard); games.forEach(g => { g.world = authority.world; });
   for (const puzzle of instance.puzzles) {
     if (puzzle.type === 'light') for (const object of authority.world.puzzleObjects.filter(o => o.puzzle === puzzle.id && o.kind === 'lens')) {
       Object.assign(authority.player, { x: object.x - 35, y: object.y });
@@ -268,6 +276,7 @@ export async function runRaidAudit({ id, mode = 'reactive', team = 'balanced', s
   assert.equal(boss.maxHp, startingBossHp, 'No fixture health inflation or weakening');
   if (!boss.alive) { games.forEach(g => { g.time = simulationClock; g.update(.04, { simulateWorld: false }); }); simulationClock += .04; games.forEach(g => { g.time = simulationClock; }); authority.updateWorld(.04, games); }
   return { source: root, raid: id, team, mode, level: definition.level, players: games.length, suppliedVials: supplies, inputAim: 'server-angle-with-100-unit-aim-point',
+    techniqueVariant,providedTechniqueSeals:techniqueVariant===null?0:12,
     fixtureScope: 'isolated boss arena; real puzzle mechanisms, fixed legal gear/point budget; no during-fight teleport, manual HP/mana edit or cooldown reset',
     seconds: round(ticks * .04), bossHp: round(boss.hp), bossMaxHp: boss.maxHp, bossDamage: boss.damage,
     bossXp: boss.xp, completionXp: instance.rewards.completionXp,
@@ -281,7 +290,7 @@ export async function runRaidAudit({ id, mode = 'reactive', team = 'balanced', s
       hp: round(g.player.hp), maxHp: round(g.stats().maxHp), mana: round(g.player.mana), maxMana: round(g.stats().mana),
       remainingPoints: g.player.skillPoints, spentPoints: definition.level * 2 - g.player.skillPoints,
       xpGranted: cumulativeXp(g.player.level) + g.player.xp - cumulativeXp(definition.level), levelAfter: g.player.level,
-      stats: g.stats(), talents: { ...g.skills }, loadout: [...g.abilityLoadout],
+      stats: g.stats(), talents: { ...g.skills }, loadout: [...g.abilityLoadout],techniqueSpecializations:g.techniqueSpecializations||null,
       equipment: Object.entries(g.equipment).map(([slot, id]) => { const item = g.item(id); return { slot, baseId: item.baseId, rarity: item.rarity, level: item.level, setId: item.setId, stats: g.itemStats(id), affixes: item.affixes.map(a => a.id) }; }),
       remainingHealthSupplies: g.inventory.martyr_lifeblood || 0, remainingManaSupplies: g.inventory.night_oracle_tears || 0,
     })) };
@@ -290,14 +299,14 @@ export async function runRaidAudit({ id, mode = 'reactive', team = 'balanced', s
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   const ids = args.raid ? [args.raid] : DUNGEONS.filter(d => d.raid).map(d => d.id), reports = [];
   for (const id of ids) {
-    const report = await runRaidAudit({ id, mode: args.mode || 'reactive', team: args.team || 'balanced', seconds: Number(args.seconds || 850), supplies: Number(args.supplies ?? 20), verifyRespawn: args['verify-respawn'] === true });
+    const report = await runRaidAudit({ id, mode: args.mode || 'reactive', team: args.team || 'balanced', seconds: Number(args.seconds || 850), supplies: Number(args.supplies ?? 20), verifyRespawn: args['verify-respawn'] === true,techniqueVariant:args['technique-variant']===undefined?null:Number(args['technique-variant']) });
     reports.push(report);
     console.log(JSON.stringify({ raid: report.raid, mode: report.mode, team: report.team, success: report.success, seconds: report.seconds, hpRemovedPct: report.hpRemovedPct, living: report.living, phases: report.phases, shieldWindows: report.shieldWindows, warnings: report.warningCasts, uniqueImpacts: report.uniqueImpacts, objectivesSeen: report.objectivesSeen, objectivesKilled: report.objectivesKilled, mechanicsResolved: report.mechanicsResolved, damage: report.heroes.map(h => h.damage), hpDamage: report.heroes.map(h => h.hpDamage) }));
   }
   if (args.pacing) for (const report of reports.filter(r => r.success && r.level < 100)) {
     let state = { level: report.level, xp: 0 }, runs = 0;
     while (state.level < 100 && runs < 1000) {
-      const reward = enemyXpReward(report.bossXp, { enemyLevel: report.level, playerLevel: state.level, boss: true }) + report.completionXp;
+      const reward = enemyXpReward(report.bossXp, { enemyLevel: report.level, playerLevel: state.level, boss: true }) + (dungeonCompletionXp?dungeonCompletionXp(report.completionXp,{dungeonLevel:report.level,playerLevel:state.level,firstClear:runs===0}):report.completionXp);
       state = applyExperience(state, reward); runs++;
     }
     report.repeatPacingIllustration = { kind: 'illustrative-repeat-route-not-playtime-proof', startLevel: report.level, endLevel: state.level, runs,

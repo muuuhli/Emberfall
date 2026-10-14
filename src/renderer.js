@@ -6,6 +6,7 @@ import { sampleCharacterAnimation } from './character-animation.js';
 import { deriveCharacterAppearance, drawCharacterAppearance } from './character-appearance.js';
 import { drawPixelTree, drawPixelRock, drawPixelEnemy, drawPixelCompanion, drawPixelProp, drawPixelClassAccent, drawPixelImpact, drawPixelProjectile, pixelEnemyHeight } from './pixel-world.js';
 import { drawRaidObjective, RAID_OBJECTIVE_HEIGHT, RAID_WARNING_COLOR, RAID_SAFE_COLOR } from './raid-visuals.js';
+import { dungeonRouteSummary, routeHazardShapes } from './dungeon-routes.js';
 
 export const TERRAIN_CHUNK_SIZE = 512;
 export const TERRAIN_CACHE_LIMIT = 64;
@@ -23,6 +24,42 @@ const rect = (c,x,y,w,h,color)=>{c.fillStyle=color;c.fillRect(x,y,w,h);};
 const rounded = (c,x,y,w,h,r,color,stroke)=>{c.beginPath();c.roundRect(x,y,w,h,r);c.fillStyle=color;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=1.5;c.stroke();}};
 const glow = (c,x,y,r,color)=>{const g=c.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,color);g.addColorStop(1,'transparent');ellipse(c,x,y,r,r,g);};
 const text = (c,value,x,y,size=12,color='#e4dab8',align='center')=>{c.font=`${size}px "Inter",system-ui,sans-serif`;c.textAlign=align;c.textBaseline='middle';c.fillStyle=color;c.fillText(value,x,y);};
+const ROUTE_SYMBOLS={mond:'Mond',blatt:'Blatt',glut:'Glut',frost:'Frost',stern:'Stern'};
+const routeGlyphs={
+  mond:['..####.','.###...','###....','###....','###....','.###...','..####.'],
+  blatt:['....###','...####','..#####','.#####.','#####..','####...','###....'],
+  glut:['...#...','..##...','..###..','.#####.','.#####.','#######','.#####.'],
+  frost:['#..#..#','.#####.','..###..','#######','..###..','.#####.','#..#..#'],
+  stern:['...#...','..###..','#######','.#####.','..###..','.##.##.','#.....#'],
+  core:['...#...','..###..','.#####.','###.###','.#####.','..###..','...#...'],
+  check:['.......','.....##','....##.','#..##..','####...','.##....','.......'],
+  martial:['.....##','....##.','...##..','#.##...','.##....','##.#...','#......'],
+  relay:['...#...','..###..','.##.##.','##.#.##','...#...','...#...','..###..'],
+  tactical:['###.###','...#...','###.###','...#...','###.###','...#...','...#...'],
+};
+function routePixelGlyph(c,kind,x,y,color,pixel=2){const rows=routeGlyphs[kind]||routeGlyphs.core;for(let row=0;row<rows.length;row++)for(let col=0;col<rows[row].length;col++)if(rows[row][col]==='#')rect(c,x+(col-3)*pixel,y+(row-3)*pixel,pixel,pixel,color);}
+
+/** A concise account of real route state. This never creates a waypoint or
+ * advances a relay; names and the next rune come from the shared instance. */
+export function dungeonRoutePresentation(game) {
+  const instance=game?.dungeonInstance,summary=dungeonRouteSummary(instance);
+  if(!summary||game.worldMode==='pvp'||game.world?.isPvp||instance.bossEngaged&&!instance.bossDefeated)return null;
+  const chambers=instance.routes.chambers,relay=summary.relay;
+  if(relay){
+    const chamber=chambers.find(room=>room.id===relay.chamberId),beacon=chamber?.beacons[relay.step];if(!beacon)return null;
+    const members=[game.player,...(game.party||[]),...(game.partyPlayers||[])].map(member=>member?.player||member);
+    const carrier=members.find(member=>String(member?.id??'local')===relay.actorId),name=carrier?.name||'Glutträger';
+    return {name:`Glutstaffel · ${Math.max(0,Math.ceil(relay.remaining-1e-6))} s`,detail:`${name} → ${ROUTE_SYMBOLS[beacon.symbol]||beacon.symbol} · ${relay.step+1}/3 · ${summary.sigils}/2 Siegel`,
+      kind:'relay',sigils:summary.sigils,carrier:name,sequence:chamber.sequence.map(symbol=>ROUTE_SYMBOLS[symbol]||symbol),remaining:relay.remaining,step:relay.step,hold:relay.hold,target:{...beacon,label:`${ROUTE_SYMBOLS[beacon.symbol]||beacon.symbol} · nächstes Staffelzeichen`}};
+  }
+  if(instance.bossDefeated)return {name:'Dungeon gemeistert',detail:`${summary.sigils}/2 Siegel · Vorräte bergen und zurückkehren`,kind:'complete',sigils:summary.sigils};
+  const room=chambers.find(chamber=>game.player.x>=chamber.x&&game.player.x<=chamber.x+chamber.w&&game.player.y>=chamber.y&&game.player.y<=chamber.y+chamber.h);
+  if(room&&!instance.routes.completed.includes(room.id)){
+    const detail=room.kind==='martial'?'Drei Wächter besiegen':room.kind==='tactical'?'Nördliches Zeichen zwei Sekunden halten':'Runenfolge lesen · mit E beginnen';
+    return {name:room.title,detail:`${summary.sigils}/2 Siegel · ${detail}`,kind:room.kind,sigils:summary.sigils};
+  }
+  return {name:summary.stage==='boss'?'Zu den alten Erinnerungen':summary.stage==='A'?'Erste Wegwahl':'Zweite Wegwahl',detail:`${summary.sigils}/2 Wegsiegel · ${summary.stage==='boss'?'Rätsel öffnen das Bosstor':'Wachtkampf, Glutstaffel oder Wandelgang'}`,kind:'choice',sigils:summary.sigils};
+}
 
 const characterMetadata=()=>({tileWidth:32,tileHeight:48,pixelRatio:1,columns:32,rows:8,classes:CLASSES.map(cls=>cls.id),directions:['south','east','north','west'],poses:['idle','walk1','walk2','walk3','walk4','attack1','attack2','downed'],pivot:[16,40]});
 const actionMarks=(c,sample,classId)=>{
@@ -296,11 +333,11 @@ export class Renderer {
     const amplitude=game.shake*16;
     const shakeX=shaking?Math.round(Math.sin(this.elapsed*71)*amplitude/2)*2:0,shakeY=shaking?Math.round(Math.cos(this.elapsed*59)*amplitude*.55/2)*2:0;
     c.translate(shakeX-this.camera.x,shakeY-this.camera.y);
-    this.drawTerrain(c);this.waterDetails(c,game);
+    this.drawTerrain(c);this.waterDetails(c,game);this.routeSafetyIslands(c,game);
     if(this.activeWaypoint&&this.activeWaypoint.kind!=='pvpOpponent'&&this.visible(this.activeWaypoint.x,this.activeWaypoint.y,60))this.waypointBeacon(c,this.activeWaypoint,game);
     for(const hazard of game.hazards||[]){
       // A raid cone/ring can reach into view while its center is offscreen.
-      const box=hazard.raidEncounter&&shapeBounds(hazard.shape);
+      const box=(hazard.raidEncounter||hazard.routeHazard)&&shapeBounds(hazard.shape);
       if(box?this.intersects(box,4):this.visible(hazard.x,hazard.y,(hazard.radius||80)+20))this.hazard(c,hazard,game);
     }
     for(const portal of w.dungeonEntrances||[])if(this.visible(portal.x,portal.y,150))this.portal(c,portal,game);
@@ -594,6 +631,7 @@ export class Renderer {
     if(Math.hypot(p.x-game.player.x,p.y-game.player.y)<290){this.label(c,p.name||'Dungeon',p.x,p.y-90,color,11);if(p.minLevel)this.label(c,`Stufe ${p.minLevel}${p.partyRequired>1?` · ${p.partyRequired} Spieler`:''}`,p.x,p.y+42,'#c3c6cf',9);}
   }
   puzzleObject(c,o,game) {
+    if(o.routeGuide||o.routeHint||o.routeBeacon||o.kind==='route_core'){this.routePuzzleObject(c,o,game);return;}
     const active=o.active,color=active?'#b8e5a8':o.kind==='boss_plate'?'#edb0e4':'#c6b3de';
     c.save();c.translate(o.x,o.y);
     if(['plate','boss_plate','crate_plate'].includes(o.kind)){
@@ -622,8 +660,55 @@ export class Renderer {
     c.restore();
     if(Math.hypot(o.x-game.player.x,o.y-game.player.y)<130)this.label(c,o.label||'Erinnerung',o.x,o.y-66,color,9);
   }
+  routeSafetyIslands(c,game) {
+    for(const chamber of game.dungeonInstance?.routes?.chambers||[]){
+      if(chamber.kind!=='tactical'||!this.intersects(chamber,8))continue;
+      const bands=routeHazardShapes(chamber,0).map(phase=>shapeBounds(phase.shape)).filter(Boolean).sort((a,b)=>a.y-b.y);
+      // Only permanent gaps between real damage bands are marked cool. A
+      // currently resting band is not falsely advertised as a safe island.
+      for(let index=1;index<bands.length;index++){
+        const top=bands[index-1].y+bands[index-1].h,bottom=bands[index].y;if(bottom-top<16)continue;
+        const y=Math.round((top+bottom)/4)*2;
+        for(let x=chamber.x+32;x<chamber.x+chamber.w-32;x+=64){
+          rect(c,x,y-4,32,8,'#72a79f22');rect(c,x+6,y-2,20,4,'#b2d7c44d');rect(c,x+14,y-6,4,12,'#b2d7c44d');
+        }
+      }
+    }
+  }
+  routePuzzleObject(c,o,game) {
+    const routes=game.dungeonInstance?.routes,chamber=routes?.chambers.find(room=>room.id===o.routeChamberId);
+    const completed=!!chamber&&routes.completed.includes(chamber.id),relay=chamber&&routes?.relay?.chamberId===chamber.id?routes.relay:null;
+    const next=!!relay&&chamber.beacons[relay.step]?.id===o.id,color=completed?'#b7d59a':next?'#f1cf86':o.active?'#b6dab9':'#c4b0d7';
+    c.save();c.translate(Math.round(o.x/2)*2,Math.round(o.y/2)*2);rect(c,-20,2,40,6,'#19162788');rect(c,-12,0,24,10,'#19162788');
+    if(o.routeGuide||o.routeHint){
+      rect(c,-4,-6,8,12,'#65545b');rect(c,-22,-40,44,30,'#302838');rect(c,-20,-38,40,26,'#766575');
+      rect(c,-18,-36,36,2,'#c0a8b5');rect(c,-18,-16,36,2,'#413647');
+      routePixelGlyph(c,o.routeGuide?'relay':chamber?.kind||'core',0,-28,'#e4c397');
+      if(o.routeGuide){rect(c,-15,-22,4,4,'#cb9ca4');rect(c,13,-22,4,4,'#cb9ca4');}
+    }else if(o.routeBeacon){
+      rect(c,-18,-4,36,8,'#352d43');rect(c,-14,-32,28,28,'#65596f');rect(c,-10,-40,20,8,'#857488');rect(c,-6,-44,12,4,'#413647');
+      rect(c,-12,-30,24,22,next?'#534132':completed||o.active?'#34504a':'#3b324d');routePixelGlyph(c,completed?'check':o.symbol,0,-21,color);
+      if(next){for(const x of [-22,20]){rect(c,x,-24,2,12,'#e1ba79');rect(c,x-2,-20,6,4,'#f3d5a0');}}
+    }else{
+      rect(c,-22,-4,44,10,'#353043');rect(c,-16,-12,32,8,'#716573');rect(c,-12,-20,24,8,'#a1909d');
+      rect(c,-8,-40,16,4,'#403746');rect(c,-12,-36,24,20,completed?'#506a50':'#5d536c');rect(c,-8,-34,16,16,'#292633');
+      routePixelGlyph(c,completed?'check':chamber?.kind||'core',0,-26,color);
+    }
+    const hold=o.routeTactical?routes?.tacticalHolds?.[chamber?.id]||0:next&&relay.holding?relay.hold||0:0;
+    if(hold>0){c.beginPath();c.arc(0,0,30,-Math.PI/2,-Math.PI/2+TAU*clamp(hold/2,0,1));c.strokeStyle='#d4e5b4';c.lineWidth=2;c.stroke();}
+    c.restore();
+    if(Math.hypot(o.x-game.player.x,o.y-game.player.y)<(o.routeGuide||o.routeHint?220:160)){
+      const order=o.routeBeacon?chamber?.beacons.findIndex(beacon=>beacon.id===o.id)+1:0;
+      const label=completed?`${chamber.title} · gemeistert`:o.routeBeacon?`${order}. ${ROUTE_SYMBOLS[o.symbol]||o.symbol}${next?' · als Nächstes halten':o.active?' · getragen':''}`:o.label||'Wegzeichen';
+      this.label(c,label,o.x,o.y-56,color,10);
+    }
+  }
   hazard(c,h,game) {
     const radius=h.radius||100,color=h.color||'#df7568',pending=(h.windup||0)>0||h.pending;
+    if(h.routeHazard){
+      if(!shapeBounds(h.shape))return;
+      this.encounterShape(c,{...h.shape,color},{active:!!h.active||!pending,progress:clamp(1-(h.life||0)/(h.maxLife||h.life||1),0,1),color});return;
+    }
     if(h.raidEncounter){
       const shape=h.shape,box=shapeBounds(shape);if(!box)return;
       const cast=game.dungeonInstance?.raidEncounter?.pending;
@@ -680,6 +765,13 @@ export class Renderer {
   rock(c,r) {drawPixelRock(c,r);}
   structure(c,s,game) {
     if(s.type==='puzzle_crate')return;
+    if(s.type==='dungeon_route_gate'){
+      const {x,y,w,h}=s,open=s.blocking===false;
+      c.save();
+      if(open){rect(c,x,y,6,h,'#829e93');rect(c,x+w-6,y,6,h,'#829e93');for(let px=x+16;px<x+w-8;px+=32){rect(c,px,y+6,4,4,'#86b1a67d');rect(c,px,y+h-10,4,4,'#86b1a67d');}}
+      else{rect(c,x,y,w,h,'#584765');for(let px=x+8;px<x+w-8;px+=16){rect(c,px,y+2,4,h-4,'#aa8fbb');rect(c,px+4,y+4,2,h-8,'#342d47');}rect(c,x,y,w,2,'#d1b9de');rect(c,x,y+h-2,w,2,'#2a2638');routePixelGlyph(c,'core',x+w/2,y+h/2,'#ead5a1');}
+      c.restore();if(Math.hypot(game.player.x-x-w/2,game.player.y-y-h/2)<190)this.label(c,open?`Weg ${s.routeStage} offen`:`Wegsiegel ${s.routeStage} · einen Weg meistern`,x+w/2,y-16,open?'#b4d6c3':'#dfc5e8',10);return;
+    }
     if(s.type==='dungeon_wall'||s.type==='dungeon_gate'){
       c.save();c.translate(s.x,s.y);const {w,h}=s;let gateHint=false;
       if(s.type==='dungeon_gate'&&s.blocking===false){

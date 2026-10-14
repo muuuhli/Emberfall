@@ -4,6 +4,7 @@
 import { BOSS_ENCOUNTERS, createBossEncounter, updateBossEncounter } from './boss-encounters.js';
 import { hitShape } from './encounter-geometry.js';
 import { DUNGEONS, DUNGEON_ENEMIES } from './dungeons.js';
+import { isInBossArena } from './dungeon-routes.js';
 
 const TYPES=['storm_king','night_devourer','world_heart'];
 const clone=value=>JSON.parse(JSON.stringify(value));
@@ -125,7 +126,7 @@ export function updateRaidEncounter(game,boss,dt,living) {
   const state=instance.raidEncounter||=createBossEncounter(boss.type,{tier:instance.tier,seed:instance.seed});
   state.pressureAt??=null;
   syncObjectives(game,state);
-  const players=living.filter(ally=>!ally.dead&&ally.player.hp>0&&ally.player.x>1120).map(ally=>({id:playerId(ally),classId:ally.player.classId,x:ally.player.x,y:ally.player.y,hp:ally.player.hp,maxHp:ally.stats().maxHp,alive:true}));
+  const players=living.filter(ally=>!ally.dead&&ally.player.hp>0&&isInBossArena(instance,ally.player)).map(ally=>({id:playerId(ally),classId:ally.player.classId,x:ally.player.x,y:ally.player.y,hp:ally.player.hp,maxHp:ally.stats().maxHp,alive:true}));
   if(!instance.bossEngaged||!instance.gateOpened)return false;
   // The shield and human-count authority remain in updateDungeon/hitEnemy.
   // A wipe cancels all pending effects; returning to the arena starts a new

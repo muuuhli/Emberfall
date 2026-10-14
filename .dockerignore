@@ -1,0 +1,16 @@
+.git
+.openai
+.emberfall-server
+.agents
+.codex
+.sites-runtime
+.wrangler
+.env
+.env.*
+node_modules
+dist
+tests
+docs
+*.tar.gz
+*.log
+*.cpuprofile
