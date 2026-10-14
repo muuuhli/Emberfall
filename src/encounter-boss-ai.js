@@ -76,7 +76,7 @@ function actionShapes(enemy,player,action,phase) {
 
 function damageTarget(game,enemy,definition,ally,damage) {
   if(ally.dead||ally.player.hp<=0||ally.inSettlement?.())return;
-  const applied=ally.damagePlayer(damage,{attackerLevel:enemy.level||definition.level});
+  const applied=ally.damagePlayer(damage,{attackerLevel:enemy.level||definition.level,attackerId:enemy.id});
   applyEnemyTraits(game,enemy,definition,ally,applied);
 }
 function damageLiving(game,enemy,definition,living,shapes,damage) {

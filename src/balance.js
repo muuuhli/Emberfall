@@ -4,7 +4,11 @@ import { MAX_LEVEL, xpToNext } from './progression.js';
 /** Pure PvE balance rules. Analytical estimates below are not human playtests. */
 export const BALANCE_VERSION = 2;
 export const BALANCE_LEVELS = [1, 10, 25, 50, 75, 100];
-export const COMBAT_CAPS = Object.freeze({crit:.45,lifeSteal:.12,cooldown:.45,dodgeCooldown:.6,speed:300});
+export const COMBAT_CAPS = Object.freeze({crit:.45,lifeSteal:.08,cooldown:.45,dodgeCooldown:.6,speed:300});
+/** Shared-owner passive leech and per-source damage grace. Direct class heals stay separate. */
+export const COMBAT_SUSTAIN = Object.freeze({
+  leechMaxHpPerSecond:.02,leechBurstSeconds:1,earlyGrace:.24,lateGrace:.16,
+});
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 const finite = (value, fallback = 0) => Number.isFinite(value) ? value : fallback;
 const levelOf = value => clamp(Math.floor(finite(value,1)),1,MAX_LEVEL);

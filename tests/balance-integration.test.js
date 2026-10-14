@@ -92,6 +92,8 @@ test('a real legacy loot save reloads with stronger equipment modifiers and unch
 test('enemy projectiles carry attacker level into actual armor mitigation with a safe player-level fallback',()=>{
   const game=arena(100);armor(game,'projectile-armor');
   const probe=attackerLevel=>{
+    // Independent source-level samples happen after real same-source recovery.
+    advance(game,.2);assert.equal(game.inSettlement(),false);
     game.player.hp=game.stats().maxHp;game.player.invulnerable=0;game.player.shield=0;
     game.projectiles=[{x:game.player.x,y:game.player.y,angle:0,speed:0,life:1,owner:'enemy',damage:200,...(attackerLevel===undefined?{}:{attackerLevel})}];
     const before=game.player.hp;game.updateWorld(.02,[game]);

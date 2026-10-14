@@ -3,7 +3,7 @@ import { isCharacterAppearance } from './character-appearance.js';
 const SESSION_KEY='emberfall.network.v1';
 const INPUT_KEYS=new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
 const REMOTE_METHODS=['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward'];
-const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame'];
+const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame','deathPenalty'];
 
 /** Browser transport; the server owns combat, progression, drops and movement. */
 export class NetworkClient {
@@ -75,7 +75,7 @@ export class NetworkClient {
     };
     intercept('action',name=>{this.sendAction(name);return true;});
     intercept('interact',()=>{this.sendAction('interact');return true;});
-    for(const name of REMOTE_METHODS)intercept(name,(...args)=>{this.command(name,...args);return true;});
+    for(const name of REMOTE_METHODS)intercept(name,(...args)=>{if(name==='respawn')return this.command(name,...args);this.command(name,...args);return true;});
     intercept('save',manual=>{if(manual)this.game.notice('Dein Gruppencharakter wird automatisch auf dem Spielserver gespeichert.','quest');return true;});
     intercept('importSave',()=>{this.game.notice('Beende die Gruppenverbindung, um einen Einzelspieler-Spielstand zu importieren.');return false;});
     intercept('reset',()=>{this.game.notice('Beende zuerst die Gruppenverbindung, um eine neue Einzelspieler-Reise zu beginnen.');return false;});
@@ -83,6 +83,7 @@ export class NetworkClient {
   }
   applySnapshot(snapshot) {
     if(snapshot.protocol!==1||!snapshot.player||!snapshot.world)throw new Error('Unbekannte Spielserver-Antwort.');
+    if(snapshot.leechCredit!==undefined&&(!Number.isFinite(snapshot.leechCredit)||snapshot.leechCredit<0||snapshot.leechCredit>1))throw new Error('Ungültiges Lebensraubbudget vom Spielserver.');
     if(Number.isFinite(snapshot.sequence)&&snapshot.sequence<this._sequence)return;
     this._sequence=snapshot.sequence;
     const game=this.game,previous={x:game.player.x,y:game.player.y},isPvp=snapshot.worldMode==='pvp';
@@ -113,6 +114,7 @@ export class NetworkClient {
     game.dungeonInstance=snapshot.dungeonInstance?{...snapshot.dungeonInstance,world:game.world}:null;
     if(!game.dungeonInstance&&!isPvp)game.overworld=game.world;
     game.pvp=snapshot.pvp||null;game.pvpStats=isPvp?snapshot.pvpStats||null:null;
+    if(!isPvp&&snapshot.leechCredit!==undefined)game.restoreLeechCredit(snapshot.leechCredit);
     game.networkInteractionSummary=snapshot.authoritativeInteractionSummary||null;
     game.networkWorldEventSummary=snapshot.authoritativeWorldEventSummary||null;
     game.networkEncounterDirectorSave=isPvp?null:snapshot.authoritativeEncounterDirectorSave||null;

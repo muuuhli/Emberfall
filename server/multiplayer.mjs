@@ -20,7 +20,7 @@ const SHOP_STOCK = {
   sera:new Set(['heal_potion','mana_potion']),
   oren:new Set(['heal_potion','mana_potion','leather_armor','forest_blade','seed']),
 };
-const PERSONAL_FIELDS = ['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame'];
+const PERSONAL_FIELDS = ['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame','deathPenalty'];
 const SHARED_FIELDS = ['effects','projectiles','drops','hazards','summons','dungeonInstance','overworld','activeDungeon','worldMode'];
 const MUTABLE_WORLD = ['enemies','nodes','plots','shrines','chests','puzzles','puzzleObjects','gates','portals','dungeonPortals','dungeonState','dungeonExit','interactions','worldEvents','eventObjects','encounterDirector'];
 const LAYOUT_FIELDS = ['seed','width','height','regions','paths','river','bridges','structures','trees','rocks','landmarks','dungeons','walls','floors','entrance','exit','rooms','isDungeon','dungeonId','tier'];
@@ -80,7 +80,7 @@ export class MultiplayerHub {
     game.onNotice=(text,tone='info')=>this._event(member,{kind:'notice',text,tone});
     game.onSound=name=>this._event(member,{kind:'sound',name});
     game.onDialogue=npc=>this._event(member,{kind:'dialogue',npc});
-    game.onDeath=()=>this._event(member,{kind:'death'});
+    game.onDeath=()=>{this._event(member,{kind:'death'});this.persist();};
     game.onVictory=()=>this._event(member,{kind:'victory'});
     game.onChange=()=>{};
     if(room.members.size) {
@@ -158,6 +158,7 @@ export class MultiplayerHub {
     data.authoritativeWorldEventSummary=game.worldEventSummary?.()||[];
     data.dungeonInstance=game.dungeonInstance?Object.fromEntries(['id','definition','tier','seed','partySize','spawn','exit','puzzles','elapsed','bossDefeated','gateOpened','shieldHold','vulnerabilityUntil'].map(key=>[key,game.dungeonInstance[key]])):null;
     for(const key of PERSONAL_FIELDS)if(game[key]!==undefined)data[key]=game[key];
+    data.leechCredit=game.currentLeechCredit();
     data.pvp=this.pvp.summary(member);data.pvpStats=null;
     const arena=this.pvp.snapshot(member);
     if(arena)return {...data,...arena,...(includeLayout?{pvpTravelSave:game.capture()}:{})};
@@ -370,6 +371,7 @@ export class MultiplayerHub {
       if(command.name==='sell') {
         if(!game.npcs.some(n=>(n.id==='oren'||n.role?.includes('Händler'))&&distance(game.player,n)<120))throw new HttpError(409,'Ein Händler muss in deiner Nähe sein.');
       }
+      if(command.name==='respawn'&&command.args.length!==0)throw new HttpError(400,'Rückkehr erwartet keine Argumente.');
       if(command.name==='respawn'&&!game.dead)return false;
       return game[command.name](...command.args)!==false;
     }

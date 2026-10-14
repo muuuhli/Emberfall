@@ -24,6 +24,18 @@ const bosses = [
 export const DUNGEON_ENEMIES = Object.fromEntries(bosses.map(([id, name, level, color, hp, damage, minPlayers]) => [id, {
   name, level, color, hp, damage, speed: 40 + level * .35, range: 210, boss: true, minPlayers,
   xp: level * level * 32, gold: level * 110, dropTable: minPlayers > 1 ? 'raid' : 'dungeon',
+  ...(minPlayers===1 ? {
+    // Solo bosses answer a real ranged opening without outrunning the hero.
+    // Their next warning selects a health phase; live warnings never change.
+    combat:{pattern:'ring',windup:1.35,recovery:1.4,projectileCount:8,projectileSpeed:175,
+      projectileRange:600,attackRange:450,spread:Math.PI*2,preferredRange:160,
+      aggroRange:420,leashRange:600,telegraphRadius:85},
+    combatPhases:[
+      {belowHp:1,pattern:'ring',windup:1.35,recovery:1.4,projectileCount:8,projectileSpeed:175,spread:Math.PI*2},
+      {belowHp:.65,pattern:'fan',windup:1.3,recovery:1.3,projectileCount:5,projectileSpeed:260,spread:1.1},
+      {belowHp:.3,pattern:'hex',windup:1.4,recovery:1.4,telegraphRadius:85},
+    ],
+  } : {}),
   mechanics: minPlayers > 1 ? {
     shield: { plates: minPlayers === 8 ? 4 : 3, holdSeconds: 2, vulnerableSeconds: 9, requiresDistinctPlayers: true },
     stack: { minPlayers: minPlayers === 8 ? 4 : 2, radius: 100, windup: 2.2, damage: damage * 1.6 },
@@ -32,8 +44,8 @@ export const DUNGEON_ENEMIES = Object.fromEntries(bosses.map(([id, name, level, 
     reviveRequired: true,
     description: 'Gemeinsame Siegel brechen den Schild. Beim Sternfall sammeln, vor der Nova verteilen. Gefallene müssen von Verbündeten wiederbelebt werden.',
   } : {
-    phases: [{ belowHp: 1, telegraph: 'ring', windup: 1.3 }, { belowHp: .65, telegraph: 'cone', windup: 1.05 }, { belowHp: .3, telegraph: 'nova', windup: .8 }],
-    description: 'Der Kampf wechselt bei 65 und 30 Prozent Leben die Phase. Rot markierte Flächen kündigen alle schweren Angriffe an.',
+    phases: [{ belowHp: 1, telegraph: 'ring', windup: 1.35 }, { belowHp: .65, telegraph: 'fan', windup: 1.3 }, { belowHp: .3, telegraph: 'mark', windup: 1.4 }],
+    description: 'Ein gelockter Geschossring eröffnet den Kampf. Bei 65 Prozent Leben folgt ein gezielter Fächer, bei 30 Prozent wird deine letzte Position markiert. Verlasse die vollständigen Warnungen vor dem Einschlag.',
   },
 }]));
 DUNGEON_ENEMIES.echo_guard = { name: 'Siegelwächter', hp: 650, damage: 56, speed: 69, range: 40, xp: 3400, gold: 110, color: '#a0a4bd', level: 40, boss: false, dropTable: 'dungeon' };
@@ -64,8 +76,11 @@ function enemy(type, id, x, y, tier, level) {
   const definition = DUNGEON_ENEMIES[type], healthMultiplier = 1 + (tier - 1) * .38;
   const damageMultiplier = 1 + (tier - 1) * .075, rewardMultiplier = 1 + (tier - 1) * .18;
   const hp = Math.round(definition.hp * healthMultiplier * (definition.boss ? 1 : .5 + level / 40));
+  // The same guard appears at levels 15 through 100. Keep its level-40 budget
+  // while avoiding stronger guards than the first boss and trivial late echoes.
+  const baseDamage=definition.boss?definition.damage:Math.round(definition.damage*(.4+level*.015));
   return { id, type, x, y, homeX: x, homeY: y, hp, maxHp: hp, level, tier, healthMultiplier, damageMultiplier,
-    damage: Math.round(definition.damage * damageMultiplier), xp: Math.round(definition.xp * rewardMultiplier), gold: Math.round(definition.gold * rewardMultiplier),
+    damage: Math.round(baseDamage * damageMultiplier), xp: Math.round(definition.xp * rewardMultiplier), gold: Math.round(definition.gold * rewardMultiplier),
     lootLevel: Math.min(100, level + Math.floor((tier - 1) / 2)), lootTier: tier,
     boss: definition.boss, alive: true, attackTimer: 0, phase: 'idle', respawnAt: 0, shielded: definition.minPlayers > 1, mechanics: copy(definition.mechanics || {}), dungeon: true };
 }

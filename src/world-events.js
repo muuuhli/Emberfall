@@ -3,9 +3,9 @@ import { NAMED_BOSS_ENEMIES, NAMED_BOSS_HUNTS } from './encounter-content.js';
 import { EXPEDITION_CONTENT } from './expedition-content.js';
 import { TRIALS } from './trial-content.js';
 
-const alive = value => value && value.hp !== 0 && !value.dead && !value.downed && value.alive !== false;
+const alive = value => value && (value.hp===undefined||Number.isFinite(value.hp)&&value.hp>0) && !value.dead && !value.downed && value.alive !== false;
 const body = value => value?.player || value;
-const playersOf = values => (values || []).map(body).filter(alive);
+const playersOf = values => (values || []).filter(value=>alive(value)&&value.worldMode!=='pvp').map(body).filter(alive);
 const playerId = player => String(player.id || 'local');
 const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
@@ -208,8 +208,10 @@ export function interactWorldEvent(world,objectId,values,time=0,{choice}={}) {
     if(event.state==='active')return {success:false,message:event.objective.label,effects:[]};
     if(event.state==='success'||event.state==='rewarded'||time<event.readyAt)return {success:false,message:'Die Region braucht Zeit, bevor dieses Abenteuer erneut beginnt.',effects:[]};
     const director=world.encounterDirector;
-    if(definitionOf(event).mode==='gauntlet'&&director?.stage!=='calm'&&director?.anchor&&distance(director.anchor,event)<1000)
-      return {success:false,message:'Beende die angekündigte Wildnisjagd oder ziehe dich zurück, bevor du diese Wellenprüfung beginnst.',effects:[]};
+    if(director?.stage!=='calm'&&director?.anchor&&distance(director.anchor,event)<800)
+      return {success:false,message:'Beende die angekündigte Wildnisjagd oder ziehe dich zurück, bevor du dieses Abenteuer beginnst.',effects:[]};
+    if(world.worldEvents.some(other=>other!==event&&other.state==='active'&&distance(other,event)<800))
+      return {success:false,message:'In der Nähe läuft bereits ein Abenteuer. Beende es, bevor du weitere Angreifer rufst.',effects:[]};
     // Remove the previous run's corpses and temporary servants before retrying.
     // Reward history lives in the event record, not in an ever-growing actor list.
     world.enemies=world.enemies.filter(e=>e.eventId!==event.id&&!String(e.summonedBy||'').startsWith(`${event.id}:run:`));
@@ -275,8 +277,15 @@ function spawnWave(world,event,pending) {
     if(!def.boss) {actor.hp=actor.maxHp=Math.round(actor.maxHp*.65);actor.damage=Math.max(1,Math.round(actor.damage*.8));}
     if(stage.type==='gauntlet'&&!def.boss) {actor.hp=actor.maxHp=Math.round(actor.maxHp*(pending.hpScale||1));actor.damage=Math.max(1,Math.round(actor.damage*(pending.damageScale||1)));}
     if(event.risky&&def.boss)actor.hp=actor.maxHp=Math.round(actor.maxHp*1.2);
+    actor.partySize=pending.partySize||1;actor.partyHpScale=worldEventPartyHpScale(actor.partySize,!!def.boss);
+    actor.hp=actor.maxHp=Math.round(actor.maxHp*actor.partyHpScale);
     world.enemies.push(actor);
   }
+}
+
+export function worldEventPartyHpScale(size,boss=false){
+  const count=clamp(Number.isFinite(size)?Math.floor(size):1,1,8);
+  return 1+(count-1)*(boss?.55:.35);
 }
 
 export function updateWorldEvents(world,dt,values,time=0) {
@@ -291,6 +300,9 @@ export function updateWorldEvents(world,dt,values,time=0) {
     if(event.state!=='active')continue;
     event.elapsed+=dt;
     const present=players.filter(p=>distance(p,event)<520&&(p.level??1)>=event.minLevel);
+    // Freeze the roster during each visible warning, never during combat.
+    // A disconnect cannot shrink a living foe, and joining cannot heal it.
+    for(const pending of event.pending)if(pending.partySize===undefined)pending.partySize=Math.max(1,Math.min(8,new Set(present.map(player=>player.id||player)).size));
     const protectedObject=ownObjects(world,event).find(o=>['objective','escort'].includes(o.role));
     const contributionCenter=protectedObject||event;
     const contributionRadius=protectedObject?.role==='escort'?150:protectedObject?.role==='objective'?160:200;
@@ -377,9 +389,10 @@ export function worldEventRewardPreview(event,value) {
   const ongoing=['active','success','rewarded'].includes(event.state),completed=['success','rewarded'].includes(event.state);
   const ordinal=event.rewardedRuns||0,repeatFactor=completed&&event.runRewardFactor?event.runRewardFactor:ordinal===0?1:ordinal===1?.5:.25;
   const factor=repeatFactor*(ongoing?event.bonus||1:1);
-  return {xp:Math.round((70+event.level**2*3)*factor*xpFactor),gold:Math.round((18+event.level*5)*factor),
-    dust:Math.max(1,Math.round((2+event.level/12)*factor)),lootLevel:event.level,lootTier:event.mode==='expedition'?2:1,
-    boss:['expedition','boss_hunt','gauntlet'].includes(event.mode),repeatFactor};
+  const gray=gap>=20,boss=['expedition','boss_hunt','gauntlet'].includes(event.mode);
+  return {xp:Math.round((70+event.level**2*3)*factor*xpFactor),gold:Math.round((18+event.level*5)*factor*(gray?.1:1)),
+    dust:gray?0:Math.max(1,Math.round((2+event.level/12)*factor)),lootLevel:event.level,lootTier:event.mode==='expedition'?2:1,
+    boss,bossLoot:boss&&!gray&&repeatFactor>=.5,...(gray?{rarity:'common'}:{}),repeatFactor};
 }
 
 export function summarizeWorldEvents(world,value) {

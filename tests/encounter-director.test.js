@@ -138,7 +138,9 @@ test('leaving for a safe area withdraws the pack and victory starts a genuine ca
 });
 
 test('early damage recovery remains forgiving while late damage and respawn spacing increase pressure',()=>{
-  const early=field({level:5}),late=field({level:20});early.damagePlayer(10,{trueDamage:true});late.damagePlayer(10,{trueDamage:true});assert.equal(early.player.invulnerable,.6);assert.equal(late.player.invulnerable,.32);
+  const early=field({level:5}),late=field({level:20});early.damagePlayer(10,{trueDamage:true});late.damagePlayer(10,{trueDamage:true});
+  assert.equal(early.damageGrace.get('environment'),early.time+.24);assert.equal(late.damageGrace.get('environment'),late.time+.16);
+  for(const game of [early,late]){const hp=game.player.hp;game.damagePlayer(10,{trueDamage:true});assert.equal(game.player.hp,hp,'One source cannot hit twice during its grace window');game.damagePlayer(10,{trueDamage:true,attackerId:'second-enemy'});assert.equal(game.player.hp,hp-10,'Another enemy still creates real pack pressure');assert.equal(game.player.invulnerable,0);}
   for(const game of [early,late]){const enemy=createBestiaryEnemy('jade_stalker','real-respawn',game.player.x+35,game.player.y,{level:game.player.level});game.world.enemies=[enemy];game.killEnemy(enemy);assert.equal(enemy.respawnAt-game.time,game.player.level>=12?32:55);}
 });
 

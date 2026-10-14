@@ -41,6 +41,9 @@ function applyProfile(profile,effects,{attack=false}={}){
   if(finite(result.drain)&&result.drain>0)result.drain*=1+directHealing;
   if(finite(result.regenerationMultiplier)&&result.regenerationMultiplier>0)result.regenerationMultiplier*=1+periodicHealing;
   scale('shieldPower',['shieldMultiplier','shieldFraction']);scale('duration',['duration']);
+  // Learned taunts historically share radius with their shield presentation.
+  // Preserve that area and give the dedicated taunt bonus its own reach.
+  if(profile.kind==='taunt'&&effects.tauntRadius&&!finite(result.tauntRadius)&&finite(result.radius))result.tauntRadius=result.radius;
   scale('cost',['cost']);scale('cooldown',['cooldown']);scale('splashRadius',['splashRadius']);scale('tauntRadius',['tauntRadius']);
   if(effects.slow&&finite(result.slow)&&result.slow>0)result.slow=clamp(result.slow+effects.slow,0,.85);
   if(effects.slowDuration&&result.slow>0){

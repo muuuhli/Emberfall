@@ -165,7 +165,8 @@ test('echo waves produce real attack/reward actors but cap living echoes and dis
   const party = [{ id: 'hero', x: 1470, y: 1050, hp: 100 }];
   const events = advance(instance, party, 110); assert.ok(events.some(e => e.mechanic === 'echo-wave'));
   let echoes = instance.world.enemies.filter(e => e.affixEcho); assert.equal(echoes.length, 6);
-  assert.ok(echoes.every(e => e.alive && e.damage > DUNGEON_ENEMIES.echo_guard.damage && e.xp > 0));
+  const baseline = createDungeon(instance.id, { tier: 1 }).world.enemies.find(e => e.type === 'echo_guard');
+  assert.ok(echoes.every(e => e.alive && e.damage > baseline.damage && e.xp > 0));
   const defeated = echoes[0].id; echoes[0].alive = false;
   advance(instance, party, 30); echoes = instance.world.enemies.filter(e => e.affixEcho);
   assert.equal(echoes.length, 6); assert.equal(echoes.some(e => e.id === defeated), false);

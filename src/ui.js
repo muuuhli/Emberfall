@@ -76,6 +76,7 @@ export class GameUI {
     this.talentPage = 0;
     this.talentFiltersOpen = false;
     this.heroFacing = 0;
+    this.rescueBusy = false;
     this.panelPointers = new Set();
     this.questTab = 'active';
     this.questPage = 0;
@@ -222,6 +223,10 @@ export class GameUI {
   update(force = false) {
     const game = this.game;
     this.updatePvp();
+    if(this.activePanel==='death'&&!this.inPvp&&game.dead===false&&game.player?.hp>0)this.closePanel();
+    const deathState=JSON.stringify(game.deathSummary?.() || null);
+    if(this.activePanel==='death'&&deathState!==this.lastDeathState)this.renderPanel();
+    this.lastDeathState=deathState;
     const player = game.player || {};
     const stats = typeof game.stats === 'function' ? game.stats() : {};
     if(game.started&&player.level>this.lastSeenLevel){
@@ -284,7 +289,7 @@ export class GameUI {
     const eventState=eventSummary.filter(event=>event.state==='active'||this.adventureRewardReady(event)).map(event=>[event.id,event.state,event.phase,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]);
     const trackerState = JSON.stringify([game.questState || {},game.contracts,game.trackedQuestId,game.endgame,eventState]);
     if (force || trackerState !== this.lastTracker) { this.lastTracker = trackerState; this.renderTracker(); }
-    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.waypoint,game.trackedQuestId,eventSummary.map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]),game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,this.dungeonId()]);
+    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.deathPenalty,game.waypoint,game.trackedQuestId,eventSummary.map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]),game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,this.dungeonId()]);
     if (force || state !== this.lastState) { this.lastState = state; if (this.activePanel && !['death','victory','reset','settings','party'].includes(this.activePanel)) this.renderPanel(); }
     this.updateParty();
     const now = performance.now();
@@ -493,7 +498,7 @@ export class GameUI {
     const scroll=resetScroll?0:this.elements['panel-content'].scrollTop;
     const focusId = focused?.dataset?.id;
     const focusCommand = document.activeElement?.dataset?.command;
-    const titles = name === 'dialogue' ? [this.dialogueNPC?.name || 'Eine Begegnung',this.dialogueNPC?.role || ''] : name==='death' ? ['Die Glut lebt weiter','Auch die dunkelste Nacht endet.'] : name==='victory' ? ['Das erste Kapitel ist vollendet','Glutwacht hält stand. Jenseits des Feuers beginnt deine nächste Reise.'] : name==='reset' ? ['Ein neuer Anfang','Eine neue Reise ersetzt deinen gespeicherten Fortschritt.'] : panels[name] || panels.inventory;
+    const titles = name === 'dialogue' ? [this.dialogueNPC?.name || 'Eine Begegnung',this.dialogueNPC?.role || ''] : name==='death' ? ['Die Glut lebt weiter','Dein Rettungsbeleg und dein nächster Schritt.'] : name==='victory' ? ['Das erste Kapitel ist vollendet','Glutwacht hält stand. Jenseits des Feuers beginnt deine nächste Reise.'] : name==='reset' ? ['Ein neuer Anfang','Eine neue Reise ersetzt deinen gespeicherten Fortschritt.'] : panels[name] || panels.inventory;
     this.setText('panel-title', titles[0]);
     this.setText('panel-description', titles[1]);
     this.elements['close-panel'].hidden = name === 'death';
@@ -645,9 +650,10 @@ export class GameUI {
     const player=this.game.player || {},stats=this.game.stats(),cls=getClass(player.classId),xpNeeded=typeof this.game.xpNeeded==='function'?this.game.xpNeeded():this.game.xpNeeded || 100;
     const tabs=`<div class="panel-tabs" role="group" aria-label="Charakteransicht"><button class="${this.characterTab!=='build'?'active':''}" data-character-tab="equipment" aria-pressed="${this.characterTab!=='build'}">Ausrüstung & Werte</button><button class="${this.characterTab==='build'?'active':''}" data-character-tab="build" aria-pressed="${this.characterTab==='build'}">Kampfaufbau & Presets</button></div>`;
     const banner=`<div class="hero-heading"><div class="hero-class-seal" style="--hero-color:${cls.color}">${icon(classIcons[cls.id])}</div><div><span class="eyebrow">${escape(cls.role)} · STUFE ${player.level || 1} / ${MAX_LEVEL}</span><h3>${escape(player.name || 'Aren')} <small>${escape(cls.name)}</small></h3><p>${player.level>=MAX_LEVEL?'Höchste Stufe erreicht':`${format(player.xp)} / ${format(xpNeeded)} Erfahrung`} · ${format(player.skillPoints)} freie Talentpunkte</p></div><button class="small-button" data-panel="talents">${icon('tree')}Talente verteilen</button></div>`;
-    if(this.characterTab==='build')return `${tabs}${banner}${this.buildOverview()}`;
+    const rescue=this.rescueOverview();
+    if(this.characterTab==='build')return `${tabs}${banner}${rescue}${this.buildOverview()}`;
     const groups=[['Offensive','sword',['damage','spellDamage','crit','lifeSteal']],['Überleben','shield',['maxHp','armor','mana','manaRegen']],['Bewegung & Nutzen','dash',['speed','cooldown','dodgeCooldown','gatherYield']]];
-    return `${tabs}${banner}<div class="hero-equipment-layout"><section class="paperdoll-card"><p class="eyebrow">SIEBEN PLÄTZE · DEIN EIGENER WEG</p>${this.paperdoll()}<p class="panel-note">Wähle einen Platz, um seine Beute zu prüfen oder passende Ausrüstung zu suchen.</p></section><aside class="hero-stats">${groups.map(([name,glyph,values])=>`<section class="stat-group"><h3>${icon(glyph)}${name}</h3>${values.map(key=>`<div class="summary-stat"><span>${escape(statLabels[key])}</span><strong>${statValue(key,stats[key])}</strong></div>`).join('')}</section>`).join('')}<p class="panel-note">Die Gesamtwerte enthalten Ausrüstung, Setboni, Talente und aktive Gaben.</p></aside></div><div class="hero-progress-strip"><span>${icon('book')}${Object.values(this.game.questState || {}).filter(state=>state.status==='done').length} Questen erfüllt</span><span>${icon('map')}${(this.game.discovered || []).length} / ${REGIONS.length} Regionen erkundet</span><span>${icon('tree')}${getLearnedAbilities(this.game).length} / ${ABILITIES.filter(a=>a.classId===player.classId).length} Techniken erlernt</span><button class="text-button" data-panel="journey">Dein Vermächtnis ansehen ${icon('arrow')}</button></div>`;
+    return `${tabs}${banner}${rescue}<div class="hero-equipment-layout"><section class="paperdoll-card"><p class="eyebrow">SIEBEN PLÄTZE · DEIN EIGENER WEG</p>${this.paperdoll()}<p class="panel-note">Wähle einen Platz, um seine Beute zu prüfen oder passende Ausrüstung zu suchen.</p></section><aside class="hero-stats">${groups.map(([name,glyph,values])=>`<section class="stat-group"><h3>${icon(glyph)}${name}</h3>${values.map(key=>`<div class="summary-stat"><span>${escape(statLabels[key])}</span><strong>${statValue(key,stats[key])}</strong></div>`).join('')}</section>`).join('')}<p class="panel-note">Die Gesamtwerte enthalten Ausrüstung, Setboni, Talente und aktive Gaben.</p></aside></div><div class="hero-progress-strip"><span>${icon('book')}${Object.values(this.game.questState || {}).filter(state=>state.status==='done').length} Questen erfüllt</span><span>${icon('map')}${(this.game.discovered || []).length} / ${REGIONS.length} Regionen erkundet</span><span>${icon('tree')}${getLearnedAbilities(this.game).length} / ${ABILITIES.filter(a=>a.classId===player.classId).length} Techniken erlernt</span><button class="text-button" data-panel="journey">Dein Vermächtnis ansehen ${icon('arrow')}</button></div>`;
   }
 
   buildOverview() {
@@ -851,7 +857,8 @@ export class GameUI {
     const reward=event.reward || event.rewardPreview;if(!reward)return '';
     const parts=[];if(reward.xp!==undefined)parts.push(`${format(reward.xp)} EP`);if(reward.gold!==undefined)parts.push(`${format(reward.gold)} Gold`);if(reward.dust!==undefined)parts.push(`${format(reward.dust)} Arkanstaub`);
     if(reward.lootLevel)parts.push(`Beutefund auf Stufe ${format(reward.lootLevel)}`);
-    return `<div class="adventure-reward-preview"><span>DEINE ABSCHLUSSBEUTE</span><p>${parts.join(' · ')}</p><small>Die Vorschau gilt für deinen nächsten Abschluss; der Ausrüstungsfund wird beim Bergen bestimmt.</small></div>`;
+    const condition=reward.rarity==='common'?'Graue Begegnung · gewöhnliche Beute':reward.bossLoot===false&&reward.repeatFactor<1?'Wiederholung · normale Fundchancen':'';
+    return `<div class="adventure-reward-preview"><span>DEINE ABSCHLUSSBEUTE</span><p>${parts.join(' · ')}</p>${condition?`<small class="adventure-reward-condition">${condition}</small>`:''}<small>Die Vorschau gilt für deinen nächsten Abschluss; der Ausrüstungsfund wird beim Bergen bestimmt.</small></div>`;
   }
 
   adventureCard(event,world) {
@@ -1070,7 +1077,22 @@ export class GameUI {
     }).join('')}${extra}${!current.length&&!extra?'<p class="panel-note">Dein Weg ist noch nicht zu Ende. Kehre wieder, wenn du neue Geschichten zu erzählen hast.</p>':''}</div></div>`;
   }
 
-  death() { return `<div class="large-state">${icon('flame')}<h3>Dein Funke ist nicht erloschen.</h3><p>Die Glut trägt dich zurück nach Glutwacht. Sammle Kraft, verbessere deine Ausrüstung und versuche einen neuen Weg.</p><button class="primary-button" data-command="respawn">Zurück ins Licht ${icon('arrow')}</button></div>`; }
+  deathReceipt(summary=this.game.deathSummary?.()) {
+    const receipt=summary?.lastReceipt;
+    if(!receipt)return '<p class="panel-note death-receipt-pending" role="status">Für diese Niederlage liegt noch kein Rettungsbeleg vor.</p>';
+    return `<section class="death-receipt" data-death-receipt="${escape(receipt.id)}" aria-label="Bereits verbuchter Rettungsverlust"><p class="eyebrow">BEREITS BEIM FALLEN VERBUCHT</p><dl><div><dt>Rettungskosten</dt><dd>${format(receipt.fee)} Gold</dd></div><div><dt>Aus deinem Gold bezahlt</dt><dd>−${format(receipt.goldLost)} Gold</dd></div><div><dt>Neue Rettungsschuld</dt><dd>+${format(receipt.debtAdded)} Gold</dd></div><div class="death-debt-total"><dt>Noch offene Schuld insgesamt</dt><dd>${format(summary.debt)} Gold</dd></div></dl>${summary.debt>0?'<p class="death-debt-explanation">25 % deiner künftigen Goldgewinne tilgen diese Schuld, bis sie beglichen ist. Bereits vorhandenes Gold wird dabei nicht erneut belastet.</p>':''}</section>`;
+  }
+
+  rescueOverview() {
+    if(this.inPvp)return '';
+    const summary=this.game.deathSummary?.();if(!summary?.lastReceipt&&!(summary?.debt>0))return '';
+    return `<details class="rescue-overview"><summary>${icon('flame')}<span>${summary.debt>0?`Offene Rettungsschuld · ${format(summary.debt)} Gold`:'Letzter Rettungsbeleg · keine offene Schuld'}</span></summary>${this.deathReceipt(summary)}<p class="panel-note">Stufe, Erfahrung, Ausrüstung und Aufgaben bleiben erhalten. Wiederbelebung und Rückkehr berechnen diesen Verlust nicht erneut.</p></details>`;
+  }
+
+  death() {
+    const summary=this.game.deathSummary?.(),target=summary?.returnLabel || 'deinem sicheren Glutherd';
+    return `<div class="death-state"><div class="death-intro">${icon('flame')}<div><h3>Dein Funke bleibt.</h3><p>Wiederbelebung oder Rückkehr kostet dich nichts zusätzlich.</p></div></div>${this.deathReceipt(summary)}<button class="primary-button" data-command="respawn" ${this.rescueBusy?'disabled aria-busy="true"':''}>${this.rescueBusy?'Die Glut trägt dich zurück …':`Zurückkehren · ${escape(target)}`} ${icon('arrow')}</button><p class="death-protected">${icon('shield')}Stufe, Erfahrung, Ausrüstung und Aufgaben bleiben erhalten.</p></div>`;
+  }
   victory() { return `<div class="large-state">${icon('flame')}<h3>Glutwacht hat wieder ein Feuer.</h3><p>Veyr ist gefallen und dein erstes Kapitel ist vollendet. In den ${REGIONS.length} Regionen der freien Lande warten neue Bündnisse, Ereignisse und mächtige Gegner. Wähle am letzten Feuer deinen nächsten Weg.</p><button class="primary-button" data-command="resume">Deine Reise fortsetzen ${icon('arrow')}</button><div class="victory-next-paths"><button class="small-button" data-panel="adventures">${icon('portal')}Ereignisse & Expeditionen</button><button class="small-button" data-panel="journey">${icon('book')}Dein Vermächtnis</button></div><p class="panel-note">Sprich mit Mira, um die Belohnung für dieses Kapitel zu erhalten.</p></div>`; }
   resetConfirmation() { return `<div class="large-state">${icon('leaf')}<h3>Jede Geschichte beginnt mit einem Schritt.</h3><p>Deine aktuelle Reise wird ersetzt. Exportiere deinen Spielstand in den Einstellungen, wenn du sie für später behalten möchtest.</p>${this.classSelection(this.pendingClass,true)}<button class="primary-button" data-command="confirm-reset">Als ${escape(getClass(this.pendingClass).name)} beginnen ${icon('arrow')}</button><button class="text-button" data-command="resume">Zur aktuellen Reise zurück</button></div>`; }
   showDeath() { if(this.inPvp)return; if (this.activePanel==='death') return; this.togglePanel('death'); }
@@ -1124,7 +1146,14 @@ export class GameUI {
     if(name==='socket') { this.game.socket(id,button.dataset.gem);this.update(true);return; }
     if(name==='enterDungeon') { const result=await this.game.enterDungeon(id,Number(button.dataset.tier) || 1);if(result!==false)this.closePanel();this.update(true);return; }
     if(name==='leave-dungeon') { const method=this.game.leaveDungeon || this.game.exitDungeon;if(method){await method.call(this.game);this.closePanel();this.update(true);}return; }
-    if (name==='respawn') { this.game.respawn(); this.closePanel(); this.update(true); return; }
+    if(name==='respawn') {
+      if(this.rescueBusy||!(this.game.dead||this.game.player?.hp<=0))return;
+      this.rescueBusy=true;this.renderPanel();
+      try {const result=await this.game.respawn();if(result!==false&&this.game.dead===false&&this.game.player?.hp>0)this.closePanel();}
+      catch(error){this.showNotice(error.message || 'Die Rückkehr konnte nicht ausgeführt werden. Versuche es erneut.','error');}
+      finally {this.rescueBusy=false;if(this.activePanel==='death')this.renderPanel();this.update(true);}
+      return;
+    }
     if (name==='save') { this.manualSave(); return; }
     if (name==='import') { this.elements['save-import'].click(); return; }
     if (name==='export') { this.game.exportSave(); return; }

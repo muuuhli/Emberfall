@@ -73,7 +73,7 @@ function tacticalMove(game,enemy,definition,player,dt,pack,{recover=false}={}) {
 }
 
 function championPressure(game,enemy,definition,living) {
-  if(!definition.boss||(enemy.level||definition.level)<12)return;
+  if(!definition.boss||enemy.dungeon||(enemy.level||definition.level)<12)return;
   const stage=enemy.hp<=enemy.maxHp*.3?3:enemy.hp<=enemy.maxHp*.65?2:1;
   const previous=enemy.pressurePhase||1;
   if(stage>previous) {
@@ -85,7 +85,12 @@ function championPressure(game,enemy,definition,living) {
 
 function attackProfile(enemy,definition,range) {
   const combat={...definition.combat},preferred=combat.preferredRange||definition.range||45;
-  if(definition.boss&&(enemy.level||definition.level)>=12)combat.recovery=Math.max(.6,(combat.recovery||1.1)*(enemy.pressurePhase===3?.66:enemy.pressurePhase===2?.82:1));
+  let phase;
+  if(enemy.dungeon&&Array.isArray(definition.combatPhases)) {
+    phase=1;
+    for(const [index,profile] of definition.combatPhases.entries())if(enemy.hp<=enemy.maxHp*profile.belowHp){phase=index+1;Object.assign(combat,profile);}
+  }
+  if(definition.boss&&!enemy.dungeon&&(enemy.level||definition.level)>=12)combat.recovery=Math.max(.6,(combat.recovery||1.1)*(enemy.pressurePhase===3?.66:enemy.pressurePhase===2?.82:1));
   let attackRange=preferred;
   // Preferred spacing is a movement decision. It must not cap a projectile
   // whose visible trajectory can reach a player standing farther away.
@@ -106,7 +111,7 @@ function attackProfile(enemy,definition,range) {
     combat.pattern='charge';combat.chargeDistance=Math.min(reach,range+30);attackRange=reach;
     combat.windup=Math.max(1.15,combat.windup||1.15);
   }
-  return {combat,preferred,attackRange};
+  return {combat,preferred,attackRange,phase};
 }
 
 function lockedAim(enemy,player,combat,boss) {
@@ -129,14 +134,15 @@ export function applyEnemyTraits(game,enemy,definition,target,appliedDamage) {
   if(ailment) {
     const effects=p.afflictions||=[];
     const present=effects.find(e=>e.kind===ailment),effect={kind:ailment,damage:Math.max(1,Math.round((enemy.damage||definition.damage)*.12)),
-      expiresAt:game.time+3,nextTick:game.time+1,attackerLevel:enemy.level||definition.level};
-    if(present){present.expiresAt=effect.expiresAt;present.damage=Math.max(present.damage,effect.damage);}
+      expiresAt:game.time+3,nextTick:game.time+1,attackerLevel:enemy.level||definition.level,attackerId:enemy.id};
+    if(present){present.expiresAt=effect.expiresAt;if(effect.damage>=present.damage){present.damage=effect.damage;present.attackerLevel=effect.attackerLevel;present.attackerId=effect.attackerId;}}
     else effects.push(effect);
   }
 }
 
 function damageTarget(game,enemy,definition,target,amount) {
-  const applied=target.damagePlayer(amount,{attackerLevel:enemy.level||definition.level});
+  if(target.dead||target.player.hp<=0||target.inSettlement?.())return;
+  const applied=target.damagePlayer(amount,{attackerLevel:enemy.level||definition.level,attackerId:enemy.id});
   applyEnemyTraits(game,enemy,definition,target,applied);
 }
 
@@ -210,7 +216,7 @@ function resolveAttack(game,enemy,definition,living,target) {
   }
 }
 
-/** Complete ordinary/champion AI; dungeon encounter controllers stay independent. */
+/** Ordinary, champion and solo-dungeon AI. Cooperative raid controls stay independent. */
 export function updateBestiaryEnemy(game,enemy,definition,dt,living) {
   const combat=definition.combat;
   if(!combat)return false;
@@ -260,10 +266,14 @@ export function updateBestiaryEnemy(game,enemy,definition,dt,living) {
     return true;
   }
   if(enemy.phase==='recover'&&enemy.attackTimer>0) {if(pack)tacticalMove(game,enemy,definition,player,dt,pack,{recover:true});return true;}
-  const {combat:attackCombat,preferred,attackRange}=attackProfile(enemy,definition,range);
+  const {combat:attackCombat,preferred,attackRange,phase}=attackProfile(enemy,definition,range);
   if(range<attackRange && enemy.attackTimer<=0&&packCanAttack(game,enemy,pack)) {
     const windup=attackCombat.windup||.65,aim=lockedAim(enemy,player,attackCombat,definition.boss);
-    const extraFan=definition.boss&&projectilePatterns.has(attackCombat.pattern)&&enemy.hp<enemy.maxHp*.5&&((enemy.cycle||0)+1)%3===0;
+    const extraFan=definition.boss&&!enemy.dungeon&&projectilePatterns.has(attackCombat.pattern)&&enemy.hp<enemy.maxHp*.5&&((enemy.cycle||0)+1)%3===0;
+    if(phase){
+      if(phase>(enemy.dungeonPhase||1))for(const ally of living)if(distance(ally.player,enemy)<650)ally.notice?.(`${definition.name} · Phase ${phase}: ${phase===2?'Geschossfächer!':'Markierter Einschlag!'}`,'danger');
+      enemy.dungeonPhase=phase;
+    }
     Object.assign(enemy,{phase:'windup',attackTimer:windup,telegraphDuration:windup,attackAngle:aim.angle,
       telegraphRadius:attackCombat.telegraphRadius||(['hex','summoner'].includes(attackCombat.pattern)?75:attackCombat.pattern==='charge'?35:preferred>90?26:62),
       telegraphX:attackCombat.pattern==='hex'?aim.point.x:enemy.x,telegraphY:attackCombat.pattern==='hex'?aim.point.y:enemy.y,

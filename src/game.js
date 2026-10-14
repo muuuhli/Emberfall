@@ -3,7 +3,7 @@ import { makeWorld } from './world.js';
 import { expandWorld } from './expansion.js';
 import { CLASSES, getClass, getTalentModifiers, canLearnTalent, validateCombatTalentState } from './classes.js';
 import { MAX_LEVEL, xpToNext } from './progression.js';
-import { basePlayerStats, classStatModifiers, capCombatStats, incomingDamage, classPowerMultiplier, normalEnemyStats, enemyXpReward } from './balance.js';
+import { basePlayerStats, classStatModifiers, capCombatStats, incomingDamage, classPowerMultiplier, normalEnemyStats, enemyXpReward, COMBAT_SUSTAIN } from './balance.js';
 import { generateLoot, computeItemStats, validateLootItem, salvageYield, computeSetBonuses, GEM_TYPES, ITEM_BASES } from './loot.js';
 import { DUNGEONS, createDungeon, interactPuzzle, updateDungeon, validateDungeonEchoes, restoreDungeonEchoes } from './dungeons.js';
 import { MAX_ACTIVE_CONTRACTS, getContractOffers, createContract, advanceContract, resolveContractOffer, validateContractState, restoreContractState } from './contracts.js';
@@ -23,6 +23,7 @@ import { createEndgameState, validateEndgameState, restoreEndgameState, advanceH
 import { getRelic, resolveRelicProc } from './relics.js';
 import { createEncounterDirector, updateEncounterDirector, captureEncounterDirector, validateEncounterDirectorSave, restoreEncounterDirector, encounterSummary, ordinaryRespawnDelay, encounterSpawnBlocked } from './encounter-director.js';
 import { updateEncounterBoss } from './encounter-boss-ai.js';
+import { createDeathPenaltyState, validateDeathPenaltyState, restoreDeathPenaltyState, chargeDeathPenalty, completeDeathRescue, creditGold, deathSummary } from './death-penalty.js';
 import { createCharacterPresentation } from './character-animation.js';
 import { getTalentCombatModifiers, applyTalentAttackProfile, applyTalentAbilityProfile } from './talent-combat.js';
 import { preflightMasteryAbility, executeMasteryAbility, updateMasteryAbilities, cancelMasteryChannel,
@@ -68,7 +69,7 @@ export class Game {
     this.inventory = {}; this.resources = {wood:0,ore:0,herb:0,crystal:0,seed:6,wheat:0};
     for(const id of Object.keys(RESOURCES)) this.resources[id]??=0;
     this.player.classId='guardian';this.player.shield=0;this.player.shieldUntil=0;
-    this.classId='guardian';
+    this.classId='guardian';this.deathPenalty=createDeathPenaltyState();this.damageGrace=new Map();this.leechBudget=null;
     this.generatedItems={};this.lootPity={legendaryMisses:0,bossMisses:0};this.lootSerial=0;this.summons=[];this.hazards=[];this.buffs=[];this.partyGames=[this];this.otherPlayers=[];
     this.equipment=createEmptyEquipment();this.itemFlags={};this.stash={};this.loadouts=[];this.trackedQuestId='';this.waypoint=null;
     this.skills = {}; this.questState = {}; this.discovered = ['daemmerhain']; this.unlockedShrines = [];
@@ -119,6 +120,8 @@ export class Game {
     for(const modifiers of [getJourneyModifiers(this),getCompanionModifiers(this)])for(const [key,value] of Object.entries(modifiers))s[key]=(s[key]||0)+value;
     return capCombatStats(s,{level:p.level});
   }
+  deathSummary(){return deathSummary(this);}
+  gainGold(amount){return creditGold(this,amount);}
   item(id) { return this.generatedItems[id]||ITEMS[id]||null; }
   itemStats(id) { const item=this.item(id);return this.generatedItems[id]?computeItemStats(item):item?.stats||{}; }
   previewEquipment(id) {
@@ -239,7 +242,7 @@ export class Game {
     if(this.trackedQuestId===id)this.trackQuest('');
     this.contracts.completed[offer.region]=(this.contracts.completed[offer.region]||0)+1;
     this.event('contract',offer.region);
-    this.player.gold+=offer.reward.gold;this.resources.dust+=offer.reward.dust;this.gainXp(offer.reward.xp);
+    this.gainGold(offer.reward.gold);this.resources.dust+=offer.reward.dust;this.gainXp(offer.reward.xp);
     if(offer.reward.item)this.addItem(offer.reward.item);
     this.notice(`Auftrag abgeschlossen · +${offer.reward.xp} EP · +${offer.reward.dust} Glutstaub`,'quest');this.change();this.save(false);return true;
   }
@@ -261,7 +264,7 @@ export class Game {
   }
   questTurnIn(id) {
     const q=QUESTS.find(q=>q.id===id); if(!q || this.questState[id]?.status!=='ready') return false;
-    this.questState[id].status='done'; this.player.gold+=q.reward.gold||0; this.gainXp(q.reward.xp||0);
+    this.questState[id].status='done'; this.gainGold(q.reward.gold||0); this.gainXp(q.reward.xp||0);
     if(this.trackedQuestId===id)this.trackQuest('');
     if(q.reward.item) this.addItem(q.reward.item,1);
     if(q.reward.skillPoints) this.player.skillPoints+=q.reward.skillPoints;
@@ -333,7 +336,7 @@ export class Game {
   adventureGuidance() {return adventureGuidance(this);}
   claimAchievement(id) {
     const reward=claimJourneyAchievement(this,id);if(!reward)return false;
-    this.player.gold+=reward.gold||0;this.player.skillPoints+=reward.skillPoints||0;
+    this.gainGold(reward.gold||0);this.player.skillPoints+=reward.skillPoints||0;
     for(const [key,count] of Object.entries(reward.resources||{}))if(Object.hasOwn(this.resources,key))this.resources[key]+=count;
     if(reward.xp)this.gainXp(reward.xp);if(reward.item)this.addItem(reward.item);
     this.notice(`Errungenschaft belohnt · ${ACHIEVEMENTS.find(a=>a.id===id)?.name||'Deine Reise'}`,'quest');this.change();this.save(false);return true;
@@ -382,10 +385,10 @@ export class Game {
   claimWorldEvent(id) {
     if(this.dead||this.bagUsed()>=240){this.notice('Die Belohnung wartet auf einen freien Platz in deinem Gepäck.');return false;}
     const reward=claimWorldEventReward(this.world,id,this.player,this.time);if(!reward)return false;
-    const loot=generateLoot({level:reward.lootLevel,tier:reward.lootTier,boss:reward.boss,classId:this.player.classId,rng:this.random,pity:this.lootPity,
+    const loot=generateLoot({level:reward.lootLevel,tier:reward.lootTier,boss:reward.bossLoot??reward.boss,rarity:reward.rarity,classId:this.player.classId,rng:this.random,pity:reward.rarity==='common'?undefined:this.lootPity,
       source:id,uid:`event-loot-${++this.lootSerial}-${Math.floor(this.random()*1e9)}-${this.player.id||'local'}`});
-    this.addItem(loot);this.player.gold+=reward.gold;this.resources.dust+=reward.dust;this.gainXp(reward.xp);
-    this.notice(`${loot.name} · +${reward.gold} Gold · Abenteuerbelohnung geborgen`,'loot');this.change();this.save(false);return true;
+    this.addItem(loot);const earnings=this.gainGold(reward.gold);this.resources.dust+=reward.dust;this.gainXp(reward.xp);
+    this.notice(`${loot.name} · +${earnings.received} Gold${earnings.repaid?` · ${earnings.repaid} Rettungsschuld getilgt`:''} · Abenteuerbelohnung geborgen`,'loot');this.change();this.save(false);return true;
   }
   canEquipItem(id) {
     const item=this.item(id);if(!item||!this.inventory[id]||!equipmentSlot(item)||(item.minLevel||item.level||1)>this.player.level)return false;
@@ -413,7 +416,7 @@ export class Game {
   }
   sell(id) {
     const item=this.item(id); if(!item || !this.inventory[id] || Object.values(this.equipment).includes(id)||isItemProtected(this,id)) return false;
-    this.inventory[id]--; this.player.gold+=Math.max(1,Math.floor(item.price*.4));if(this.inventory[id]<=0&&this.generatedItems[id]&&!this.stash[id]){delete this.generatedItems[id];delete this.inventory[id];delete this.itemFlags[id];} this.change();this.save(false);return true;
+    this.inventory[id]--; this.gainGold(Math.max(1,Math.floor(item.price*.4)));if(this.inventory[id]<=0&&this.generatedItems[id]&&!this.stash[id]){delete this.generatedItems[id];delete this.inventory[id];delete this.itemFlags[id];} this.change();this.save(false);return true;
   }
   consume(id) {
     const item=this.item(id); if(item?.type!=='consumable'||!this.inventory[id]) return false;
@@ -552,17 +555,17 @@ export class Game {
       this.addWorldBoon(object.kind==='altar'?'blood_oath':'night_aether');object.used=true;
     } else {
       object.used=true;object.active=false;
-      if(object.kind==='barrel'){this.resources.wood+=2*scale;this.resources.ore+=scale;p.gold+=5+level;}
+      if(object.kind==='barrel'){this.resources.wood+=2*scale;this.resources.ore+=scale;this.gainGold(5+level);}
       if(object.kind==='urn'){this.resources.dust+=2*scale;this.resources.crystal+=scale;}
       if(object.kind==='fountain'){p.hp=this.stats().maxHp;p.mana=this.stats().mana;p.afflictions=[];p.slowUntil=0;this.onSound('heal');}
-      if(object.kind==='captive'){p.gold+=25+level*2;this.gainXp(50+level*15);this.event('rescue',object.region);}
+      if(object.kind==='captive'){this.gainGold(25+level*2);this.gainXp(50+level*15);this.event('rescue',object.region);}
       if(object.kind==='lore'){this.gainXp(20+level*5);this.notice(object.text,'quest');}
       if(object.kind==='lever') {
         const cache=this.world.interactions.find(o=>o.id===object.linkedId);
         if(cache){cache.locked=false;this.effect('ring',cache.x,cache.y,{radius:50,color:'#d8b27c',life:1.5});this.notice('Eine Kette schlägt gegen Stein. Der nahe Gruftvorrat ist geöffnet.','quest');}
       }
       if(['sarcophagus','cursed_chest','sealed_cache'].includes(object.kind)) {
-        p.gold+=15+level*3;this.resources.dust+=scale*3;
+        this.gainGold(15+level*3);this.resources.dust+=scale*3;
         const loot=generateLoot({level,boss:object.kind==='cursed_chest',source:object.kind,classId:p.classId,rng:this.random,pity:this.lootPity,uid:`loot-${++this.lootSerial}-${Math.floor(this.random()*1e9)}`});
         this.addItem(loot);this.notice(`${loot.name} aus ${object.name} geborgen`,'loot');
         this.gainXp(25+level*5);
@@ -580,7 +583,7 @@ export class Game {
     if(n.kind==='worldObject'){this.interactWorldObject(o.id);return;}
     if(n.kind==='dungeon') {this.enterDungeon(o.dungeonId||o.id);return;}
     if(n.kind==='exit') {this.exitDungeon();return;}
-    if(n.kind==='revive') { const ally=this.partyGames.find(g=>g.player===o);if(ally) {ally.dead=false;ally.paused=false;ally.player.hp=ally.stats().maxHp*.4;ally.player.invulnerable=3;ally.onRevived?.();this.event('revive',o.id||o.name);this.notice(`${o.name} wiederbelebt`);this.change();}return;}
+    if(n.kind==='revive') { const ally=this.partyGames.find(g=>g.player===o);if(ally) {ally.dead=false;ally.paused=false;completeDeathRescue(ally);ally.player.hp=ally.stats().maxHp*.4;ally.player.invulnerable=3;ally.onRevived?.();this.event('revive',o.id||o.name);this.notice(`${o.name} wiederbelebt`);this.change();}return;}
     if(n.kind==='puzzle') {
       const result=interactPuzzle(this.dungeonInstance,o.id,this.partyGames.filter(g=>!g.dead).map(g=>g.player),this.time);
       this.notice(result.message||'Mechanismus betätigt');if(result.event)for(const ally of this.partyGames)ally.event(result.event,result.target||this.dungeonInstance.id);
@@ -606,7 +609,7 @@ export class Game {
     }
     if(n.kind==='chest') {
       if(this.bagUsed()>=240){this.notice('Dein Gepäck ist voll. Zerlege oder verkaufe Ausrüstung.');return;}
-      o.opened=true; const gold=20+Math.floor(this.random()*30); this.player.gold+=gold;
+      o.opened=true; const gold=20+Math.floor(this.random()*30); this.gainGold(gold);
       const item=generateLoot({level:o.lootLevel||o.level||Math.max(1,this.regionAt().level),tier:o.lootTier||1,boss:!!o.requiresBoss,classId:this.player.classId,rng:this.random,pity:this.lootPity,source:o.lootTable||'chest',uid:`loot-${++this.lootSerial}-${Math.floor(this.random()*1e9)}`});
       for(const [key,amount] of Object.entries(o.rewards||{}))if(Object.hasOwn(this.resources,key))this.resources[key]+=amount;
       if(item) { this.addItem(item); this.notice(`Truhe: ${item.name} · +${gold} Gold`,'loot'); }
@@ -688,6 +691,23 @@ export class Game {
     const p=this.player,length=this.aim&&Number.isFinite(this.aim.x)&&Number.isFinite(this.aim.y)?Math.min(range,dist(p,this.aim)):range;
     return {x:p.x+Math.cos(p.face)*length,y:p.y+Math.sin(p.face)*length};
   }
+  summonSlots(){const id=this.player.id||'local';return Math.max(0,8-this.summons.filter(s=>s.actorId===id&&!s.companion&&s.life>0).length);}
+  healLifeSteal(amount){
+    if(!Number.isFinite(amount)||!(amount>0)||this.worldMode==='pvp')return 0;
+    const rate=this.stats().maxHp*COMBAT_SUSTAIN.leechMaxHpPerSecond,cap=rate*COMBAT_SUSTAIN.leechBurstSeconds;
+    if(!this.leechBudget)this.leechBudget={time:this.time,credit:cap};
+    const b=this.leechBudget;b.credit=Math.min(cap,b.credit+Math.max(0,this.time-b.time)*rate);b.time=this.time;
+    const healed=this._healAbilityAlly(this,Math.min(amount,b.credit));b.credit=Math.max(0,b.credit-healed);return healed;
+  }
+  currentLeechCredit(){
+    const b=this.leechBudget;if(!b)return 1;
+    const cap=this.stats().maxHp*COMBAT_SUSTAIN.leechMaxHpPerSecond*COMBAT_SUSTAIN.leechBurstSeconds;
+    return clamp(b.credit/cap+Math.max(0,this.time-b.time)/COMBAT_SUSTAIN.leechBurstSeconds,0,1);
+  }
+  restoreLeechCredit(fraction){
+    if(!Number.isFinite(fraction)||fraction<0||fraction>1)throw new Error('Ungültiges Lebensraubbudget.');
+    this.leechBudget={time:this.time,credit:fraction*this.stats().maxHp*COMBAT_SUSTAIN.leechMaxHpPerSecond*COMBAT_SUSTAIN.leechBurstSeconds};
+  }
   _abilityShield(ally,fraction,duration) {
     const shield=ally.stats().maxHp*fraction*classPowerMultiplier(this.player.classId,'shield');
     ally.player.shield=Math.max(ally.player.shield||0,shield);ally.player.shieldUntil=Math.max(ally.player.shieldUntil||0,this.time+duration);ally.change();
@@ -699,6 +719,7 @@ export class Game {
     const a=applyTalentAbilityProfile(definition,this.combatTalentModifiers(),{action:'learned'});
     for(let prerequisite=a.requires;prerequisite;prerequisite=getAbility(prerequisite)?.requires)if(this.learnedAbilities[prerequisite]!==true)return false;
     const key=`ability:${id}`;if((this.cooldowns[key]||0)>0)return false;
+    if(a.kind==='summon'&&!this.summonSlots()){this.notice('Deine acht Diener stehen bereits im Feld.');return false;}
     const s=this.stats();if(p.mana<a.cost){this.notice('Nicht genug Mana.');return false;}
     const preflight=preflightMasteryAbility(this,a);
     if(preflight&&!preflight.ok){this.notice(preflight.reason);return false;}
@@ -728,7 +749,7 @@ export class Game {
     if(a.kind==='taunt') {
       this._abilityShield(this,a.shieldFraction,a.duration);
       if(a.chargeRange){this.move(p,Math.cos(p.face)*a.chargeRange,Math.sin(p.face)*a.chargeRange);this.effect('ring',p.x,p.y,{radius:a.radius,color:a.color,life:.5});}
-      for(const enemy of this.world.enemies.filter(e=>e.alive&&dist(p,e)<a.radius)){enemy.targetId=actorId;enemy.tauntUntil=this.time+a.duration;enemy.aggro=true;}
+      for(const enemy of this.world.enemies.filter(e=>e.alive&&dist(p,e)<(a.tauntRadius||a.radius))){enemy.targetId=actorId;enemy.tauntUntil=this.time+a.duration;enemy.aggro=true;}
     }
     if(a.kind==='mend') {
       const ally=allies.sort((x,y)=>x.player.hp/x.stats().maxHp-y.player.hp/y.stats().maxHp)[0];
@@ -763,12 +784,12 @@ export class Game {
       radius:a.radius,damage,heal:s.spellDamage*(a.healMultiplier||0)*healFactor,healFraction:(a.healFraction||0)*healFactor,slow:a.slow||0,slowDuration:a.slowDuration||1.6,life:a.duration,actorId,color:a.color,tick:1});
     if(a.kind==='curse')this.hazards.push({id:`ability-curse-${++this.lootSerial}`,kind:'curse',targetId:target.id,x:target.x,y:target.y,radius:24,damage,drain:a.drain*healFactor,life:a.duration,actorId,color:a.color,tick:1});
     if(a.kind==='summon') {
-      const present=this.summons.filter(summon=>summon.actorId===actorId&&!summon.companion).length,count=Math.min(a.count,Math.max(0,8-present));
+      const count=Math.min(a.count,this.summonSlots());
       for(let i=0;i<count;i++)this.summons.push({id:`ability-summon-${++this.lootSerial}`,x:p.x+(i-(count-1)/2)*28,y:p.y+30,life:a.duration,attackTimer:0,damage,actorId,color:a.color,
         range:a.range,attackCooldown:a.attackCooldown,ranged:!!a.ranged,splashRadius:a.splashRadius||0,visualType:a.id});
     }
     if(a.kind==='revive') {
-      target.dead=false;target.paused=false;target.player.hp=target.stats().maxHp*a.reviveFraction;target.player.invulnerable=a.duration;target.keys.clear();target.onRevived?.();
+      target.dead=false;target.paused=false;target.player.hp=target.stats().maxHp*a.reviveFraction;completeDeathRescue(target);target.player.invulnerable=a.duration;target.keys.clear();target.onRevived?.();
       target.notice(`${p.name} hat dich mit Neuer Frühling erweckt.`,'quest');target.change();target.save(false);
       this.event('revive',target.player.id||target.player.name);
       this.effect('ring',target.player.x,target.player.y,{radius:65,color:a.color,life:.7});
@@ -811,7 +832,7 @@ export class Game {
       p.dashAngle=dx||dy?Math.atan2(dy,dx):p.face;
       this.effect('burst',p.x,p.y,{color:'#c6dfd5',radius:22,life:.3}); this.onSound('dash');
     } else if(name==='bolt'||name==='nova') {
-      const skill=applyTalentAbilityProfile(cls.abilities[name],this.combatTalentModifiers(),{action:name});if(p.mana<skill.cost) {this.notice('Nicht genug Mana.');return false;}
+      const skill=applyTalentAbilityProfile(cls.abilities[name],this.combatTalentModifiers(),{action:name});if(skill.kind==='summon'&&!this.summonSlots()){this.notice('Deine acht Diener stehen bereits im Feld.');return false;}if(p.mana<skill.cost) {this.notice('Nicht genug Mana.');return false;}
       cancelMasteryChannel(this);
       p.mana-=skill.cost;this.cooldowns[name]=skill.cooldown*(1-s.cooldown);p.castUntil=this.time+.3;
       this.presentAction(skill.kind==='shield'?'shield':skill.kind==='heal'?'heal':skill.kind==='dashstrike'?'melee':
@@ -832,7 +853,7 @@ export class Game {
       if(skill.kind==='trap') this.hazards.push({id:`trap-${++this.lootSerial}`,kind:'trap',x:p.x+Math.cos(p.face)*80,y:p.y+Math.sin(p.face)*80,radius,damage,slow:skill.slow||.5,slowDuration:skill.slowDuration,life:skill.duration||8,actorId:p.id||'local',color:skill.color});
       if(skill.regenerationMultiplier)this.hazards.push({id:`regen-${++this.lootSerial}`,kind:'regeneration',x:p.x,y:p.y,radius,heal:s.spellDamage*skill.regenerationMultiplier*classPowerMultiplier(p.classId,'heal'),life:skill.duration||6,actorId:p.id||'local',color:skill.color,tick:1});
       if(skill.burnDamageMultiplier)this.hazards.push({id:`burn-${++this.lootSerial}`,kind:'burn',x:p.x,y:p.y,radius,damage:s.spellDamage*skill.burnDamageMultiplier*classPowerMultiplier(p.classId,'spell'),life:skill.duration||4,actorId:p.id||'local',color:skill.color,tick:1});
-      if(skill.kind==='summon')for(let i=0;i<(skill.summonCount||2);i++)this.summons.push({id:`summon-${++this.lootSerial}`,x:p.x+(i-.5)*32,y:p.y+32,life:skill.duration||12,attackTimer:0,damage,actorId:p.id||'local',color:skill.color,range:skill.summonRange||350,attackCooldown:skill.summonAttackCooldown||1});
+      if(skill.kind==='summon')for(let i=0,count=Math.min(skill.summonCount||2,this.summonSlots());i<count;i++)this.summons.push({id:`summon-${++this.lootSerial}`,x:p.x+(i-.5)*32,y:p.y+32,life:skill.duration||12,attackTimer:0,damage,actorId:p.id||'local',color:skill.color,range:skill.summonRange||350,attackCooldown:skill.summonAttackCooldown||1});
       if(skill.kind==='dashstrike') {
         const hit=new Set(),range=skill.range||160,steps=Math.ceil(range/12);
         for(let i=0;i<steps;i++) {
@@ -869,12 +890,12 @@ export class Game {
     const a=Math.atan2(e.y-this.player.y,e.x-this.player.x);
     // Authored bosses keep their frozen attack origin and cannot be pushed
     // into a protected village by repeated basic attacks.
-    const displacement=ENEMY_TYPES[e.type]?.encounterProfile?knockback*(e.phase==='windup'?0:.08):knockback;
+    const displacement=ENEMY_TYPES[e.type]?.boss?knockback*(e.phase==='windup'?0:.08):knockback;
     this.move(e,Math.cos(a)*displacement,Math.sin(a)*displacement,ENEMY_TYPES[e.type]?.boss?22:10);
     this.text(e.x,e.y-24,crit?`${result}!`:result,crit?'#ffd37b':'#f4edd7');
     this.effect('burst',e.x,e.y,{color:crit?'#f7c460':'#c7d39b',radius:24,life:.3});
     if(this.settings.shake) this.shake=Math.min(1,this.shake+(crit?.25:.12));
-    if(this.stats().lifeSteal) this._healAbilityAlly(this,applied*this.stats().lifeSteal);
+    if(this.stats().lifeSteal) this.healLifeSteal(applied*this.stats().lifeSteal);
     if(applied>0){
       const proc=resolveRelicProc(this.item(this.equipment.weapon),{time:this.time,readyAt:this.time+(this.cooldowns.relic||0),maxHp:this.stats().maxHp,targetIsBoss:!!ENEMY_TYPES[e.type]?.boss,damageDealt:applied,mode:this.worldMode==='pvp'?'pvp':'pve'});
       if(proc){
@@ -893,7 +914,7 @@ export class Game {
     const def=ENEMY_TYPES[e.type]; e.alive=false; e.hp=0; e.respawnAt=e.directorId?Infinity:def.boss&&def.baseType&&!e.challengeId&&!e.eventId?this.time+360:def.boss||e.challengeId?Infinity:this.time+ordinaryRespawnDelay(e,def); e.aggro=false;
     if(e.rewardless){e.respawnAt=Infinity;this.effect('burst',e.x,e.y,{color:def.color,radius:25,life:.4});return;}
     const party=(this.partyGames||[this]).filter(g=>!g.dead&&dist(g.player,e)<1200);
-    for(const ally of party) {ally.kills++;ally.event('kill',e.type);if(def.questTarget&&def.questTarget!==e.type)ally.event('kill',def.questTarget);ally.gainXp(enemyXpReward(e.xp||def.xp,{enemyLevel:e.level||def.level,playerLevel:ally.player.level,boss:def.boss}));ally.player.gold+=e.gold||def.gold;ally.change();}
+    for(const ally of party) {ally.kills++;ally.event('kill',e.type);if(def.questTarget&&def.questTarget!==e.type)ally.event('kill',def.questTarget);ally.gainXp(enemyXpReward(e.xp||def.xp,{enemyLevel:e.level||def.level,playerLevel:ally.player.level,boss:def.boss}));ally.gainGold(e.gold||def.gold);ally.change();}
     this.text(e.x,e.y,`+${enemyXpReward(e.xp||def.xp,{enemyLevel:e.level||def.level,playerLevel:this.player.level,boss:def.boss})} EP`,'#b5ce83');
     this.effect('burst',e.x,e.y,{color:def.color,radius:def.boss?80:35,life:.65});
     if(this.random()<(def.boss?1:e.directorId ? .15 : .3)) {
@@ -908,25 +929,31 @@ export class Game {
     const bossTypes=['thorn_guardian','frost_sentinel','emberlord'];
     if(bossTypes.length && bossTypes.every(id=>this.flags[id]) && !this.flags.victory) { this.flags.victory=true; this.save(false); this.onVictory(); }
   }
-  damagePlayer(damage,{trueDamage=false,ignoreInvulnerability=false,attackerLevel=this.player.level}={}) {
+  damagePlayer(damage,{trueDamage=false,ignoreInvulnerability=false,attackerLevel=this.player.level,attackerId='environment'}={}) {
     const p=this.player; if((p.invulnerable>0&&!ignoreInvulnerability)||this.dead) return;
     const hit=incomingDamage(damage,{armor:this.stats().armor,attackerLevel,trueDamage});if(!hit)return;
+    const source=String(attackerId).slice(0,120);
+    if(!ignoreInvulnerability&&(this.damageGrace.get(source)||0)>this.time)return;
+    for(const [key,until] of this.damageGrace)if(until<=this.time)this.damageGrace.delete(key);
+    if(this.damageGrace.size>=128)this.damageGrace.delete(this.damageGrace.keys().next().value);
+    this.damageGrace.set(source,this.time+(p.level>=12?COMBAT_SUSTAIN.lateGrace:COMBAT_SUSTAIN.earlyGrace));
     const absorbed=Math.min(p.shield||0,hit);p.shield=Math.max(0,(p.shield||0)-absorbed);
-    const before=p.hp;p.hp=Math.max(0,p.hp-hit+absorbed); p.invulnerable=p.level>=12 ? .32 : .6; p.hitUntil=this.time+.18;
+    const before=p.hp;p.hp=Math.max(0,p.hp-hit+absorbed); p.hitUntil=this.time+.18;
     p.lastDamageAt=this.time;
     this.text(p.x,p.y-30,`−${hit}`,'#f39786'); this.onSound('hurt');
     if(this.settings.shake) this.shake=Math.min(1,this.shake+.35);
-    this.change(); if(p.hp<=0) { this.dead=true; this.paused=true; this.keys.clear(); this.onDeath(); }
+    this.change(); if(p.hp<=0) { this.dead=true; this.paused=true; this.keys.clear();clearMasteryAbilities(this);chargeDeathPenalty(this);this.save(false);this.onDeath(); }
     const applied=before-p.hp;
     if(applied>0)onMasteryDamaged(this,applied);
     return applied;
   }
   respawn() {
-    clearMasteryAbilities(this);
+    if(!this.dead&&this.player.hp>0||this.worldMode==='pvp')return false;
+    chargeDeathPenalty(this);clearMasteryAbilities(this);
     this.player.x=this.dungeonInstance?.spawn.x||520; this.player.y=this.dungeonInstance?.spawn.y||1250; this.player.hp=this.stats().maxHp; this.player.mana=this.stats().mana;
-    this.player.gold=Math.max(0,Math.floor(this.player.gold*.9)); this.player.invulnerable=3;
+    completeDeathRescue(this); this.player.invulnerable=3;
     this.player.afflictions=[];this.player.slowUntil=0;
-    this.dead=false; this.paused=false; this.projectiles=[]; this.notice('Am Glutherd erwacht · 10 % Gold für deine Rettung'); this.save(false); this.change();
+    this.dead=false; this.paused=false; this.projectiles=[]; this.notice('Am Glutherd erwacht · dein Rettungsbeleg ist bereits verbucht'); this.save(false); this.change();return true;
   }
   update(dt,{simulateWorld=true}={}) {
     dt=Math.min(.04,Math.max(0,dt));
@@ -947,7 +974,7 @@ export class Game {
     if(p.dashUntil>this.time) this.move(p,Math.cos(p.dashAngle??p.face)*s.speed*3.9*dt,Math.sin(p.dashAngle??p.face)*s.speed*3.9*dt);
     else {const slow=p.slowUntil>this.time?p.slowFactor||.85:1;this.move(p,mx*s.speed*slow*dt,my*s.speed*slow*dt);}
     p.velocityX=dt>0?(p.x-previousPosition.x)/dt:0;p.velocityY=dt>0?(p.y-previousPosition.y)/dt:0;
-    for(const affliction of p.afflictions||[])if(affliction.expiresAt>this.time&&affliction.nextTick<=this.time){affliction.nextTick+=1;this.damagePlayer(affliction.damage,{attackerLevel:affliction.attackerLevel});}
+    for(const affliction of p.afflictions||[])if(affliction.expiresAt>this.time&&affliction.nextTick<=this.time){affliction.nextTick+=1;this.damagePlayer(affliction.damage,{attackerLevel:affliction.attackerLevel,attackerId:`affliction:${affliction.attackerId||'environment'}:${affliction.kind}`});}
     p.afflictions=(p.afflictions||[]).filter(a=>a.expiresAt>this.time);
     updateMasteryAbilities(this,dt);
     const region=this.regionAt();
@@ -981,7 +1008,7 @@ export class Game {
           const old=ally.dungeonRecords[event.target]||{runs:0,bestTier:0,bestTime:Infinity};
           ally.dungeonRecords[event.target]={runs:old.runs+1,bestTier:Math.max(old.bestTier,this.dungeonInstance.tier),bestTime:Math.min(old.bestTime,this.dungeonInstance.elapsed)};
           const rewards=this.dungeonInstance.rewards||{completionXp:ENEMY_TYPES[this.dungeonInstance.definition.boss].xp,raidSigils:this.dungeonInstance.definition.raid?1:0};
-          ally.gainXp(rewards.completionXp);ally.player.gold+=rewards.completionGold||0;ally.resources.dust+=rewards.dust||0;ally.resources.raidSigil+=rewards.raidSigils||0;
+          ally.gainXp(rewards.completionXp);ally.gainGold(rewards.completionGold||0);ally.resources.dust+=rewards.dust||0;ally.resources.raidSigil+=rewards.raidSigils||0;
           ally.save(false);
         }
       }
@@ -1010,7 +1037,7 @@ export class Game {
           if(projectile.burnDamage&&applied)this.hazards.push({id:`ability-burn-${++caster.lootSerial}`,kind:'burn',x:target.x,y:target.y,radius:38,damage:projectile.burnDamage,life:projectile.burnDuration,actorId:projectile.actorId,color:projectile.color,tick:1});
         }
       } else {const attacker=this.world.enemies.find(e=>e.id===projectile.attackerId),curated=ENEMY_TYPES[attacker?.type]?.encounterProfile;
-        const target=living.find(g=>(!curated||!g.inSettlement())&&dist(projectile,g.player)<23);if(target){const applied=target.damagePlayer(projectile.damage,{attackerLevel:projectile.attackerLevel||target.player.level});
+        const target=living.find(g=>!g.inSettlement()&&dist(projectile,g.player)<23);if(target){const applied=target.damagePlayer(projectile.damage,{attackerLevel:projectile.attackerLevel||target.player.level,attackerId:projectile.attackerId||'legacy-projectile'});
         if(attacker)applyEnemyTraits(this,attacker,ENEMY_TYPES[attacker.type],target,applied);projectile.life=0;}}
     }
     this.projectiles=this.projectiles.filter(p=>p.life>0);
@@ -1100,12 +1127,12 @@ export class Game {
             if(e.telegraphMechanic==='stack') {
               const stack=living.filter(g=>dist(g.player,center)<radius);
               if(stack.length<(e.stackRequired||2))for(const ally of living)ally.damagePlayer(ally.stats().maxHp*2,{trueDamage:true,ignoreInvulnerability:true});
-              else for(const ally of stack)ally.damagePlayer(baseDamage*(e.stackRequired||2)/stack.length,{attackerLevel:e.level||d.level});
+              else for(const ally of stack)ally.damagePlayer(baseDamage*(e.stackRequired||2)/stack.length,{attackerLevel:e.level||d.level,attackerId:e.id});
             } else if(e.telegraphMechanic==='spread') {
-              for(const ally of living) {const hits=(e.spreadTargets||[]).filter(t=>dist(t,ally.player)<75).length;if(hits)ally.damagePlayer(baseDamage*hits,{attackerLevel:e.level||d.level});}
-            } else for(const ally of living)if(dist(ally.player,center)<radius)ally.damagePlayer(baseDamage,{attackerLevel:e.level||d.level});
+              for(const ally of living) {const hits=(e.spreadTargets||[]).filter(t=>dist(t,ally.player)<75).length;if(hits)ally.damagePlayer(baseDamage*hits,{attackerLevel:e.level||d.level,attackerId:e.id});}
+            } else for(const ally of living)if(dist(ally.player,center)<radius)ally.damagePlayer(baseDamage,{attackerLevel:e.level||d.level,attackerId:e.id});
             const phase2=e.hp<e.maxHp*.5; e.cycle=(e.cycle||0)+1;
-            const emit=(angle,speed=160)=>this.projectiles.push({x:e.x,y:e.y,angle,type:'enemy',speed,damage:(e.damage||d.damage)*(e.enraged?3:1)*.7,life:2.5,owner:'enemy',attackerLevel:e.level||d.level,color:d.color});
+            const emit=(angle,speed=160)=>this.projectiles.push({x:e.x,y:e.y,angle,type:'enemy',speed,damage:(e.damage||d.damage)*(e.enraged?3:1)*.7,life:2.5,owner:'enemy',attackerId:e.id,attackerLevel:e.level||d.level,color:d.color});
             if(e.type==='thorn_guardian'&&phase2) for(let i=-1;i<=1;i++) emit(a+i*.28,145);
             if(e.type==='frost_sentinel') {
               const count=phase2?12:8;
@@ -1118,8 +1145,8 @@ export class Game {
               if(phase2&&e.cycle%2===0) for(let i=0;i<12;i++) emit(i*Math.PI/6,120);
             }
             if(d.mechanics&&!e.telegraphMechanic)for(let i=0;i<(phase2?12:6);i++)emit(i*Math.PI*2/(phase2?12:6)+e.cycle*.13,145);
-          } else if((d.range||45)>80) this.projectiles.push({x:e.x,y:e.y,angle:a,type:'enemy',speed:195,damage:e.damage||d.damage,life:2,owner:'enemy',attackerLevel:e.level||d.level});
-          else if(distance<62)targetGame.damagePlayer(e.damage||d.damage,{attackerLevel:e.level||d.level});
+          } else if((d.range||45)>80) this.projectiles.push({x:e.x,y:e.y,angle:a,type:'enemy',speed:195,damage:e.damage||d.damage,life:2,owner:'enemy',attackerId:e.id,attackerLevel:e.level||d.level});
+          else if(distance<62)targetGame.damagePlayer(e.damage||d.damage,{attackerLevel:e.level||d.level,attackerId:e.id});
         }
         continue;
       }
@@ -1157,7 +1184,9 @@ export class Game {
     const {presentation,...persistentPlayer}=this.player;
     return {version:2,savedAt:Date.now(),player:{...persistentPlayer,walking:false},inventory:this.inventory,resources:this.resources,equipment:this.equipment,generatedItems:this.generatedItems,lootPity:this.lootPity,lootSerial:this.lootSerial,dungeonRecords:this.dungeonRecords,dungeon,contracts:this.contracts,skills:this.skills,
       stash:{...this.stash},itemFlags:this.itemFlags,loadouts:this.loadouts,trackedQuestId:this.trackedQuestId,waypoint:this.waypoint?{kind:this.waypoint.kind,id:this.waypoint.id}:null,journey:this.journey,endgame:this.endgame,relicCooldown:this.cooldowns.relic||0,
-      learnedAbilities:{...this.learnedAbilities},abilityLoadout:[...this.abilityLoadout],abilityCooldowns,
+      learnedAbilities:{...this.learnedAbilities},abilityLoadout:[...this.abilityLoadout],abilityCooldowns,deathPenalty:restoreDeathPenaltyState(this.deathPenalty),
+      combatCooldowns:Object.fromEntries(['attack','dash','bolt','nova'].map(key=>[key,this.cooldowns[key]||0])),
+      leechCredit:this.currentLeechCredit(),
       consumableCooldowns:{potion:this.cooldowns.potion||0,food:this.cooldowns.food||0},
       buffs:this.buffs.filter(b=>b.expiresAt>this.time).map(({id,expiresAt})=>({id,expiresAt})),
       questState:this.questState,discovered:this.discovered,unlockedShrines:this.unlockedShrines,flags:this.flags,ledger:this.ledger,kills:this.kills,settings:this.settings,time:this.time,playTime:this.playTime,world:{nodes:w.nodes.map(n=>({id:n.id,readyAt:n.readyAt})),plots:w.plots,chests:w.chests.map(c=>({id:c.id,opened:c.opened})),enemies:w.enemies.filter(e=>ENEMY_TYPES[e.type]?.boss&&!e.alive&&!e.eventId).map(e=>e.id),interactions:captureInteractions(w),worldEvents:captureWorldEvents(w),
@@ -1184,6 +1213,10 @@ export class Game {
     if(!validateInventoryExtensions(data)||data.trackedQuestId!==undefined&&typeof data.trackedQuestId!=='string'||data.waypoint!==undefined&&data.waypoint!==null&&(!record(data.waypoint)||!['npc','shrine','quest','event','interaction','dungeon','region'].includes(data.waypoint.kind)||typeof data.waypoint.id!=='string'))throw new Error('Ungültige Inventar- oder Reisedaten.');
     if(data.player.afflictions!==undefined&&(!Array.isArray(data.player.afflictions)||data.player.afflictions.length>3||new Set(data.player.afflictions.map(a=>a?.kind)).size!==data.player.afflictions.length||data.player.afflictions.some(a=>!record(a)||!['venom','burn','bleed'].includes(a.kind)||!Number.isFinite(a.damage)||a.damage<0||a.damage>500||!Number.isFinite(a.expiresAt)||a.expiresAt<0||!Number.isFinite(a.nextTick)||a.nextTick<0||!Number.isInteger(a.attackerLevel)||a.attackerLevel<1||a.attackerLevel>MAX_LEVEL)))throw new Error('Ungültige Wunddaten.');
     const abilityState=validateAbilityState(data);
+    if(!validateDeathPenaltyState(data.deathPenalty))throw new Error('Ungültiger Rettungsbeleg.');
+    if(data.leechCredit!==undefined&&(!Number.isFinite(data.leechCredit)||data.leechCredit<0||data.leechCredit>1))throw new Error('Ungültiges Lebensraubbudget.');
+    const core=getClass(data.player.classId).abilities;
+    if(data.combatCooldowns!==undefined&&(!record(data.combatCooldowns)||Object.entries(data.combatCooldowns).some(([key,value])=>!['attack','dash','bolt','nova'].includes(key)||!Number.isFinite(value)||value<0||value>(key==='dash'?2.295:core[key].cooldown*2.56)+.001)))throw new Error('Ungültige Kampfabklingzeit.');
     if(!validateCombatTalentState(data))throw new Error('Ungültige neue Talententscheidung.');
     for(const key of ['inventory','resources','equipment','skills','questState','flags','ledger','settings']) {
       if(data[key]!==undefined&&!record(data[key])) throw new Error(`Ungültiges Feld: ${key}`);
@@ -1222,7 +1255,8 @@ export class Game {
     this.player.name=typeof p.name==='string'?p.name.slice(0,24):'Aren';this.player.classId=getClass(p.classId).id;
     this.classId=this.player.classId;
     this.journey=restoreJourneyState(data.journey,{level:this.player.level,legacy:data});
-    this.endgame=restoreEndgameState(data.endgame);this.cooldowns.relic=data.relicCooldown||0;
+    this.endgame=restoreEndgameState(data.endgame);this.cooldowns.relic=data.relicCooldown||0;this.deathPenalty=restoreDeathPenaltyState(data.deathPenalty);
+    for(const [key,value] of Object.entries(data.combatCooldowns||{}))this.cooldowns[key]=value;
     this.learnedAbilities=abilityState.learned;this.abilityLoadout=abilityState.loadout;
     for(const [id,cooldown] of Object.entries(abilityState.cooldowns))this.cooldowns[`ability:${id}`]=cooldown;
     for(const [key,cooldown] of Object.entries(data.consumableCooldowns||{}))this.cooldowns[key]=cooldown;
@@ -1293,17 +1327,20 @@ export class Game {
       this.world=instance.world;this.dungeonInstance=instance;this.npcs=[];this.returnPoint=d.returnPoint||{...instance.definition.entrance};
     }
     this.player.hp=clamp(this.player.hp,1,this.stats().maxHp); this.player.mana=clamp(this.player.mana,0,this.stats().mana);
+    if(data.leechCredit!==undefined)this.restoreLeechCredit(data.leechCredit);
     if(data.trackedQuestId&&['active','ready'].includes((this.questState[data.trackedQuestId]||this.contracts.active.find(c=>c.id===data.trackedQuestId))?.status))this.trackedQuestId=data.trackedQuestId;
     if(data.waypoint){const point=resolveWaypoint(this,data.waypoint.kind,data.waypoint.id);if(point)this.waypoint={...data.waypoint,...point};}
+    let rescued=false;
     if(p.hp<=0) {
+      this.player.hp=0;chargeDeathPenalty(this);rescued=true;
       // Reloading a journey at the defeat screen follows the same rescue rule
       // as the button, instead of trapping the player at one HP among enemies.
       this.player.x=this.dungeonInstance?.spawn.x||520;this.player.y=this.dungeonInstance?.spawn.y||1250;this.player.hp=this.stats().maxHp;this.player.mana=this.stats().mana;
-      this.player.gold=Math.floor(this.player.gold*.9);this.player.invulnerable=3;
+      completeDeathRescue(this);this.player.invulnerable=3;
       this.player.afflictions=[];this.player.slowUntil=0;
     }
     if(this.collides(this.player.x,this.player.y)) { this.player.x=this.dungeonInstance?.spawn.x||520;this.player.y=this.dungeonInstance?.spawn.y||1250; }
-    this.camera={x:this.player.x,y:this.player.y}; this.lastRegion=this.regionAt().id; this.change();
+    this.camera={x:this.player.x,y:this.player.y}; this.lastRegion=this.regionAt().id; this.change();if(rescued)this.save(false);
   }
   load() {
     try { this.applySave(JSON.parse(this.storage.getItem(SAVE_KEY))); return true; }

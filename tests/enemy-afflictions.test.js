@@ -36,13 +36,24 @@ test('a real frost hit slows movement temporarily; shields and dodges prevent it
 test('venom refreshes one bounded wound, respects roll immunity and is removed by rescue',()=>{
   const {game,enemy}=arena('plague_spitter');projectile(game,enemy);
   assert.equal(game.player.afflictions.length,1);
+  const firstExpiry=game.player.afflictions[0].expiresAt;
+  for(let frame=0;frame<10;frame++)game.update(.02,{simulateWorld:false});
+  const beforeRefresh=game.player.hp;
   game.player.invulnerable=0;projectile(game,enemy);
   assert.equal(game.player.afflictions.length,1,'Repeated projectiles refresh rather than multiply damage effects');
+  assert.ok(game.player.hp<beforeRefresh,'The refresh comes from a real hit after source recovery');
+  assert.ok(game.player.afflictions[0].expiresAt>firstExpiry);
   game.time=.99;game.player.invulnerable=2;const hp=game.player.hp;
   game.update(.04,{simulateWorld:false});assert.equal(game.player.hp,hp);
   game.player.invulnerable=0;game.time=1.99;
   game.update(.04,{simulateWorld:false});assert.ok(game.player.hp<hp);
-  game.respawn();assert.deepEqual(game.player.afflictions,[]);assert.equal(game.player.slowUntil,0);
+  const wound=structuredClone(game.player.afflictions);
+  assert.equal(game.respawn(),false,'A living hero cannot cleanse a wound by asking for rescue');
+  assert.deepEqual(game.player.afflictions,wound);
+  game.damagePlayer(game.stats().maxHp*2,{trueDamage:true,ignoreInvulnerability:true,attackerId:'fatal-rescue-fixture'});
+  assert.equal(game.dead,true);assert.equal(game.player.hp,0);
+  assert.equal(game.respawn(),true);assert.deepEqual(game.player.afflictions,[]);assert.equal(game.player.slowUntil,0);
+  assert.equal(game.player.hp,game.stats().maxHp);
 });
 
 test('a draining projectile heals its attacker only from damage that reaches health',()=>{

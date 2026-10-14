@@ -34,11 +34,12 @@ function actorId(state,index){return `director-${state.sequence}-${index}`;}
 function actorFromPlan(state,point,index){
   const enemy=createBestiaryEnemy(point.type,actorId(state,index),point.x,point.y,{level:point.level,region:state.region});
   const hpFactor=point.elite?(state.tier==='relentless'?3.2:2.3):state.tier==='relentless'?1.45:state.tier==='hard'?1.12:1;
-  enemy.hp=enemy.maxHp=Math.round(enemy.maxHp*hpFactor);
+  const partySize=point.partySize||1,partyHpScale=1+(partySize-1)*.20;
+  enemy.hp=enemy.maxHp=Math.round(Math.round(enemy.maxHp*hpFactor)*partyHpScale);
   enemy.damage=Math.round(enemy.damage*(point.elite?(state.tier==='relentless'?1.6:1.3):state.tier==='relentless'?1.25:1));
   enemy.xp=Math.max(1,Math.round(enemy.xp*.5));enemy.gold=Math.max(1,Math.round(enemy.gold*.5));
   return Object.assign(enemy,{directorId:`director-${state.sequence}`,packId:`director-${state.sequence}`,encounterTier:state.tier,
-    elite:point.elite,flankSide:index%2?1:-1,aggro:true,phase:'chase',attackTimer:.7+index*.13,respawnAt:Infinity});
+    elite:point.elite,partySize,partyHpScale,flankSide:index%2?1:-1,aggro:true,phase:'chase',attackTimer:.7+index*.13,respawnAt:Infinity});
 }
 
 function protectedPoint(game,point){
@@ -47,8 +48,8 @@ function protectedPoint(game,point){
     (game.world.dungeonEntrances||[]).some(n=>distance(n,point)<160);
 }
 function eligible(game){
-  if(game.dead||game.worldMode==='pvp'||game.dungeonInstance||game.player.level<4||game.inSettlement())return false;
-  if(game.world.worldEvents?.some(event=>event.mode==='gauntlet'&&event.state==='active'&&distance(event,game.player)<800))return false;
+  if(game.dead||game.downed||game.player.downed||game.player.alive===false||!Number.isFinite(game.player.hp)||game.player.hp<=0||game.worldMode==='pvp'||game.dungeonInstance||game.player.level<4||game.inSettlement())return false;
+  if(game.world.worldEvents?.some(event=>event.state==='active'&&distance(event,game.player)<800))return false;
   const region=game.regionAt();
   return !!REGION_ENEMY_POOLS[region.id]&&game.player.level>=region.level-4;
 }
@@ -70,7 +71,8 @@ function planEncounter(game,state,target,party){
   const region=target.regionAt(),pool=REGION_ENEMY_POOLS[region.id];
   const sequence=state.sequence+1,phase=(sequence-1)%3;
   const tier=phase===2&&target.player.level>=20?'relentless':phase>0?'hard':'standard';
-  const early=target.player.level<12,nearParty=party.filter(g=>eligible(g)&&g.regionAt().id===region.id&&distance(g.player,target.player)<700);
+  const early=target.player.level<12,nearParty=[...new Map(party.filter(g=>eligible(g)&&g.regionAt().id===region.id&&distance(g.player,target.player)<700).map(g=>[g.player.id||g.player,g])).values()];
+  const partySize=Math.max(1,Math.min(8,nearParty.length));
   const base=early?(phase===0?2:phase===1?3:4):tier==='standard'?3:tier==='hard'?5:7;
   const local=game.world.enemies.filter(e=>e.alive&&!e.directorId&&distance(e,target.player)<600).length;
   const count=Math.min(ENCOUNTER_RULES.maxActors,base+Math.min(3,nearParty.length-1),ENCOUNTER_RULES.maxLocal-local);
@@ -88,7 +90,7 @@ function planEncounter(game,state,target,party){
       // A broad arc leaves a clear retreat direction instead of enclosing the
       // player in an unavoidable ring. Marker positions freeze during warning.
       const bearing=angle+(index/Math.max(1,count-1)-.5)*Math.PI*1.32+(attempt-3)*.07;
-      const radius=350+rng()*110,point={type,level,x:anchor.x+Math.cos(bearing)*radius,y:anchor.y+Math.sin(bearing)*radius,elite:!early&&tier!=='standard'&&index<2};
+      const radius=350+rng()*110,point={type,level,x:anchor.x+Math.cos(bearing)*radius,y:anchor.y+Math.sin(bearing)*radius,elite:!early&&tier!=='standard'&&index<2,partySize};
       if(game.regionAt(point.x,point.y).id!==region.id||protectedPoint(game,point)||party.some(g=>distance(g.player,point)<240)||plan.some(p=>distance(p,point)<60))continue;
       plan.push(point);break;
     }
@@ -105,7 +107,7 @@ function planEncounter(game,state,target,party){
 export function updateEncounterDirector(game,dt,partyGames=[game]){
   if(game.dungeonInstance||game.worldMode==='pvp'||game.world.isDungeon||game.world.isPvp)return;
   const state=game.world.encounterDirector||=createEncounterDirector();
-  const living=partyGames.filter(g=>!g.dead&&g.worldMode!=='pvp');
+  const living=partyGames.filter(g=>!g.dead&&g.player.hp>0&&g.worldMode!=='pvp');
   const explorers=living.filter(eligible);
   if(state.stage!=='calm'&&(!explorers.some(g=>g.regionAt().id===state.region&&distance(g.player,state.anchor)<1000))){clearPack(game,state,60);return;}
   if(!explorers.length)return;
@@ -160,7 +162,7 @@ export function validateEncounterDirectorSave(saved){
   if(saved.stage==='calm')return saved.region===null&&saved.anchor===null&&saved.plan.length===0&&saved.actors.length===0&&saved.remaining===0;
   if(!REGION_ENEMY_POOLS[saved.region]||saved.sequence<1||!saved.anchor||!bounded(saved.anchor.x,30,19200)||!bounded(saved.anchor.y,30,14400)||saved.plan.length<2||saved.stage==='warning'&&(saved.remaining>8||saved.actors.length))return false;
   const region=regions.find(r=>r.id===saved.region),maxLevel=region.maxLevel||Math.max(...REGION_ENEMY_POOLS[saved.region].map(type=>BESTIARY_ENEMIES[type].level));
-  if(saved.plan.some(p=>!p||!REGION_ENEMY_POOLS[saved.region].includes(p.type)||!Number.isInteger(p.level)||!bounded(p.level,region.level,maxLevel)||!bounded(p.x,Math.max(30,region.x),Math.min(19200-30,region.x+region.w))||!bounded(p.y,Math.max(30,region.y),Math.min(14400-30,region.y+region.h))||distance(p,saved.anchor)>465||typeof p.elite!=='boolean'||saved.tier==='standard'&&p.elite))return false;
+  if(saved.plan.some(p=>!p||!REGION_ENEMY_POOLS[saved.region].includes(p.type)||!Number.isInteger(p.level)||!bounded(p.level,region.level,maxLevel)||!bounded(p.x,Math.max(30,region.x),Math.min(19200-30,region.x+region.w))||!bounded(p.y,Math.max(30,region.y),Math.min(14400-30,region.y+region.h))||distance(p,saved.anchor)>465||typeof p.elite!=='boolean'||saved.tier==='standard'&&p.elite||p.partySize!==undefined&&(!Number.isInteger(p.partySize)||!bounded(p.partySize,1,8))))return false;
   const ids=new Set();
   return saved.actors.every(e=>{
     const index=saved.plan.findIndex((_,i)=>actorId(saved,i)===e?.id);

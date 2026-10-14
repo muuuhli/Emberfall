@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { startServer } from '../server.mjs';
 import { DUNGEONS, DUNGEON_ENEMIES } from '../src/dungeons.js';
 import { getClass } from '../src/classes.js';
-import { classPowerMultiplier } from '../src/balance.js';
+import { classPowerMultiplier, incomingDamage } from '../src/balance.js';
 
 async function groupFixture(classes) {
   const running=await startServer({port:0,host:'127.0.0.1',storagePath:null,autoTick:false});
@@ -108,13 +108,18 @@ test('server raid enrage starts with engagement and triples a resolved boss hit 
     resetPlayers(fixture,[origin,{x:1600,y:1050},{x:1220,y:1190}]);
     armMechanic(fixture,'spread');advance(fixture.hub,1.72);
     const normalDamage=fixture.members[0].game.stats().maxHp-fixture.members[0].game.player.hp;assert.ok(normalDamage>0);
+    const armor=fixture.members[0].game.stats().armor,attackerLevel=fixture.boss.level;
+    assert.equal(normalDamage,incomingDamage(fixture.boss.damage*1.3,{armor,attackerLevel}));
     const deadline=DUNGEON_ENEMIES[fixture.boss.type].mechanics.enrageSeconds;
     fixture.instance.bossTime=deadline-.05;fixture.boss.phase='recover';fixture.boss.attackTimer=10;
     fixture.hub.tick(.04);assert.equal(fixture.boss.enraged,false);fixture.hub.tick(.04);assert.equal(fixture.boss.enraged,true);
+    // A new resolved swing follows recovery from the previous boss source.
+    advance(fixture.hub,.2);
     resetPlayers(fixture,[origin,{x:1600,y:1050},{x:1220,y:1190}]);
     Object.assign(fixture.boss,{phase:'windup',attackTimer:.01,telegraphMechanic:'spread',spreadTargets:[origin],telegraphX:origin.x,telegraphY:origin.y});
     fixture.hub.tick(.04);
     const enragedDamage=fixture.members[0].game.stats().maxHp-fixture.members[0].game.player.hp;
+    assert.equal(enragedDamage,incomingDamage(fixture.boss.damage*1.3*3,{armor,attackerLevel}));
     assert.ok(Math.abs(enragedDamage-normalDamage*3)<=2);
     assert.equal((await fixture.read(fixture.players[0])).world.enemies[0].enraged,true);
   } finally{await fixture.close();}

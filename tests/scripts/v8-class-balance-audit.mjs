@@ -1,0 +1,98 @@
+import fs from 'node:fs/promises';
+import crypto from 'node:crypto';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+// Automated native combat probes, not a human playtest. No player storage is read.
+// Usage: node tests/scripts/v8-class-balance-audit.mjs <source-root> <output.json> [all|analytic]
+if (!process.argv[2] || !process.argv[3]) throw new Error('Provide a source root and output JSON path.');
+const root=path.resolve(process.argv[2]),output=path.resolve(process.argv[3]),mode=process.argv[4]||'all';
+if (!['all','analytic'].includes(mode)) throw new Error('Mode must be all or analytic.');
+await fs.mkdir(path.dirname(output),{recursive:true});
+const read=relative=>import(pathToFileURL(path.join(root,relative)).href);
+const [{Game},{CLASSES},{ABILITIES},{ITEM_BASES,generateLoot},{EQUIPMENT_SLOT_IDS,equipmentSlot},{BALANCE_LEVELS,COMBAT_CAPS,COMBAT_SUSTAIN,CLASS_POWER,estimateCombat,armorMitigation},{BESTIARY_ENEMIES,createBestiaryEnemy},{clearMasteryAbilities},{applyTalentAbilityProfile,applyTalentAttackProfile},{hitShape}]=await Promise.all([
+  read('src/game.js'),read('src/classes.js'),read('src/abilities.js'),read('src/loot.js'),read('src/equipment-system.js'),read('src/balance.js'),read('src/bestiary.js'),read('src/ability-runtime.js'),read('src/talent-combat.js'),read('src/encounter-geometry.js')]);
+const rng=seed=>()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+const clone=value=>JSON.parse(JSON.stringify(value)),round=value=>Math.round(value*1e4)/1e4;
+const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y),DT=.04;
+const digestFiles=['balance','classes','talent-combat','abilities','mastery-abilities','ability-runtime','game','bestiary','enemy-ai','loot','equipment-system'];
+const hashes=Object.fromEntries(await Promise.all(digestFiles.map(async name=>[name,crypto.createHash('sha256').update(await fs.readFile(path.join(root,`src/${name}.js`))).digest('hex')])));
+// Remove ambient interactions and progression rewards from this isolated probe.
+function prepare(cls){const game=new Game({storage:null,random:rng(4217)});game.selectClass(cls.id);game.save=()=>true;game.onChange=()=>{};game.onNotice=()=>{};game.onSound=()=>{};game.start();
+  for(const key of ['trees','rocks','structures','nodes','plots','chests','shrines','enemies','worldEvents','eventObjects','interactions'])game.world[key]=[];
+  game.npcs=[];game.world.encounterDirector.nextIn=1e9;game.partyGames=[game];return game;}
+function pathCost(game,cls,talent,rank,visited=new Set()){
+  if(!talent||talent.minLevel>game.player.level||visited.has(talent.id))return Infinity;
+  if(talent.exclusiveGroup&&cls.talents.some(other=>other.id!==talent.id&&other.exclusiveGroup===talent.exclusiveGroup&&game.skills[other.id]>0))return Infinity;
+  const requirements=!talent.requires?[]:Array.isArray(talent.requires)?talent.requires:[talent.requires];let sum=Math.max(0,rank-(game.skills[talent.id]||0))*talent.cost;
+  const next=new Set(visited).add(talent.id);for(const requirement of requirements){const id=typeof requirement==='string'?requirement:requirement.id,needed=typeof requirement==='string'?talent.requiresRank||1:requirement.rank||1;sum+=pathCost(game,cls,cls.talents.find(value=>value.id===id),needed,next);}return sum;
+}
+function learnPath(game,cls,talent,rank){const requirements=!talent.requires?[]:Array.isArray(talent.requires)?talent.requires:[talent.requires];for(const requirement of requirements){const id=typeof requirement==='string'?requirement:requirement.id,needed=typeof requirement==='string'?talent.requiresRank||1:requirement.rank||1;learnPath(game,cls,cls.talents.find(value=>value.id===id),needed);}while((game.skills[talent.id]||0)<rank)if(!game.learn(talent.id))throw new Error(`Illegal talent ${talent.id}`);}
+function abilityCost(game,ability,seen=new Set()){if(!ability||ability.level>game.player.level||seen.has(ability.id))return Infinity;if(game.learnedAbilities[ability.id])return 0;const next=new Set(seen).add(ability.id);return ability.talentCost+(ability.requires?abilityCost(game,ABILITIES.find(value=>value.id===ability.requires),next):0);}
+function learnAbility(game,ability){if(ability.requires)learnAbility(game,ABILITIES.find(value=>value.id===ability.requires));if(!game.learnedAbilities[ability.id]&&!game.learnAbility(ability.id))throw new Error(`Illegal ability ${ability.id}`);}
+// Learn through the real APIs. The final accounting assertion rejects extra points.
+function configure(game,cls,level,rarity,branch){
+  game.player={name:'Balanceprobe',id:'balance-player',classId:cls.id,x:2000,y:1000,level,xp:0,gold:0,skillPoints:2*level,hp:999,mana:999,face:0,invulnerable:0,shield:0,shieldUntil:0};game.skills={};game.learnedAbilities={};game.abilityLoadout=[null,null];game.equipment=Object.fromEntries(EQUIPMENT_SLOT_IDS.map(slot=>[slot,null]));game.inventory={};game.generatedItems={};game.cooldowns={};game.buffs=[];game.dead=false;game.paused=false;game.world.enemies=[];game.projectiles=[];game.hazards=[];game.summons=[];game.time=0;
+  const primary=cls.abilities.attack.stat||'damage',bodyCategory=['guardian','paladin'].includes(cls.id)?'heavy':['ranger','nightblade'].includes(cls.id)?'mobile':'ritual';
+  const gear=[];for(const [slotIndex,slot] of EQUIPMENT_SLOT_IDS.entries()){
+    let bases=ITEM_BASES.filter(base=>equipmentSlot(base)===slot&&base.minLevel<=level&&(!base.classIds||base.classIds.includes(cls.id)));
+    if(['weapon','charm'].includes(slot)&&bases.some(base=>base.stats[primary]>0))bases=bases.filter(base=>base.stats[primary]>0);
+    const category=slot==='ring'||slot==='charm'?(primary==='spellDamage'?'arcane':'martial'):bodyCategory;if(slot!=='weapon'&&bases.some(base=>base.category===category))bases=bases.filter(base=>base.category===category);
+    bases.sort((a,b)=>b.minLevel-a.minLevel||a.id.localeCompare(b.id));if(!bases.length)continue;
+    const item=generateLoot({level,classId:cls.id,baseId:bases[0].id,rarity,rng:rng(19717+level+slotIndex*1009),uid:`matrix-${cls.id}-${level}-${rarity}-${slot}`});if(!game.addItem(item)||!game.equip(item.id))throw new Error('Illegal equipment');gear.push({slot,baseId:item.baseId,rarity,level,setId:item.setId,affixes:item.affixes.map(affix=>affix.id),upgrade:item.upgrade,sockets:item.sockets});}
+  const activeCandidates=ABILITIES.filter(ability=>ability.classId===cls.id&&ability.branch===branch&&ability.level<=level).sort((a,b)=>b.level-a.level||a.id.localeCompare(b.id));const choices=[];
+  for(const ability of activeCandidates){if(choices.length===2)break;if(abilityCost(game,ability)>game.player.skillPoints)continue;learnAbility(game,ability);choices.push(ability.id);}
+  game.setAbilityLoadout(0,null);game.setAbilityLoadout(1,null);for(let index=0;index<choices.length;index++)if(!game.setAbilityLoadout(index,choices[index]))throw new Error(`Illegal loadout ${choices[index]}`);
+  const core=cls.talents.filter(talent=>talent.branch===branch).sort((a,b)=>Number(!!b.combatDepth)-Number(!!a.combatDepth)||b.minLevel-a.minLevel||a.id.localeCompare(b.id));
+  for(const talent of core)if(pathCost(game,cls,talent,talent.maxRank)<=game.player.skillPoints)learnPath(game,cls,talent,talent.maxRank);
+  const filler=cls.talents.filter(talent=>!talent.combatDepth&&!talent.keystone).sort((a,b)=>Number(b.branch===branch)-Number(a.branch===branch)||a.minLevel-b.minLevel||a.id.localeCompare(b.id));
+  for(let turn=0;turn<20;turn++){let learned=false;for(const talent of filler){const rank=(game.skills[talent.id]||0)+1;if(rank<=talent.maxRank&&pathCost(game,cls,talent,rank)<=game.player.skillPoints){learnPath(game,cls,talent,rank);learned=true;}}if(!learned)break;}
+  const stats=game.stats();game.player.hp=stats.maxHp;game.player.mana=stats.mana;
+  const cost=cls.talents.reduce((sum,talent)=>sum+(game.skills[talent.id]||0)*talent.cost,0)+ABILITIES.filter(ability=>game.learnedAbilities[ability.id]).reduce((sum,ability)=>sum+ability.talentCost,0);
+  if(cost+game.player.skillPoints!==2*level||game.player.skillPoints<0)throw new Error('Natural point budget exceeded');
+  return {classId:cls.id,level,rarity,branch,pointBudget:2*level,pointCost:cost,unspent:game.player.skillPoints,gear,stats,modifiers:game.combatTalentModifiers(),skills:clone(game.skills),loadout:[...game.abilityLoadout],analytical:estimateCombat({level,classId:cls.id,stats})};
+}
+function typesAt(level){const ordinary=Object.values(BESTIARY_ENEMIES).filter(def=>!def.boss&&def.level<=level),nearest=Math.max(...ordinary.map(def=>def.level)),region=ordinary.find(def=>def.level===nearest).regions[0];return ordinary.filter(def=>def.regions.includes(region)).sort((a,b)=>Math.abs(a.level-level)-Math.abs(b.level-level)||a.id.localeCompare(b.id));}
+// Reactive control reads the same warning geometry that the renderer displays.
+function warningShapes(game){const shapes=[];for(const enemy of game.world.enemies.filter(value=>value.alive&&value.phase==='windup')){
+  const def=BESTIARY_ENEMIES[enemy.type],pattern=enemy.telegraphPattern||def?.combat.pattern,center={x:enemy.telegraphX??enemy.x,y:enemy.telegraphY??enemy.y},angle=enemy.telegraphAngle??enemy.attackAngle??enemy.face??0;
+  if(pattern==='charge'){const length=enemy.telegraphChargeDistance||def.combat.chargeDistance||180;shapes.push({kind:'segment',x1:center.x,y1:center.y,x2:center.x+Math.cos(angle)*length,y2:center.y+Math.sin(angle)*length,width:38});}
+  else if(['melee','brute','cleave','hex'].includes(pattern))shapes.push({kind:'circle',...center,radius:(enemy.telegraphRadius||62)+10});
+}return shapes;}
+function setKeys(game,dx,dy){game.keys.clear();if(dx>4)game.keys.add('d');else if(dx<-4)game.keys.add('a');if(dy>4)game.keys.add('s');else if(dy<-4)game.keys.add('w');}
+function control(game,cls,memory,{evade=false}={}){
+  const target=game.world.enemies.filter(enemy=>enemy.alive).sort((a,b)=>distance(a,game.player)-distance(b,game.player))[0];if(!target){game.keys.clear();return;}
+  const p=game.player,range=distance(p,target),attack=applyTalentAttackProfile(cls.abilities.attack,game.combatTalentModifiers()),preferred=attack.kind==='projectile'?120:45;game.aim={x:target.x,y:target.y};p.face=Math.atan2(target.y-p.y,target.x-p.x);
+  let dx=range>preferred+10?target.x-p.x:0,dy=range>preferred+10?target.y-p.y:0,danger=false;
+  const shapes=evade?warningShapes(game):[];if(evade&&shapes.some(shape=>hitShape(shape,p))){danger=true;const goals=[];for(const length of [75,130,180])for(let step=0;step<16;step++){const angle=step*Math.PI/8,point={x:p.x+Math.cos(angle)*length,y:p.y+Math.sin(angle)*length};point.score=shapes.filter(shape=>hitShape(shape,point)).length*10000+length+Math.abs(distance(point,target)-preferred)*.12;goals.push(point);}const goal=goals.sort((a,b)=>a.score-b.score)[0];dx=goal.x-p.x;dy=goal.y-p.y;memory.channelUntil=0;}
+  const projectile=evade&&game.projectiles.find(shot=>shot.owner==='enemy'&&distance(p,shot)<80);if(projectile){danger=true;dx=-Math.sin(projectile.angle)*90;dy=Math.cos(projectile.angle)*90;memory.channelUntil=0;}
+  if(memory.channelUntil>game.time&&!danger){game.keys.clear();return;}setKeys(game,dx,dy);if(danger){game.action('dash');return;}
+  for(const slot of [1,0]){const base=ABILITIES.find(ability=>ability.id===game.abilityLoadout[slot]);if(!base)continue;const ability=applyTalentAbilityProfile(base,game.combatTalentModifiers(),{action:'learned'});if(range>(ability.range||ability.radius||170)||ability.kind==='channel'&&(Math.hypot(dx,dy)>5))continue;
+    if(game.useLearnedAbility(slot)&&ability.kind==='channel'){memory.channelUntil=game.time+(ability.windup||.3)+(ability.ticks-1)*ability.interval+.04;return;}}
+  const bolt=applyTalentAbilityProfile(cls.abilities.bolt,game.combatTalentModifiers(),{action:'bolt'}),nova=applyTalentAbilityProfile(cls.abilities.nova,game.combatTalentModifiers(),{action:'nova'}),hurt=p.hp<game.stats().maxHp*.8;
+  if(bolt.kind==='heal'?hurt:range<(bolt.kind==='shield'?300:bolt.range||540))game.action('bolt');
+  if(nova.kind==='heal'?hurt:range<(nova.radius||170)+25)game.action('nova');
+  if(range<attack.range)game.action('attack');
+}
+// Reset ephemeral state only between independent fights, never during a fight.
+function probe(game,cls,row,pack,evade=false){
+  clearMasteryAbilities(game);game.damageGrace?.clear();game.leechBudget=null;game.random=rng(9937);game.player={name:'Balanceprobe',id:'balance-player',classId:cls.id,level:row.level,xp:0,gold:0,skillPoints:row.unspent,hp:row.stats.maxHp,mana:row.stats.mana,x:2000,y:1000,face:0,shield:0,shieldUntil:0,invulnerable:0};game.dead=false;game.paused=false;game.time=0;game.cooldowns={};game.projectiles=[];game.hazards=[];game.effects=[];game.drops=[];game.summons=[];game.combo=0;game.comboTime=-Infinity;game.keys.clear();
+  const pool=typesAt(row.level),actors=[];for(let index=0;index<pack;index++){const def=pool[index%pool.length],angle=(index+.2)*Math.PI*2/Math.max(1,pack),radius=pack===1?100:180;const actor=createBestiaryEnemy(def.id,`probe-${index}`,game.player.x+Math.cos(angle)*radius,game.player.y+Math.sin(angle)*radius,{level:row.level,region:def.regions[0]});Object.assign(actor,{rewardless:true,xp:0,gold:0,aggro:true,attackTimer:.7+index*.13});actors.push(actor);}game.world.enemies=actors;
+  const telemetry={damage:0,healed:0,hpLost:0,attempts:0,blocked:0,sourceGraceBlocks:0,absorbed:0,shieldFrames:0,invulnerableFrames:0,peakSummons:0,frames:0,slowedFrames:0,actions:{}};
+  const originalHit=game.hitEnemy.bind(game),originalHeal=game._healAbilityAlly.bind(game),originalDamage=game.damagePlayer.bind(game),originalAction=game.action.bind(game),originalLearned=game.useLearnedAbility.bind(game);
+  game.hitEnemy=(...args)=>{const result=originalHit(...args)||0;telemetry.damage+=result;return result;};game._healAbilityAlly=(...args)=>{const result=originalHeal(...args)||0;telemetry.healed+=result;return result;};
+  game.damagePlayer=(damage,options)=>{telemetry.attempts++;const beforeShield=game.player.shield||0,beforeHp=game.player.hp,blocked=game.player.invulnerable>0&&!options?.ignoreInvulnerability,source=String(options?.attackerId??'environment').slice(0,120),sourceBlocked=!options?.ignoreInvulnerability&&(game.damageGrace?.get(source)||0)>game.time;const result=originalDamage(damage,options)||0;telemetry.hpLost+=Math.max(0,beforeHp-game.player.hp);telemetry.absorbed+=Math.max(0,beforeShield-(game.player.shield||0));if(blocked)telemetry.blocked++;if(sourceBlocked)telemetry.sourceGraceBlocks++;return result;};
+  game.action=name=>{const result=originalAction(name);if(result)telemetry.actions[name]=(telemetry.actions[name]||0)+1;return result;};game.useLearnedAbility=slot=>{const id=game.abilityLoadout[slot],result=originalLearned(slot);if(result)telemetry.actions[id]=(telemetry.actions[id]||0)+1;return result;};
+  const memory={};while(!game.dead&&game.world.enemies.some(actor=>actor.alive)&&game.time<60){control(game,cls,memory,{evade});game.update(DT);telemetry.frames++;if(game.player.shield>0&&game.player.shieldUntil>=game.time)telemetry.shieldFrames++;if(game.player.invulnerable>0)telemetry.invulnerableFrames++;if(game.world.enemies.some(actor=>actor.alive&&actor.slowUntil>game.time))telemetry.slowedFrames++;telemetry.peakSummons=Math.max(telemetry.peakSummons,game.summons.filter(summon=>!summon.companion&&summon.life>0).length);}
+  game.hitEnemy=originalHit;game._healAbilityAlly=originalHeal;game.damagePlayer=originalDamage;game.action=originalAction;game.useLearnedAbility=originalLearned;
+  const seconds=round(game.time),won=!game.dead&&game.world.enemies.every(actor=>!actor.alive),remaining=game.world.enemies.reduce((sum,actor)=>sum+Math.max(0,actor.hp),0);
+  return {pack,controller:evade?'reactive':'no-evade',won,dead:game.dead,timeout:!won&&!game.dead,seconds,enemyTypes:actors.map(actor=>actor.type),enemyMaxHp:actors.reduce((sum,actor)=>sum+actor.maxHp,0),enemyRemainingHp:remaining,dps:round(telemetry.damage/Math.max(DT,seconds)),healingPerSecond:round(telemetry.healed/Math.max(DT,seconds)),incomingHpPerSecond:round(telemetry.hpLost/Math.max(DT,seconds)),hpRemaining:round(game.player.hp),hpLost:round(telemetry.hpLost),healed:round(telemetry.healed),absorbed:round(telemetry.absorbed),damageAttempts:telemetry.attempts,invulnerabilityBlocks:telemetry.blocked,sourceGraceBlocks:telemetry.sourceGraceBlocks,shieldUptime:round(telemetry.shieldFrames/Math.max(1,telemetry.frames)),invulnerabilityUptime:round(telemetry.invulnerableFrames/Math.max(1,telemetry.frames)),controlUptime:round(telemetry.slowedFrames/Math.max(1,telemetry.frames)),peakSummons:telemetry.peakSummons,actions:telemetry.actions};
+}
+// Use an identical deterministic allocation and controller for every source root.
+const rows=[];let count=0;const started=Date.now();
+for(const cls of CLASSES){const game=prepare(cls),branches=[...new Set(cls.talents.filter(talent=>talent.mastery&&!talent.combatDepth).map(talent=>talent.branch))];for(const level of BALANCE_LEVELS)for(const rarity of ['common','rare','legendary'])for(const branch of branches){
+  const row=configure(game,cls,level,rarity,branch);if(mode!=='analytic')row.actual=[1,3,8].map(pack=>probe(game,cls,row,pack));if(mode==='all'&&rarity==='rare'&&[50,100].includes(level))row.reactive=[3,8].map(pack=>probe(game,cls,row,pack,true));rows.push(row);count++;
+  if(count%54===0){console.log(JSON.stringify({progress:count,total:432,classId:cls.id,wallSeconds:round((Date.now()-started)/1000)}));await fs.writeFile(output+'.partial',JSON.stringify({root,hashes,rows}));}
+}}
+const aggregate=rows.map(row=>({classId:row.classId,level:row.level,rarity:row.rarity,branch:row.branch,pointCost:row.pointCost,unspent:row.unspent,stats:row.stats,actual:row.actual,reactive:row.reactive}));
+const result={version:2,humanPlaytest:false,root,sourceHashes:hashes,createdAt:new Date().toISOString(),caps:COMBAT_CAPS,sustain:COMBAT_SUSTAIN??null,classPower:CLASS_POWER,assumptions:{matrix:'8 classes ×6 milestone levels ×3 rarities ×3 specialization branches; canonical seven-slot eligible generated gear; weapon/charm primary stat; heavy Guardian/Paladin, mobile Ranger/Nightblade, ritual caster armor, matching martial/arcane ancillary categories; independent slot RNG seeds; generated set membership retained and recorded. No upgrades, socket gems, consumables, companions, professions or quest-point bonuses',pointBudget:'Starting2 +2 per gained level =2*level; level100 budget200. Every active/talent acquired through real learning/prerequisite/exclusive rules.',analytical:'estimateCombat is a stationary base-action-only analytical estimate with70% uptime and mana-regeneration steady-state. It excludes learned actions, tactical control and v7 profile modifiers.',actual:'Native Game actions, movement, costs, cooldowns, hit/heal/AI paths. No HP1, mana refills, invulnerability injections, per-frame cooldown resets or manual hits. Rewardless fixtures freeze level during probe; actual enemy HP/damage/traits remain canonical. Empty collision arena/ambient/director/storage isolated. Deterministic controller is not a human skill claim.',modes:'No-evade approaches target and casts with real timing. Reactive additionally reads warning areas and nearby incoming projectiles; all abilities may fail naturally.'},rows,summary:{cells:rows.length,actualFights:rows.reduce((sum,row)=>sum+(row.actual?.length||0)+(row.reactive?.length||0),0),elapsedWallSeconds:round((Date.now()-started)/1000)}};
+await fs.writeFile(output,JSON.stringify(result,null,2));await fs.writeFile(output.replace(/\.json$/,'.summary.json'),JSON.stringify({sourceHashes:hashes,summary:result.summary,rows:aggregate},null,2));console.log(JSON.stringify({output,...result.summary}));
