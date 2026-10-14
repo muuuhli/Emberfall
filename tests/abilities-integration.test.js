@@ -161,14 +161,14 @@ test('learning, loadout and remaining cooldown survive save/reload; malformed ab
   for(const version of [1,2]) {const legacy=clone(data);legacy.version=version;delete legacy.learnedAbilities;delete legacy.abilityLoadout;delete legacy.abilityCooldowns;restored.applySave(legacy);assert.deepEqual(restored.learnedAbilities,{});assert.deepEqual(restored.abilityLoadout,[null,null]);assert.equal(restored.player.level,25);}
 });
 
-test('equipment comparison uses final set-aware totals; equip class gates and unequip preserve inventory and legacy gear',()=>{
+test('equipment comparison uses final set-aware totals; equip class gates and restore preserve owned gear in inventory',()=>{
   const game=arena('guardian',60),weapon=generateLoot({level:60,classId:'guardian',baseId:'iron_longsword',rarity:'legendary',rng:()=>.5,uid:'equip-check'});
   game.addItem(weapon);const before=game.stats(),preview=game.previewEquipment(weapon.id);assert.deepEqual(game.stats(),before);
   assert.equal(game.equip(weapon.id),true);assert.deepEqual(game.stats(),preview.after);assert.equal(preview.delta.damage,preview.after.damage-before.damage);
   game.player.hp=game.stats().maxHp;game.player.mana=game.stats().mana;const count=game.inventory[weapon.id];assert.equal(game.unequip('weapon'),true);assert.equal(game.inventory[weapon.id],count);assert.equal(game.equipment.weapon,null);
   assert.ok(game.player.hp<=game.stats().maxHp&&game.player.mana<=game.stats().mana);assert.equal(game.unequip('weapon'),false);assert.equal(game.unequip('__proto__'),false);
   const bow=generateLoot({level:60,classId:'ranger',baseId:'greenwood_bow',rarity:'rare',rng:()=>.5,uid:'foreign-bow'});game.addItem(bow);assert.equal(game.equip(bow.id),false);assert.ok(game.previewEquipment(bow.id));
-  const legacy=clone(game.capture());legacy.equipment.weapon=bow.id;game.applySave(legacy);assert.equal(game.equipment.weapon,bow.id,'Legacy equipped gear is retained during migration.');assert.equal(game.equip(bow.id),false);
+  const legacy=clone(game.capture());legacy.equipment.weapon=bow.id;game.applySave(legacy);assert.equal(game.equipment.weapon,null,'Loading cannot bypass the ordinary equipment gate.');assert.equal(game.inventory[bow.id],1);assert.deepEqual(game.item(bow.id),bow);assert.equal(game.equip(bow.id),false);
 });
 
 test('real HTTP server learns and casts authoritatively, snapshots the new fields and rejects forged commands',async()=>{

@@ -14,6 +14,18 @@ const finite = (value, fallback = 0) => Number.isFinite(value) ? value : fallbac
 const levelOf = value => clamp(Math.floor(finite(value,1)),1,MAX_LEVEL);
 const round = value => Math.round(value * 10000) / 10000;
 
+/** Relative PvE challenge, independent of equipment and absolute stat budgets.
+ * Three higher enemy levels retain the original combat rules. A twenty-level
+ * gap is overwhelming: callers must return zero before minimum-hit rounding,
+ * and must not apply slows or taunts from the outmatched actor. PvP and scripted
+ * percentage-of-health mechanics choose their own rules at their call sites.
+ */
+export function pveLevelGap(playerLevel = 1, enemyLevel = 1) {
+  const gap=levelOf(enemyLevel)-levelOf(playerLevel),excess=Math.max(0,gap-3),overwhelming=gap>=20;
+  const damageMultiplier=overwhelming?0:1/(1+(excess/4)**2);
+  return {gap,damageMultiplier,incomingMultiplier:Math.min(4,1+excess*.15),controlMultiplier:damageMultiplier,overwhelming};
+}
+
 export function basePlayerStats(level = 1) {
   const current = levelOf(level);
   return {maxHp:100+current*12,mana:80+current*5,damage:12+current*3,

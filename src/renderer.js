@@ -7,6 +7,7 @@ import { deriveCharacterAppearance, drawCharacterAppearance } from './character-
 import { drawPixelTree, drawPixelRock, drawPixelEnemy, drawPixelCompanion, drawPixelProp, drawPixelClassAccent, drawPixelImpact, drawPixelProjectile, pixelEnemyHeight } from './pixel-world.js';
 import { drawRaidObjective, RAID_OBJECTIVE_HEIGHT, RAID_WARNING_COLOR, RAID_SAFE_COLOR } from './raid-visuals.js';
 import { dungeonRouteSummary, routeHazardShapes } from './dungeon-routes.js';
+import { pveLevelGap } from './balance.js';
 
 export const TERRAIN_CHUNK_SIZE = 512;
 export const TERRAIN_CACHE_LIMIT = 64;
@@ -925,10 +926,11 @@ export class Renderer {
     if(!this.enemyPixelHeights.has(e.type))this.enemyPixelHeights.set(e.type,pixelEnemyHeight(e.type));
     if(e.shielded){glow(c,e.x,e.y-38,78,'#b5b3ee12');c.beginPath();c.ellipse(e.x,e.y-34,61,75,0,0,TAU);c.strokeStyle='#c4b5eeaa';c.lineWidth=3;c.stroke();for(let i=0;i<4;i++){const a=game.time*.3+i*TAU/4;text(c,'◈',e.x+Math.cos(a)*61,e.y-34+Math.sin(a)*75,13,'#ded0f0');}}
     const dist=Math.hypot(e.x-game.player.x,e.y-game.player.y);
-    if(dist<500&&(e.hp<e.maxHp||e.aggro||boss||elite)) {
+    const level=e.level||def.level||1,challenge=pveLevelGap(game.player.level,level);
+    if(dist<500&&(e.hp<e.maxHp||e.aggro||boss||elite||challenge.gap>3)) {
       const width=boss?94:elite?62:43,top=e.y-this.enemyPixelHeights.get(e.type)-12;rounded(c,e.x-width/2,top,width,5,2,'#1d2c29');rounded(c,e.x-width/2,top,width*clamp(e.hp/e.maxHp,0,1),5,2,boss?'#cf7456':elite?'#d77f8d':'#af706b');
       if(elite){const x=e.x-width/2-11,y=top+3;poly(c,[[x-5,y+2],[x-6,y-5],[x-2,y-2],[x,y-7],[x+2,y-2],[x+6,y-5],[x+5,y+2]],'#f0a1ad','#341c29',1.5);}
-      if(boss||elite&&dist<360||dist<170)this.label(c,`${elite?'Elite · ':''}${e.name||def.name||e.type}${boss?'':' · '+(e.level||def.level||1)}`,e.x,top-15,boss?'#efc08c':elite?'#efb0b9':'#c9beb4',boss?11:9);
+      if(boss||elite&&dist<360||dist<170||challenge.gap>3)this.label(c,`${elite?'Elite · ':''}${e.name||def.name||e.type} · ${challenge.overwhelming?'☠ Übermächtig · ':challenge.gap>=10?'Gefährlich · ':''}${level}`,e.x,top-15,challenge.gap>=10?'#ed9b91':boss?'#efc08c':elite?'#efb0b9':'#c9beb4',boss?11:9);
       const raid=game.dungeonInstance?.raidEncounter?.type===e.type;
       if(boss&&e.shielded&&!raid)this.label(c,`Schild · ${def.mechanics?.shield?.plates||3} Quellsiegel gemeinsam halten`,e.x,e.y+30,'#cebbea',10);
       else if(boss&&e.mechanicCycle&&!raid)this.label(c,e.mechanicCycle==='stack'?`Sternfall · ${e.stackRequired||2} zusammen`:'Nova · Abstand halten',e.x,e.y+30,e.mechanicCycle==='stack'?'#afd7d8':'#e0aa90',10);

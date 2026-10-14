@@ -1,6 +1,6 @@
 import { REGIONS, RESOURCES, ITEMS, RECIPES, QUESTS, NPCS, ENEMY_TYPES } from './catalog.js';
 import { CLASSES, getClass, canLearnTalent } from './classes.js';
-import { GEM_TYPES, SETS, ITEM_BASES, itemPower, describeStat } from './loot.js';
+import { GEM_TYPES, SETS, ITEM_BASES, itemPower, describeStat, equipmentRequiredLevel } from './loot.js';
 import { ABILITIES, getAbility, canLearnAbility, getLearnedAbilities } from './abilities.js';
 import { DUNGEONS } from './dungeons.js';
 import { MAX_LEVEL } from './progression.js';
@@ -428,7 +428,7 @@ export class GameUI {
       this.lastPvpPhase=phase;
     }}
     const lobbyDigest=JSON.stringify([(pvp.roster || []).map(player=>[player.id,player.name,player.available,player.reason]),(pvp.invites || []).map(invite=>[invite.id,invite.fromName,invite.toName,invite.outgoing]),duel?.state,pvp.lastResult]);
-    if(this.activePanel==='party'&&lobbyDigest!==this.lastPvpLobby){this.lastPvpLobby=lobbyDigest;this.renderPanel();}
+    if(lobbyDigest!==this.lastPvpLobby){this.lastPvpLobby=lobbyDigest;if(this.activePanel==='party'&&this.inParty)this.renderPanel();}
     for(const element of document.querySelectorAll('[data-pvp-invite-clock]')){const invite=(pvp.invites || []).find(invite=>invite.id===element.dataset.pvpInviteClock);if(invite)element.textContent=Math.ceil(Math.max(0,invite.remaining || 0));}
   }
 
@@ -525,6 +525,7 @@ export class GameUI {
     const name = this.activePanel;
     if (!name) return;
     if(this.panelPointers.size||!allowFocusedSelect&&document.activeElement?.matches?.('select')&&this.elements['game-panel'].contains(document.activeElement)){this.pendingPanelRender=true;return;}
+    if(name==='party'&&this.renderedPanel==='party'&&['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)&&this.elements['game-panel'].contains(document.activeElement)){this.pendingPanelRender=true;return;}
     if(name==='account'&&this.renderedPanel==='account'&&!this.accountExplicitRender&&!this.network?.requiresHTTPS&&document.getElementById('account-form')?.contains(document.activeElement))return;
     this.accountExplicitRender=false;
     const focused = document.activeElement;
@@ -559,8 +560,8 @@ export class GameUI {
     if (name === 'map') this.drawMap(document.getElementById('full-map'), true);
     if (name === 'character' && this.characterTab!=='build') this.renderHeroPreview();
     if (name === 'party') { this.lastPartyState='';this.lastPartyCode=''; this.updateParty(); }
-    if (!resetScroll&&focusId && focusCommand) {
-      const target = [...this.elements['panel-content'].querySelectorAll('button')].find(button=>button.dataset.id===focusId&&button.dataset.command===focusCommand);
+    if (!resetScroll&&focusCommand&&(focusId||name==='party')) {
+      const target = [...this.elements['panel-content'].querySelectorAll('button')].find(button=>(!focusId||button.dataset.id===focusId)&&button.dataset.command===focusCommand);
       if (target && !target.disabled) target.focus({preventScroll:true});
     }
     this.renderInformation();
@@ -604,7 +605,7 @@ export class GameUI {
     const consumeCombatLocked=Boolean(consumeProfile?.outOfCombat&&this.game.inCombat?.());
     const consumeCooling=Boolean(consumeProfile&&(this.game.cooldowns?.potion>0||this.game.cooldowns?.[consumeProfile.cooldownGroup]>0));
     const consumeDisabled=command==='consume'&&(consumeLevelLocked||consumeCombatLocked||consumeCooling||(!item.stats.hpRestore||this.game.player.hp>=stats.maxHp)&&(!item.stats.manaRestore||this.game.player.mana>=stats.mana));
-    const requiredLevel=item.level||item.minLevel||1;
+    const requiredLevel=equipmentSlot(item)?equipmentRequiredLevel(item):consumeProfile?.minLevel||item.minLevel||item.level||1;
     const classIds=item.classIds||ITEM_BASES.find(base=>base.id===item.baseId)?.classIds;
     const classLocked=Array.isArray(classIds)&&!classIds.includes(this.game.player.classId);
     const levelLocked = command==='equip' && requiredLevel>this.game.player.level;
@@ -625,12 +626,13 @@ export class GameUI {
     const tabs=`<div class="panel-tabs" role="group" aria-label="Inventarbereiche">${[['equipment','Ausrüstung'],['consumables','Vorräte'],['resources','Materialien'],['stash','Lager']].map(([id,label])=>`<button class="${tab===id?'active':''}" aria-pressed="${tab===id}" data-inventory-tab="${id}">${label}${id==='stash'?` · ${Object.keys(this.game.stash || {}).length}/120`:''}</button>`).join('')}</div>`;
     const filtered=entries.filter(([id])=>{
       const item=this.item(id),classes=item.classIds || ITEM_BASES.find(base=>base.id===item.baseId)?.classIds,flags=this.game.itemFlags?.[id] || {};
+      const requiredLevel=equipmentSlot(item)?equipmentRequiredLevel(item):getConsumableProfile(item)?.minLevel||item.minLevel||item.level||1;
       return (stored||tab==='consumables'?stored||item.type==='consumable':item.type!=='consumable')
         &&(!search||`${item.name} ${item.description || ''} ${this.statsText(this.itemStats(id))}`.toLocaleLowerCase('de-DE').includes(search))
         &&(!this.inventoryType||this.inventoryType==='all'||equipmentSlot(item)===this.inventoryType||this.inventoryType==='consumable'&&item.type==='consumable')
         &&(!this.inventoryRarity||this.inventoryRarity==='all'||item.rarity===this.inventoryRarity)
         &&(!this.inventoryFlags||this.inventoryFlags==='all'||flags[this.inventoryFlags])
-        &&(!this.inventoryUsable||((item.level || item.minLevel || 1)<=this.game.player.level&&(!classes||classes.includes(this.game.player.classId))));
+        &&(!this.inventoryUsable||(requiredLevel<=this.game.player.level&&(!classes||classes.includes(this.game.player.classId))));
     });
     const rarityOrder={common:0,uncommon:1,rare:2,epic:3,legendary:4};
     if(this.inventorySort==='power')filtered.sort((a,b)=>itemPower(this.item(b[0]))-itemPower(this.item(a[0])));
@@ -643,7 +645,7 @@ export class GameUI {
     const activeFilters=[this.inventoryType&&this.inventoryType!=='all',this.inventoryRarity&&this.inventoryRarity!=='all',this.inventoryFlags&&this.inventoryFlags!=='all',this.inventoryUsable,this.inventorySort&&this.inventorySort!=='default'].filter(Boolean).length;
     const controls=`<div class="inventory-search-row"><label class="search-field"><span>${stored?'Lager':'Gepäck'} durchsuchen</span><input class="game-input" type="search" data-ui-search="inventorySearch" value="${escape(this.inventorySearch || '')}" placeholder="Name oder Eigenschaft …" autocomplete="off" /></label>${tab!=='resources'?`<button class="small-button inventory-filter-toggle" data-command="inventory-filters" aria-expanded="${!!this.inventoryFiltersOpen}" aria-controls="inventory-filters">${icon('settings')}Filter & Sortierung${activeFilters?` · ${activeFilters} aktiv`:''}</button>`:''}</div>${tab!=='resources'?`<div id="inventory-filters" class="inventory-filter-content inventory-toolbar compact-toolbar ${this.inventoryFiltersOpen?'expanded':''}"><label><span>Seltenheit</span><select class="game-input" data-ui-filter="inventoryRarity"><option value="all">Alle Seltenheiten</option>${Object.entries(rarityLabels).map(([id,label])=>`<option value="${id}" ${this.inventoryRarity===id?'selected':''}>${label}</option>`).join('')}</select></label><label><span>Sortieren</span><select class="game-input" data-ui-filter="inventorySort">${[['default','Fundreihenfolge'],['power','Höchste Macht'],['rarity','Seltenheit'],['name','Name A–Z']].map(([id,label])=>`<option value="${id}" ${this.inventorySort===id?'selected':''}>${label}</option>`).join('')}</select></label>${tab!=='consumables'?`<label><span>Ausrüstungsplatz</span><select class="game-input" data-ui-filter="inventoryType"><option value="all">Alle Plätze</option>${EQUIPMENT_SLOTS.map(slot=>`<option value="${slot.id}" ${this.inventoryType===slot.id?'selected':''}>${escape(slot.name)}</option>`).join('')}${stored?'<option value="consumable">Vorräte</option>':''}</select></label>`:''}<label><span>Markierungen</span><select class="game-input" data-ui-filter="inventoryFlags">${[['all','Alle Gegenstände'],['favorite','Favoriten'],['locked','Gesperrte Beute']].map(([id,label])=>`<option value="${id}" ${this.inventoryFlags===id?'selected':''}>${label}</option>`).join('')}</select></label><label class="usable-filter"><input type="checkbox" data-ui-filter="inventoryUsable" ${this.inventoryUsable?'checked':''} /> Für mich nutzbar</label></div>`:''}`;
     const cards=page.map(([id,count])=>{
-      const item=this.item(id),slot=equipmentSlot(item),equipped=Object.values(this.game.equipment || {}).includes(id),flags=this.game.itemFlags?.[id] || {},level=item.level || item.minLevel || 1;
+      const item=this.item(id),slot=equipmentSlot(item),equipped=Object.values(this.game.equipment || {}).includes(id),flags=this.game.itemFlags?.[id] || {},level=slot?equipmentRequiredLevel(item):getConsumableProfile(item)?.minLevel||item.minLevel||item.level||1;
       return `<button type="button" class="item-grid-card ${escape(item.rarity || 'common')} ${this.inventorySelected===id?'selected':''} ${equipped?'equipped':''}" data-command="inspect-item" data-id="${escape(id)}" aria-pressed="${this.inventorySelected===id}" aria-label="${escape(item.name)}, ${escape(rarityLabels[item.rarity])}, Stufe ${level}${equipped?', angelegt':''}"><span class="grid-card-flags">${flags.favorite?icon('star'):''}${flags.locked?icon('lock'):''}</span><span class="grid-card-icon">${icon(itemIcon(item))}</span><strong>${escape(item.name)}</strong><span class="grid-card-meta">${escape(EQUIPMENT_SLOTS.find(s=>s.id===slot)?.name || 'Vorrat')} · ${level}</span><span class="grid-card-rarity">${escape(rarityLabels[item.rarity] || 'Gewöhnlich')}</span>${count>1?`<b class="grid-card-count">×${count}</b>`:''}${equipped?'<span class="grid-card-equipped">ANGELEGT</span>':''}</button>`;
     }).join('');
     const pagination=tab!=='resources'&&pages>1?`<div class="inventory-pagination"><button class="small-button" data-command="inventory-page" data-id="${this.inventoryPage-1}" ${this.inventoryPage===0?'disabled':''}>Zurück</button><span>${this.inventoryPage+1} / ${pages} · ${filtered.length} Gegenstände</span><button class="small-button" data-command="inventory-page" data-id="${this.inventoryPage+1}" ${this.inventoryPage===pages-1?'disabled':''}>Weiter</button></div>`:'';
@@ -1167,7 +1169,7 @@ export class GameUI {
     const network=this.network,inParty=this.inParty,account=network?.account;
     const locked=this.networkBusy||inParty||['connecting','reconnecting'].includes(network?.status);
     const guest=`${account?'':`<h3 class="section-title">Dein Gruppencharakter</h3><label class="field-label" for="party-player-name">Name</label><input id="party-player-name" class="game-input" value="${escape(this.game.player.name || 'Aren')}" maxlength="24" autocomplete="nickname"/><label class="field-label" for="party-class">Klasse</label><select id="party-class" class="game-input">${CLASSES.map(entry=>`<option value="${entry.id}" ${entry.id===this.game.player.classId?'selected':''}>${escape(entry.name)} · ${escape(entry.role)}</option>`).join('')}</select><p class="panel-note">Als Gast hat jede Gruppenreise einen eigenen Fortschritt. Melde dich an, um denselben Charakter in allen Gruppen zu spielen.</p><button type="button" class="text-button" data-command="account-open">Spielerkonto öffnen</button>`}<h3 class="section-title">Spielserver</h3><label class="field-label" for="party-server-address">Serveradresse</label><div class="party-server-controls"><input id="party-server-address" type="url" inputmode="url" class="game-input" value="${escape(network?.baseUrl || globalThis.location?.origin || '')}" placeholder="https://…" maxlength="2048" autocomplete="url" autocapitalize="off" spellcheck="false" ${locked||network?.online?'disabled':''}/><button class="small-button" data-command="party-server-connect" ${locked||network?.online||typeof network?.setServerAddress!=='function'?'disabled':''}>${icon('portal')}Server prüfen</button></div><p class="panel-note">${network?.online?'Verlasse zuerst die Gruppe, bevor du den Spielserver wechselst.':'Für Internetgruppen verwendet ihr denselben erreichbaren HTTPS-Spielserver. Für eine lokale Gruppe öffnet ihr Emberfall über die WLAN-Adresse des Hosts.'}</p>`;
-    return `<div class="party-connection"><div><h3 id="party-status">Verbindung prüfen</h3><p id="party-connection-error" class="panel-note" role="status"></p></div><div id="party-room-code" class="party-room-code"></div></div>${this.invitationPrompt()}${account?`<p class="party-account-note">${icon(classIcons[account.classId || this.game.player.classId] || 'shield')}Du spielst als <strong>${escape(account.playerName || account.username)}</strong>. Dein Fortschritt bleibt über Gruppen hinweg erhalten.</p>`:''}<div id="party-roster" class="party-roster" ${inParty?'':'hidden'}></div><div class="party-primary-actions"><button type="button" class="small-button" data-command="party-create" ${locked||network?.serverAvailable===false?'disabled':''}>${icon('group')}Gruppe erstellen</button>${network?.savedSession&&!account?'<button type="button" class="small-button" data-command="party-resume">Gespeicherte Gruppe fortsetzen</button>':''}<button type="button" class="text-button danger-button" data-command="party-disconnect" ${inParty?'':'hidden'}>Gruppe verlassen</button></div><section class="party-open-groups"><div class="party-section-heading"><h3 class="section-title">Offene Gruppen</h3><button type="button" class="text-button" data-command="party-refresh">Aktualisieren</button></div><div id="party-room-list" class="party-room-list"><p class="panel-note">Offene Gruppen werden geladen.</p></div></section><details class="party-code-join"><summary>Mit Gruppencode beitreten</summary><label class="field-label" for="party-join-code">Gruppencode</label><div class="party-join-controls"><input id="party-join-code" class="game-input code-input" placeholder="8 Zeichen" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"/><button type="button" class="small-button" data-command="party-join">Beitreten ${icon('arrow')}</button></div></details><details class="party-advanced"><summary>${account?'Server & Gruppenname':'Gastcharakter, Server & Gruppenname'}</summary><div class="party-forms"><section><label class="field-label" for="party-room-name">Name deiner neuen Gruppe</label><input id="party-room-name" class="game-input" value="Glutwacht" maxlength="32"/></section><section>${guest}</section></div></details>${inParty?`<details class="party-duels"><summary>Freiwillige Duelle</summary>${this.duelLobby()}</details>`:''}<p class="panel-note party-short-guide">Bis zu acht Reisende. Erstelle eine Gruppe und teile den Einladungslink oder tritt einer offenen Gruppe bei.</p><button type="button" class="text-button" data-panel="dungeons">Gruppendungeons ansehen ${icon('portal')}</button>`;
+    return `<div class="party-connection"><div><h3 id="party-status">Verbindung prüfen</h3><p id="party-connection-error" class="panel-note" role="status"></p></div><div id="party-room-code" class="party-room-code"></div></div>${this.invitationPrompt()}${account?`<p class="party-account-note">${icon(classIcons[account.classId || this.game.player.classId] || 'shield')}Du spielst als <strong>${escape(account.playerName || account.username)}</strong>. Dein Fortschritt bleibt über Gruppen hinweg erhalten.</p>`:''}<div id="party-roster" class="party-roster" ${inParty?'':'hidden'}></div><div class="party-primary-actions"><button type="button" class="small-button" data-command="party-create" ${locked||network?.serverAvailable===false?'disabled':''}>${icon('group')}Gruppe erstellen</button>${network?.savedSession&&!account?'<button type="button" class="small-button" data-command="party-resume">Gespeicherte Gruppe fortsetzen</button>':''}<button type="button" class="text-button danger-button" data-command="party-disconnect" ${inParty?'':'hidden'}>Gruppe verlassen</button></div><section class="party-open-groups"><div class="party-section-heading"><h3 class="section-title">Offene Gruppen</h3><button type="button" class="text-button" data-command="party-refresh">Aktualisieren</button></div><div id="party-room-list" class="party-room-list">${this.partyRoomMarkup()}</div></section><details class="party-code-join"><summary>Mit Gruppencode beitreten</summary><label class="field-label" for="party-join-code">Gruppencode</label><div class="party-join-controls"><input id="party-join-code" class="game-input code-input" placeholder="8 Zeichen" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"/><button type="button" class="small-button" data-command="party-join">Beitreten ${icon('arrow')}</button></div></details><details class="party-advanced"><summary>${account?'Server & Gruppenname':'Gastcharakter, Server & Gruppenname'}</summary><div class="party-forms"><section><label class="field-label" for="party-room-name">Name deiner neuen Gruppe</label><input id="party-room-name" class="game-input" value="Glutwacht" maxlength="32"/></section><section>${guest}</section></div></details>${inParty?`<details class="party-duels"><summary>Freiwillige Duelle</summary>${this.duelLobby()}</details>`:''}<p class="panel-note party-short-guide">Bis zu acht Reisende. Erstelle eine Gruppe und teile den Einladungslink oder tritt einer offenen Gruppe bei.</p><button type="button" class="text-button" data-panel="dungeons">Gruppendungeons ansehen ${icon('portal')}</button>`;
   }
 
   updateParty() {
@@ -1184,7 +1186,7 @@ export class GameUI {
     if(errorElement)errorElement.textContent=network?.error || (network?.serverAvailable===false?'Dieser Spielserver ist nicht erreichbar. Öffne die Serverauswahl und prüfe die Adresse.':this.inParty?'Die gemeinsame Welt läuft weiter, während dieses Fenster geöffnet ist.':network?.account?'Wähle eine offene Gruppe oder erstelle eine eigene. Du behältst deinen Charakter.':'Tritt einer offenen Gruppe bei oder erstelle eine eigene.');
     const codeElement=document.getElementById('party-room-code');
     const codeState=this.inParty?network?.roomCode || '':'';
-    if(codeElement&&codeState!==this.lastPartyCode){this.lastPartyCode=codeState;codeElement.innerHTML=codeState?`<button type="button" class="small-button" data-command="party-copy-link">${icon('group')}Einladungslink kopieren</button><details class="party-code-fallback"><summary>Gruppencode anzeigen</summary><strong>${escape(network.roomCode)}</strong><button type="button" class="text-button" data-command="party-copy-code">Code kopieren</button></details><p id="party-copy-feedback" class="panel-note" role="status" aria-live="polite"></p>`:'';}
+    if(codeElement&&codeState!==this.lastPartyCode){this.lastPartyCode=codeState;codeElement.innerHTML=codeState?`<button type="button" class="small-button" data-command="party-copy-link">${icon('group')}Einladungslink kopieren</button><details class="party-code-fallback"><summary>Gruppencode anzeigen</summary><strong>${escape(network.roomCode)}</strong><button type="button" class="text-button" data-command="party-copy-code">Code kopieren</button></details><p id="party-copy-feedback" class="panel-note" role="status" aria-live="polite">${this.partyInviteFeedback()}</p>`:'';}
     const roster=document.getElementById('party-roster');
     if(roster){roster.hidden=!this.inParty;roster.innerHTML=party.length?party.map(player=>this.partyMember(player)).join(''):'<p class="panel-note">Hier erscheinen deine Gefährten nach dem Beitritt.</p>';}
     const hud=this.elements['party-hud'];
@@ -1212,15 +1214,39 @@ export class GameUI {
     return `<div class="party-member ${compact?'compact':''} ${downed?'is-downed':''}"><span class="party-member-icon" style="color:${currentClass.color}">${icon(classIcons[currentClass.id])}</span><div><strong>${escape(player.name || 'Reisender')}</strong><span>${compact?`St. ${format(player.level)}`:`${escape(currentClass.name)} · Stufe ${format(player.level)}`}${downed?' · Am Boden':player.connected===false?' · Verbindung fehlt':''}</span><div class="party-member-health"><i style="width:${ratio}%"></i></div></div>${!compact?`<small>${format(player.hp)} / ${format(player.maxHp)}</small>`:''}</div>`;
   }
 
+  partyRoomMarkup() {
+    const cache=this.roomCatalogCache,network=this.network;
+    if(!cache||cache.network!==network||cache.baseUrl!==network?.baseUrl)return '<p class="panel-note">Offene Gruppen werden geladen.</p>';
+    if(cache.error)return `<p class="panel-note">Offene Gruppen konnten auf diesem Spielserver nicht geladen werden. ${escape(cache.error)}</p>`;
+    return cache.rooms.length?cache.rooms.map(room=>`<div class="party-room-entry"><div><strong>${escape(room.name)}</strong><span>${escape(room.players)} / ${escape(room.maxPlayers || 8)} Reisende</span></div><button type="button" class="small-button" data-command="party-join" data-id="${escape(room.code)}" data-full="${room.players>=(room.maxPlayers || 8)}" data-unavailable="${room.joinable===false}" ${room.players>=(room.maxPlayers || 8) || room.joinable===false || this.inParty?'disabled':''}>${room.players>=(room.maxPlayers || 8)?'Gruppe voll':room.joinable===false?'Nicht verfügbar':'Beitreten'}</button></div>`).join(''):'<p class="panel-note">Noch keine offene Gruppe. Erstelle deine eigene und lade Gefährten ein.</p>';
+  }
+
+  partyInviteFeedback() {
+    const cache=this.partyCopyFeedback,network=this.network;
+    if(!cache||cache.network!==network||cache.baseUrl!==network?.baseUrl||cache.url!==network?.inviteUrl?.(network.roomCode))return '';
+    return `<span id="party-copy-message">${escape(cache.message)}</span><label class="field-label" for="party-invite-link">Einladungslink zum Kopieren</label><input id="party-invite-link" class="game-input" aria-label="Einladungslink zum Kopieren" readonly value="${escape(cache.url)}"/>`;
+  }
+
   async refreshRooms() {
-    const list=document.getElementById('party-room-list');
-    if(!list || !this.network)return;
-    try {
-      const response=await this.network.catalog();
-      if(!list.isConnected)return;
-      list.innerHTML=response.rooms?.length?response.rooms.map(room=>`<div class="party-room-entry"><div><strong>${escape(room.name)}</strong><span>${room.players} / ${room.maxPlayers || 8} Reisende</span></div><button type="button" class="small-button" data-command="party-join" data-id="${escape(room.code)}" data-full="${room.players>=(room.maxPlayers || 8)}" data-unavailable="${room.joinable===false}" ${room.players>=(room.maxPlayers || 8) || room.joinable===false || this.inParty?'disabled':''}>${room.players>=(room.maxPlayers || 8)?'Gruppe voll':room.joinable===false?'Nicht verfügbar':'Beitreten'}</button></div>`).join(''):'<p class="panel-note">Noch keine offene Gruppe. Erstelle deine eigene und lade Gefährten ein.</p>';
-    } catch(error) { if(list.isConnected)list.innerHTML=`<p class="panel-note">Offene Gruppen konnten auf diesem Spielserver nicht geladen werden. ${escape(error.message || 'Prüfe die Serveradresse und versuche es erneut.')}</p>`; }
-    this.updateParty();
+    const network=this.network,baseUrl=network?.baseUrl;
+    if(!document.getElementById('party-room-list')||!network)return;
+    if(this.roomCatalogRequest?.network===network&&this.roomCatalogRequest.baseUrl===baseUrl)return this.roomCatalogRequest.promise;
+    const request={network,baseUrl};this.roomCatalogRequest=request;
+    const current=()=>this.network===network&&network.baseUrl===baseUrl&&this.roomCatalogRequest===request;
+    request.promise=(async()=>{
+      try {
+        const response=await network.catalog();
+        if(!current())return;
+        this.roomCatalogCache={network,baseUrl,rooms:Array.isArray(response.rooms)?response.rooms:[],error:null};
+      } catch(error) {
+        if(!current())return;
+        this.roomCatalogCache={network,baseUrl,rooms:[],error:error?.message||'Prüfe die Serveradresse und versuche es erneut.'};
+      } finally {if(this.roomCatalogRequest===request)this.roomCatalogRequest=null;}
+      // A roster update may have replaced the panel while the request was in flight.
+      const list=this.activePanel==='party'?document.getElementById('party-room-list'):null;
+      if(list){const markup=this.partyRoomMarkup();if(list.innerHTML!==markup)list.innerHTML=markup;this.lastPartyState='';this.updateParty();}
+    })();
+    return request.promise;
   }
 
   dungeons() {
@@ -1426,16 +1452,19 @@ export class GameUI {
     }
     if(name==='party-refresh') {await this.refreshRooms();return;}
     if(name==='party-copy-link') {
-      const feedback=document.getElementById('party-copy-feedback');
+      const baseUrl=network.baseUrl;
       const url=typeof network.inviteUrl==='function'?network.inviteUrl(network.roomCode):null;
-      if(!url){if(feedback)feedback.textContent='Einladungslink nicht verfügbar. Nutze den Gruppencode.';return;}
+      if(!url){const feedback=document.getElementById('party-copy-feedback');if(feedback)feedback.textContent='Einladungslink nicht verfügbar. Nutze den Gruppencode.';return;}
       let copied=false;
       try {await navigator.clipboard.writeText(url);copied=true;}catch {}
+      if(this.network!==network||network.baseUrl!==baseUrl||network.inviteUrl?.(network.roomCode)!==url)return;
       const message=copied?'Einladungslink kopiert.':'Wähle den Einladungslink aus und kopiere ihn.';
+      this.partyCopyFeedback={network,baseUrl,url,message};
+      const feedback=this.activePanel==='party'?document.getElementById('party-copy-feedback'):null;
       const existing=document.getElementById('party-invite-link');
-      if(feedback&&(!existing||existing.value!==url))feedback.innerHTML=`<span id="party-copy-message">${message}</span><label class="field-label" for="party-invite-link">Einladungslink zum Kopieren</label><input id="party-invite-link" class="game-input" aria-label="Einladungslink zum Kopieren" readonly value="${escape(url)}"/>`;
+      if(feedback&&(!existing||existing.value!==url))feedback.innerHTML=this.partyInviteFeedback();
       else {const status=document.getElementById('party-copy-message');if(status)status.textContent=message;}
-      if(!copied){const input=document.getElementById('party-invite-link');input?.focus();input?.select();}
+      if(!copied&&feedback){const input=document.getElementById('party-invite-link');input?.focus();input?.select();}
       return;
     }
     if(name==='party-copy-code') {

@@ -53,10 +53,7 @@ export function preflightMasteryAbility(game, ability) {
   return { ok: true };
 }
 function applySlow(game, enemy, ability) {
-  if (!enemy.alive || !positive(ability.slow)) return;
-  const factor = enemy.slowUntil > game.time ? enemy.slowFactor ?? 1 : 1;
-  enemy.slowUntil = Math.max(enemy.slowUntil || 0, game.time + (ability.slowDuration || ability.duration || 2));
-  enemy.slowFactor = Math.min(factor, Math.max(.1, 1 - ability.slow));
+  game.applyEnemySlow(enemy, ability.slow, ability.slowDuration || ability.duration || 2);
 }
 function procHit(game, enemy, damage) {
   if (!positive(damage) || !enemy.alive) return 0;

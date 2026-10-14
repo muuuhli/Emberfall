@@ -3,8 +3,8 @@ import { makeWorld } from './world.js';
 import { expandWorld } from './expansion.js';
 import { CLASSES, getClass, getTalentModifiers, canLearnTalent, validateCombatTalentState } from './classes.js';
 import { MAX_LEVEL, xpToNext } from './progression.js';
-import { basePlayerStats, classStatModifiers, capCombatStats, incomingDamage, classPowerMultiplier, normalEnemyStats, enemyXpReward, dungeonCompletionXp, COMBAT_SUSTAIN } from './balance.js';
-import { generateLoot, computeItemStats, validateLootItem, salvageYield, computeSetBonuses, GEM_TYPES, ITEM_BASES } from './loot.js';
+import { basePlayerStats, classStatModifiers, capCombatStats, incomingDamage, classPowerMultiplier, normalEnemyStats, enemyXpReward, dungeonCompletionXp, COMBAT_SUSTAIN, pveLevelGap } from './balance.js';
+import { generateLoot, computeItemStats, validateLootItem, salvageYield, computeSetBonuses, GEM_TYPES, ITEM_BASES, equipmentRequiredLevel } from './loot.js';
 import { DUNGEONS, createDungeon, interactPuzzle, updateDungeon, validateDungeonEchoes, restoreDungeonEchoes } from './dungeons.js';
 import { interactDungeonRoute, captureDungeonRoutes, validateDungeonRouteSave, restoreDungeonRoutes, dungeonRouteSummary, dungeonRouteRewardCandidates, isInBossArena } from './dungeon-routes.js';
 import { hitShape } from './encounter-geometry.js';
@@ -38,6 +38,9 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const dist = (a, b) => Math.hypot(a.x-b.x, a.y-b.y);
 const angleDiff = (a,b) => Math.atan2(Math.sin(a-b),Math.cos(a-b));
 const validNum = (v, fallback, lo = 0, hi = 1e7) => Number.isFinite(v) ? clamp(v,lo,hi) : fallback;
+// An effect retains its actor's level and power. Leaving the simulated party
+// must never transfer a lingering attack to the authority's stronger character.
+const transientCaster=(game,actorId,partyGames)=>actorId==null?game:partyGames.find(g=>(g.player.id||'local')===actorId&&g.world===game.world)||null;
 const collisionCaches=new WeakMap();
 function nearbyObstacles(world,x,y,r) {
   let cache=collisionCaches.get(world);
@@ -413,7 +416,7 @@ export class Game {
     this.notice(`${loot.name} · +${earnings.received} Gold${earnings.repaid?` · ${earnings.repaid} Rettungsschuld getilgt`:''} · Abenteuerbelohnung geborgen`,'loot');this.change();this.save(false);return true;
   }
   canEquipItem(id) {
-    const item=this.item(id);if(!item||!this.inventory[id]||!equipmentSlot(item)||(item.minLevel||item.level||1)>this.player.level)return false;
+    const item=this.item(id);if(!item||!this.inventory[id]||!equipmentSlot(item)||equipmentRequiredLevel(item)>this.player.level)return false;
     const base=ITEM_BASES.find(b=>b.id===(item.baseId||item.id));
     return ![item.classIds,base?.classIds].some(ids=>Array.isArray(ids)&&!ids.includes(this.player.classId));
   }
@@ -769,14 +772,14 @@ export class Game {
       executeMasteryAbility(this,a,{stats:s,powerFactor,healFactor,damage,actorId});
       this.onSound(a.kind==='stepStrike'?'attack':'spell');this.change();return true;
     }
-    const applySlow=e=>{if(a.slow){const factor=e.slowUntil>this.time?e.slowFactor??1:1;e.slowUntil=Math.max(e.slowUntil||0,this.time+(a.duration||3));e.slowFactor=Math.min(factor,1-a.slow);}};
+    const applySlow=e=>this.applyEnemySlow(e,a.slow,a.duration||3);
     this.effect('ring',p.x,p.y,{radius:a.kind==='meteor'?35:a.radius||55,color:a.color,life:.45});
     if(a.kind==='shield')this._abilityShield(this,a.shieldFraction,a.duration);
     if(a.kind==='partyShield')for(const ally of allies)this._abilityShield(ally,a.shieldFraction,a.duration);
     if(a.kind==='taunt') {
       this._abilityShield(this,a.shieldFraction,a.duration);
       if(a.chargeRange){this.move(p,Math.cos(p.face)*a.chargeRange,Math.sin(p.face)*a.chargeRange);this.effect('ring',p.x,p.y,{radius:a.radius,color:a.color,life:.5});}
-      for(const enemy of this.world.enemies.filter(e=>e.alive&&dist(p,e)<(a.tauntRadius||a.radius))){enemy.targetId=actorId;enemy.tauntUntil=this.time+a.duration;enemy.aggro=true;}
+      for(const enemy of this.world.enemies.filter(e=>e.alive&&dist(p,e)<(a.tauntRadius||a.radius)))this.applyEnemyTaunt(enemy,a.duration);
     }
     if(a.kind==='mend') {
       const ally=allies.sort((x,y)=>x.player.hp/x.stats().maxHp-y.player.hp/y.stats().maxHp)[0];
@@ -873,9 +876,9 @@ export class Game {
       if(skill.kind==='aoe'||skill.kind==='shield') {
         if(skill.shieldMultiplier)for(const ally of allies) {this._abilityShield(ally,skill.shieldMultiplier,skill.duration||5);}
         for(const e of this.world.enemies) if(e.alive&&dist(p,e)<(skill.tauntRadius||radius)) {
-          if(skill.tauntRadius) {e.targetId=p.id||'local';e.tauntUntil=this.time+5;e.aggro=true;}
+          if(skill.tauntRadius)this.applyEnemyTaunt(e,5);
           if(dist(p,e)<radius&&damage>0)this.hitEnemy(e,damage,12);
-          if(skill.slow){e.slowUntil=this.time+(skill.slowDuration||skill.duration||3);e.slowFactor=1-skill.slow;}
+          this.applyEnemySlow(e,skill.slow,skill.slowDuration||skill.duration||3);
         }
       }
       if(skill.kind==='trap') this.hazards.push({id:`trap-${++this.lootSerial}`,kind:'trap',x:p.x+Math.cos(p.face)*80,y:p.y+Math.sin(p.face)*80,radius,damage,slow:skill.slow||.5,slowDuration:skill.slowDuration,life:skill.duration||8,actorId:p.id||'local',color:skill.color});
@@ -903,6 +906,22 @@ export class Game {
     } else return false;
     this.change(); return true;
   }
+  enemyLevelChallenge(e) {
+    if(this.worldMode==='pvp'||this.world?.isPvp)return pveLevelGap(this.player.level,this.player.level);
+    return pveLevelGap(this.player.level,e.level||ENEMY_TYPES[e.type]?.level||1);
+  }
+  applyEnemySlow(e,strength,duration) {
+    if(!e.alive||!Number.isFinite(strength)||strength<=0||!Number.isFinite(duration)||duration<=0)return false;
+    const control=this.enemyLevelChallenge(e).controlMultiplier;if(!control)return false;
+    const factor=e.slowUntil>this.time?e.slowFactor??1:1;
+    e.slowUntil=Math.max(e.slowUntil||0,this.time+duration*control);
+    e.slowFactor=Math.min(factor,Math.max(.1,1-clamp(strength,0,1)*control));return true;
+  }
+  applyEnemyTaunt(e,duration) {
+    if(!e.alive||!Number.isFinite(duration)||duration<=0)return false;
+    const control=this.enemyLevelChallenge(e).controlMultiplier;if(!control)return false;
+    e.targetId=this.player.id||'local';e.tauntUntil=this.time+duration*control;e.aggro=true;return true;
+  }
   hitEnemy(e,damage,knockback=20) {
     if(!e.alive||!Number.isFinite(damage)||damage<=0)return 0;
     const required=ENEMY_TYPES[e.type]?.minPlayers||1;
@@ -910,16 +929,22 @@ export class Game {
     const living=new Set((this.partyGames||[this]).filter(g=>!g.dead&&g.player.hp>0&&(!raidBoss||isInBossArena(this.dungeonInstance,g.player))).map(g=>g.player.id||g));
     if(required>1&&living.size<required) {this.text(e.x,e.y-24,'Gruppe unvollständig','#b9acda');return 0;}
     if(e.shielded||e.shieldDamageMultiplier===0) {this.text(e.x,e.y-24,'Geschützt','#b9acda');return 0;}
+    const challenge=this.enemyLevelChallenge(e);
+    if(challenge.overwhelming){
+      e.aggro=true;
+      if((this.overwhelmingNoticeAt??-Infinity)<=this.time){this.overwhelmingNoticeAt=this.time+1;this.text(e.x,e.y-24,'Übermächtig','#ed9b91');}
+      return 0;
+    }
     const crit=this.random()<this.stats().crit;
     const ward=e.wardUntil>this.time?clamp(e.wardReduction||0,0,.3):0;
     const armor=ENEMY_TYPES[e.type]?.traits?.includes('armored')?.1:0;
-    const result=Math.max(1,Math.round(damage*(crit?1.7:1)*(.9+this.random()*.2)*(1-ward)*(1-armor)));
+    const result=Math.max(1,Math.round(damage*challenge.damageMultiplier*(crit?1.7:1)*(.9+this.random()*.2)*(1-ward)*(1-armor)));
     const applied=Math.min(e.hp,result);e.hp-=result; e.hitUntil=this.time+.12; e.aggro=true;
     if(applied>0&&e.eventId)recordWorldEventContribution(this.world,e.eventId,this.player);
     const a=Math.atan2(e.y-this.player.y,e.x-this.player.x);
     // Authored bosses keep their frozen attack origin and cannot be pushed
     // into a protected village by repeated basic attacks.
-    const displacement=e.stationary?0:ENEMY_TYPES[e.type]?.boss?knockback*(e.phase==='windup'?0:.08):knockback;
+    const displacement=(e.stationary?0:ENEMY_TYPES[e.type]?.boss?knockback*(e.phase==='windup'?0:.08):knockback)*challenge.controlMultiplier;
     this.move(e,Math.cos(a)*displacement,Math.sin(a)*displacement,ENEMY_TYPES[e.type]?.boss?22:10);
     this.text(e.x,e.y-24,crit?`${result}!`:result,crit?'#ffd37b':'#f4edd7');
     this.effect('burst',e.x,e.y,{color:crit?'#f7c460':'#c7d39b',radius:24,life:.3});
@@ -929,7 +954,7 @@ export class Game {
       const proc=resolveRelicProc(this.item(this.equipment.weapon),{time:this.time,readyAt:this.time+(this.cooldowns.relic||0),maxHp:this.stats().maxHp,targetIsBoss:!!ENEMY_TYPES[e.type]?.boss,damageDealt:applied,mode:this.worldMode==='pvp'?'pvp':'pve'});
       if(proc){
         this.cooldowns.relic=proc.cooldown;
-        if(proc.kind==='slow'&&!(e.slowUntil>this.time)){e.slowUntil=this.time+proc.duration;e.slowFactor=proc.factor;}
+        if(proc.kind==='slow'&&!(e.slowUntil>this.time))this.applyEnemySlow(e,1-proc.factor,proc.duration);
         if(proc.kind==='shield'&&!(this.player.shield>0&&this.player.shieldUntil>this.time)){this.player.shield=proc.amount;this.player.shieldUntil=this.time+proc.duration;}
         this.effect('ring',this.player.x,this.player.y,{radius:38,color:proc.color,life:.5});
       }
@@ -958,9 +983,10 @@ export class Game {
     const bossTypes=['thorn_guardian','frost_sentinel','emberlord'];
     if(bossTypes.length && bossTypes.every(id=>this.flags[id]) && !this.flags.victory) { this.flags.victory=true; this.save(false); this.onVictory(); }
   }
-  damagePlayer(damage,{trueDamage=false,ignoreInvulnerability=false,attackerLevel=this.player.level,attackerId='environment',armorPierce=0}={}) {
+  damagePlayer(damage,{trueDamage=false,ignoreInvulnerability=false,attackerLevel=this.player.level,attackerId='environment',armorPierce=0,levelScaling=true}={}) {
     const p=this.player; if((p.invulnerable>0&&!ignoreInvulnerability)||this.dead) return;
-    const hit=incomingDamage(damage,{armor:this.stats().armor*(1-clamp(armorPierce,0,1)),attackerLevel,trueDamage});if(!hit)return;
+    const pressure=levelScaling&&!trueDamage&&attackerId!=='environment'&&this.worldMode!=='pvp'&&!this.world?.isPvp?pveLevelGap(p.level,attackerLevel).incomingMultiplier:1;
+    const hit=incomingDamage(damage*pressure,{armor:this.stats().armor*(1-clamp(armorPierce,0,1)),attackerLevel,trueDamage});if(!hit)return;
     const source=String(attackerId).slice(0,120);
     if(!ignoreInvulnerability&&(this.damageGrace.get(source)||0)>this.time)return;
     for(const [key,until] of this.damageGrace)if(until<=this.time)this.damageGrace.delete(key);
@@ -1032,7 +1058,7 @@ export class Game {
       for(const event of events) {
         if(event.hazards)this.hazards.push(...event.hazards);
         if(event.zones)for(const zone of event.zones)for(const ally of living)if(dist(ally.player,zone)<zone.radius)ally.damagePlayer(zone.damage,{attackerLevel:this.dungeonInstance.definition.minLevel});
-        for(const impact of event.damageEvents||[])for(const ally of living)if(String(ally.player.id||'local')===impact.actorId&&hitShape(impact.shape,ally.player))ally.damagePlayer(ally.stats().maxHp*impact.damageFraction,{attackerLevel:impact.attackerLevel,attackerId:impact.attackerId});
+        for(const impact of event.damageEvents||[])for(const ally of living)if(String(ally.player.id||'local')===impact.actorId&&hitShape(impact.shape,ally.player))ally.damagePlayer(ally.stats().maxHp*impact.damageFraction,{attackerLevel:impact.attackerLevel,attackerId:impact.attackerId,levelScaling:false});
         for(const ally of partyGames) {
         if(event.event!=='mechanic')ally.event(event.event,event.target);
         if(event.message)ally.notice(event.message,'quest');
@@ -1065,12 +1091,13 @@ export class Game {
       if(boundedFlight){projectile.travelled=(projectile.travelled||0)+movement;if(projectile.travelled>=projectile.maxDistance)projectile.life=0;}
       if(this.collides(projectile.x,projectile.y,3)) { projectile.life=0; continue; }
       if(projectile.owner==='player') {
-        const caster=partyGames.find(g=>(g.player.id||'local')===(projectile.actorId||'local'))||this;
+        const caster=transientCaster(this,projectile.actorId,partyGames);
+        if(!caster){projectile.life=0;continue;}
         const target=this.world.enemies.find(e=>e.alive&&!(projectile.hitIds||[]).includes(e.id)&&dist(e,projectile)<(ENEMY_TYPES[e.type]?.boss?36:20));
         if(target) {
           const applied=caster.hitEnemy(target,projectile.damage,10);(projectile.hitIds??=[]).push(target.id);
           if(projectile.piercing>1)projectile.piercing--;else projectile.life=0;
-          if(projectile.slow){target.slowUntil=this.time+(projectile.slowDuration||3);target.slowFactor=1-projectile.slow;}
+          caster.applyEnemySlow(target,projectile.slow,projectile.slowDuration||3);
           if(projectile.drain&&applied)caster._healAbilityAlly(caster,applied*projectile.drain);
           if(projectile.splash)for(const e of this.world.enemies)if(e!==target&&e.alive&&dist(e,target)<projectile.splash)caster.hitEnemy(e,projectile.damage*.6,0);
           if(projectile.burnDamage&&applied)this.hazards.push({id:`ability-burn-${++caster.lootSerial}`,kind:'burn',x:target.x,y:target.y,radius:38,damage:projectile.burnDamage,life:projectile.burnDuration,actorId:projectile.actorId,color:projectile.color,tick:1});
@@ -1090,7 +1117,8 @@ export class Game {
     this.drops=this.drops.filter(d=>d.life>0);
     for(const trap of this.hazards) {
       trap.life-=dt;
-      const caster=partyGames.find(g=>(g.player.id||'local')===trap.actorId)||this;
+      const caster=transientCaster(this,trap.actorId,partyGames);
+      if(!caster){trap.life=0;continue;}
       if(trap.kind==='meteor') {
         trap.timer-=dt;
         if(trap.timer<=1e-8){for(const enemy of this.world.enemies)if(enemy.alive&&dist(enemy,trap)<trap.radius)caster.hitEnemy(enemy,trap.damage,trap.knockback||0);
@@ -1106,7 +1134,7 @@ export class Game {
           for(const enemy of this.world.enemies)if(enemy.alive&&(marked?enemy===marked:dist(enemy,trap)<trap.radius)) {
             const applied=caster.hitEnemy(enemy,trap.damage,0);
             if(trap.drain&&applied)caster._healAbilityAlly(caster,applied*trap.drain);
-            if(trap.slow){const factor=enemy.slowUntil>this.time?enemy.slowFactor??1:1;enemy.slowUntil=this.time+(trap.slowDuration||1.6);enemy.slowFactor=Math.min(factor,1-trap.slow);}
+            caster.applyEnemySlow(enemy,trap.slow,trap.slowDuration||1.6);
           }
           if(trap.heal)for(const ally of living)if(dist(ally.player,trap)<trap.radius)caster._healAbilityAlly(ally,trap.heal);
         }continue;
@@ -1119,12 +1147,13 @@ export class Game {
       }
       if(trap.kind!=='trap')continue;
       const enemy=this.world.enemies.find(e=>e.alive&&dist(e,trap)<trap.radius);if(!enemy)continue;
-      for(const e of this.world.enemies)if(e.alive&&dist(e,trap)<trap.radius){caster.hitEnemy(e,trap.damage,0);e.slowUntil=this.time+(trap.slowDuration||3);e.slowFactor=1-(trap.slow||.5);}
+      for(const e of this.world.enemies)if(e.alive&&dist(e,trap)<trap.radius){caster.hitEnemy(e,trap.damage,0);caster.applyEnemySlow(e,trap.slow||.5,trap.slowDuration||3);}
       trap.life=0;this.effect('ring',trap.x,trap.y,{radius:trap.radius,color:trap.color,life:.5});
     }
     this.hazards=this.hazards.filter(h=>h.life>0);
     for(const summon of this.summons) {
-      summon.life-=dt;summon.attackTimer-=dt;const caster=partyGames.find(g=>(g.player.id||'local')===summon.actorId)||this;
+      summon.life-=dt;summon.attackTimer-=dt;const caster=transientCaster(this,summon.actorId,partyGames);
+      if(!caster){summon.life=0;continue;}
       const target=summon.companion&&summon.damage<=0?null:this.world.enemies.filter(e=>e.alive&&dist(e,summon)<(summon.range||350)).sort((a,b)=>dist(a,summon)-dist(b,summon))[0];
       const follow=summon.ranged?caster.player:target||caster.player,a=Math.atan2(follow.y-summon.y,follow.x-summon.x);
       if(dist(follow,summon)>45)this.move(summon,Math.cos(a)*120*dt,Math.sin(a)*120*dt,8);
@@ -1331,8 +1360,8 @@ export class Game {
     this.player.x=clamp(this.player.x,30,this.world.width-30); this.player.y=clamp(this.player.y,30,this.world.height-30);
     for(const [id,count] of Object.entries(data.inventory||{})) if(this.item(id)) this.inventory[id]=Math.floor(validNum(count,0));
     for(const key of Object.keys(this.resources)) this.resources[key]=Math.floor(validNum(data.resources?.[key],0));
-    for(const slot of Object.keys(this.equipment)) { const id=data.equipment?.[slot],legacySlot=['weapon','armor','charm'].includes(slot);
-      this.equipment[slot]=equipmentSlot(this.item(id))===slot&&this.inventory[id]>0&&(legacySlot||this.canEquipItem(id))?id:null;
+    for(const slot of Object.keys(this.equipment)) { const id=data.equipment?.[slot];
+      this.equipment[slot]=equipmentSlot(this.item(id))===slot&&this.canEquipItem(id)?id:null;
     }
     restoreInventoryExtensions(this,data);
     for(const s of SKILLS) this.skills[s.id]=Math.floor(validNum(data.skills?.[s.id],0,0,s.maxRank||3));

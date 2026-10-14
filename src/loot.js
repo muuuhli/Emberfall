@@ -100,6 +100,21 @@ export const SETS = {
 const round = value => Math.round(value * 10000) / 10000;
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 const levelValue = value => Number.isFinite(value) ? clamp(Math.floor(value), 1, MAX_LEVEL) : 1;
+
+/** A generated item's roll level cannot be lowered by imported minLevel data.
+ * Fixed equipment retains its authored requirement; original starter items
+ * without level fields remain available at level one. This query does not
+ * rewrite or discard saved items.
+ */
+export function equipmentRequiredLevel(item) {
+  if(!item||typeof item!=='object'||Array.isArray(item))return 1;
+  const canonical=ITEM_BASES.find(base=>base.id===(item.baseId||item.id));
+  const generated=typeof item.baseId==='string'||typeof item.id==='string'&&item.id.startsWith('loot:');
+  const floor=levelValue(canonical?.minLevel);
+  return generated?Math.max(floor,levelValue(item.level),levelValue(item.minLevel))
+    :Math.max(floor,levelValue(item.minLevel??item.level));
+}
+
 export const LOOT_SLOT_WEIGHTS = Object.freeze({ weapon: .40, armor: .35, charm: .25 });
 export const LOOT_EQUIPMENT_SLOT_WEIGHTS = Object.freeze({ weapon: .40, armor: .16, charm: .18, helmet: .07, gloves: .06, boots: .06, ring: .07 });
 const weightedPick = (items, weights, roll) => {

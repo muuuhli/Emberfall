@@ -88,7 +88,7 @@ function objectiveActor(objective,boss,instance) {
 
 function damage(game,boss,ally,fraction,flat,armorPierce,source,ignoreInvulnerability=false) {
   return ally.damagePlayer((ally.stats().maxHp*fraction+flat)*(boss.enraged?3:1),{
-    armorPierce,ignoreInvulnerability,attackerLevel:boss.level,attackerId:`${boss.id}:${source}`});
+    armorPierce,ignoreInvulnerability,attackerLevel:boss.level,attackerId:`${boss.id}:${source}`,levelScaling:false});
 }
 
 function applyImpact(game,boss,event,living) {

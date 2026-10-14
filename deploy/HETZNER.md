@@ -253,3 +253,86 @@ belegt nur ihre ausdrücklich gemessenen Szenarien.
 Ein Rollback auf V11 muss die private Sicherung vor Einführung der Konten
 verwenden: V11 erkennt die optionalen Konto-Metadaten nicht und würde sie beim
 Speichern verlieren. Laufende Konten niemals mit einem alten Server öffnen.
+
+## 6. Entwicklungsstand direkt aus Git aktualisieren
+
+Nach einem geprüften und nach `origin/main` übertragenen Entwicklungsstand
+aktualisiert [update-from-git.sh](update-from-git.sh) den vorhandenen Dienst
+direkt auf dem Hetzner-Server. Ein manuell hochgeladenes Quellarchiv ist dafür
+nicht mehr nötig. Das Repository `muuuhli/Emberfall` ist öffentlich; der
+standardmäßige HTTPS-Lesezugriff benötigt weder GitHub-Token noch Deploy-Key.
+Die Betreiberkonfiguration und sämtliche Spielerdaten bleiben außerhalb von Git.
+
+Den Einstieg einmal aus einem bereits geprüften Release installieren; dafür
+den wirklichen vollständigen Commit-SHA einsetzen:
+
+```sh
+install -m 700 \
+  /srv/emberfall/releases/<GEPRUEFTER-GIT-SHA>/deploy/update-from-git.sh \
+  /srv/emberfall/update-from-git
+
+# Den neuen origin/main-Stand genau einmal auflösen und als SHA ausliefern:
+/srv/emberfall/update-from-git main
+
+# Alternativ einen konkret geprüften Commit auf origin/main wählen:
+/srv/emberfall/update-from-git <GEPRUEFTER-VOLLSTAENDIGER-COMMIT-SHA>
+```
+
+Die Befehle werden als berechtigter Betreiber auf dem Server ausgeführt.
+Benötigt werden Bash, Git, Docker mit Compose und `up --wait`, curl, Python 3,
+tar und flock. Der vorhandene Konto-/TLS-Betrieb aus Abschnitt 5 muss bereits
+funktionieren. Das Skript richtet keine Firewall, fremden Reverse-Proxy oder
+neuen Server ein. Es verwendet standardmäßig den Git-Cache
+`/srv/emberfall/repo`, die vorhandene private `.env.ip`, die Release-Verzeichnisse
+und das private Backup-Verzeichnis. Andere Pfade können mit `--repo-dir`,
+`--env-file`, `--release-root` und `--backup-root` angegeben werden.
+`--current-link` und `--source-marker` wählen die Betreiber-Metadaten. Ohne
+diese Optionen liegen `current` und `DEPLOYED_SOURCE` neben der `.env`-Datei.
+Ein vorhandenes `current` muss auf den bisherigen Release zeigen;
+`DEPLOYED_SOURCE` enthält dessen vollständigen SHA mit Zeilenumbruch.
+
+Ein vorhandener Git-Checkout bleibt einschließlich lokaler Änderungen erhalten:
+das Skript holt nur `origin/main` und erzeugt eine separate Release-Kopie über
+`git archive`. `origin` muss ausdrücklich das Emberfall-Repository benennen.
+Bei einem künftig privaten Repository einen vom Betreiber bereitgestellten
+lesenden SSH-Zugang außerhalb des Repositories konfigurieren; das Skript
+speichert keine Zugangsdaten und nimmt keine Token-URL an.
+
+Der Ablauf baut zunächst das Image mit dem vollständigen Commit-SHA, während
+die bisherige Spielsimulation weiterläuft. Er stoppt anschließend nur den
+Emberfall-Spielserver, legt Spielstand und bisherige Konfiguration privat mit
+Dateirechten `0600` ab und prüft den Spielstand mit der neuen Autorität in einem
+wegwerfbaren Container ohne Netzwerk und ohne Produktivvolume. Erst nach dieser
+Prüfung wird `EMBERFALL_RELEASE` atomar in der privaten Konfiguration ersetzt.
+Aktualisiert werden ausschließlich `emberfall` und der eigene Dienst
+`emberfall-https`; das feste Volume `emberfall_data` und beide TLS-Volumes bleiben
+erhalten. Gruppen sind während des kurzen Dienstwechsels vorübergehend getrennt.
+
+Die Abnahme vergleicht Image-ID und Commit-Label, sämtliche Laufzeitdateien im
+Container und die öffentlich über HTTPS gelieferten Start-/UI-Dateien mit dem
+gewählten Git-Archiv. curl prüft das echte Zertifikat ohne Sicherheitsausnahme,
+den Healthcheck und den sicheren Konto-Endpunkt. Ein abweichender Ursprung,
+anderes Datenvolume, geänderte vorhandene Release-Dateien oder ein Commit
+außerhalb des geholten `origin/main` bricht die Aktualisierung ab.
+Erst nach sämtlichen erfolgreichen Prüfungen werden der `current`-Symlink und
+die Datei `DEPLOYED_SOURCE` jeweils atomar auf den neuen geprüften Stand gesetzt.
+Die SHA-Datei behält private Rechte `0600`. Ihre vorherigen Werte liegen beim
+Backup; schlägt eine Veröffentlichung dazwischen fehl, stellt die
+Fehlerbehandlung auch diese Metadaten wieder her. Fremde Änderungen an den
+Metadaten werden dabei nicht überschrieben.
+
+Bei einem Fehler vor der Umstellung wird die unveränderte bisherige Fassung
+wieder gestartet. Bei einem Fehler nach der Umstellung sichert das Skript den
+fehlgeschlagenen Stand zusätzlich privat und stellt **Konfiguration und passenden
+Spielstand von vor dem Update gemeinsam** wieder her, bevor es die alte Fassung
+startet. Fortschritt während dieses kurzen fehlgeschlagenen Wechsels befindet
+sich im zusätzlichen `failed-state.json`; er wird nicht mit dem alten Schema
+vermengt. Automatische Rückwärtsupdates werden grundsätzlich abgewiesen.
+Backups und alte Images erst nach der erfolgreichen Abnahme nach eigener
+Aufbewahrungsregel bereinigen; das Skript löscht keine Produktivvolumes.
+
+Die [nativen Ablaufprüfungen](../tests/update-from-git.test.js) führen das echte
+Shellskript mit isolierten Git-/Docker-/HTTP-Gegenstellen aus und prüfen auch
+Fehler bei Build, Backup, Speicherkompatibilität, Dienststart, TLS und
+Quellvergleich. Diese Gegenstellen ersetzen keine tatsächliche Docker- und
+HTTPS-Abnahme auf dem Server.

@@ -230,7 +230,7 @@ test('browser expansion methods use HTTP authority and global adventure summarie
   } finally{await f.close();}
 });
 
-test('a legacy save keeps its already equipped foreign-class weapon while newly equipping it still enforces class restrictions',()=>{
+test('a legacy save preserves an owned foreign-class weapon in inventory and applies current equipment restrictions',()=>{
   const source=sparseGame();source.player.level=25;
   const bow=generateLoot({baseId:'greenwood_bow',classId:'ranger',level:25,rarity:'rare',rng:()=>.5,uid:'foreign-legacy-weapon'});
   assert.equal(source.addItem(bow),true);source.equipment.weapon=bow.id;
@@ -238,8 +238,8 @@ test('a legacy save keeps its already equipped foreign-class weapon while newly 
   for(const field of ['journey','stash','itemFlags','loadouts'])delete save[field];
   const loaded=sparseGame();loaded.applySave(save);
   assert.equal(loaded.inventory[bow.id],1);assert.deepEqual(loaded.generatedItems[bow.id],bow);
-  assert.equal(loaded.equipment.weapon,bow.id);assert.equal(loaded.canEquipItem(bow.id),false);
-  assert.equal(loaded.unequip('weapon'),true);assert.equal(loaded.equip(bow.id),false);
+  assert.equal(loaded.equipment.weapon,null);assert.equal(loaded.canEquipItem(bow.id),false);
+  assert.equal(loaded.unequip('weapon'),false);assert.equal(loaded.equip(bow.id),false);
 });
 
 test('profession recipes for body armor never select one of the new helmet, glove or boot bases',()=>{
