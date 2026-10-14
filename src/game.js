@@ -345,6 +345,10 @@ export class Game {
       const members=(this.partyGames||[this]);
       if(effect.kind==='warning')this.hazards.push({kind:'warning',x:effect.x,y:effect.y,radius:effect.radius||170,life:effect.duration||2,windup:true,color:'#b87759'});
       for(const ally of members) {
+        if(effect.kind==='respite'&&!ally.dead&&ally.player.hp>0&&event?.participants.includes(ally.player.id||'local')&&dist(ally.player,event)<220) {
+          const stats=ally.stats();ally.player.hp=Math.min(stats.maxHp,ally.player.hp+stats.maxHp*.2);ally.player.mana=Math.min(stats.mana,ally.player.mana+stats.mana*.15);
+          ally.effect('ring',ally.player.x,ally.player.y,{color:'#8db6a5',radius:45,life:.8});ally.change();ally.save(false);
+        }
         if(dist(ally.player,effect)<700)ally.notice(effect.text,effect.kind==='success'?'quest':'info');
         if(effect.kind==='success'&&event?.participants.includes(ally.player.id||'local')){ally.event('world_event',effect.eventId);ally.save(false);}
       }

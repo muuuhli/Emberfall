@@ -6,12 +6,13 @@ import { MultiplayerHub } from '../server/multiplayer.mjs';
 import { QUESTS, NPCS, ENEMY_TYPES, RECIPES } from '../src/catalog.js';
 import { QUESTS as STARTING_QUESTS } from '../src/content.js';
 import { EXPANSION_QUESTS } from '../src/expansion.js';
-import { createBestiaryEnemy } from '../src/bestiary.js';
+import { createBestiaryEnemy, bestiaryCombatStats, BESTIARY_ENEMIES } from '../src/bestiary.js';
 import { WORLD_EVENT_DEFINITIONS, EXPEDITIONS, WORLD_EVENT_ENEMIES } from '../src/world-events.js';
 import { SIDE_STORY_CHAINS } from '../src/side-stories.js';
 import { getContractOffers } from '../src/contracts.js';
 import { advanceJourney, validateJourneyState } from '../src/journey.js';
 import { EXPEDITION_CONTENT } from '../src/expedition-content.js';
+import { TRIALS } from '../src/trial-content.js';
 
 const LEGACY_QUESTS=[...STARTING_QUESTS,...EXPANSION_QUESTS];
 const legacyIds=new Set(LEGACY_QUESTS.map(quest=>quest.id));
@@ -32,6 +33,11 @@ const LOOP2_EVENT_LAYOUT=[...LEGACY_EVENT_LAYOUT,
   ['event-vey',14592,4960],['event-nera',4608,8360],['event-asterion',15552,12520],
 ];
 const loop2EventIds=new Set(LOOP2_EVENT_LAYOUT.map(([id])=>id));
+const LOOP3_EVENT_LAYOUT=[...LOOP2_EVENT_LAYOUT,
+  ['expedition-weisshorn',1200,315],['expedition-schilfzug',7104,1920],
+  ['expedition-zeitbruch',17920,4000],['expedition-namenlos',2432,7800],
+];
+const loop3EventIds=new Set(LOOP3_EVENT_LAYOUT.map(([id])=>id));
 const namedBossEvents=()=>WORLD_EVENT_DEFINITIONS.filter(definition=>definition.mode==='boss_hunt'&&WORLD_EVENT_ENEMIES[definition.boss]);
 const clone=value=>JSON.parse(JSON.stringify(value));
 function memoryStorage(){const data=new Map();return {getItem:key=>data.get(key)||null,setItem:(key,value)=>data.set(key,value)};}
@@ -98,6 +104,25 @@ async function completeWorldEvent(f,id,{verifyStages=false}={}){
   }
   assert.equal(event.state,'success',`Native event ${id} reaches its actual completion condition`);assert.ok(serial>0,'Event completion required real spawned opposition');
   return {visited:[...visited],kills:serial,choice:event.choice,bonus:event.bonus};
+}
+const eventActors=(game,event)=>game.world.enemies.filter(actor=>actor.eventId===event.id&&actor.eventRun===event.run&&actor.alive);
+const purse=game=>({gold:game.player.gold,xp:game.player.xp,dust:game.resources.dust,lootSerial:game.lootSerial});
+async function startTrial(f,id){
+  const game=f.game(f.first),event=game.world.worldEvents.find(value=>value.id===id),start=game.world.eventObjects.find(object=>object.id===`${id}:start`);
+  assert.ok(event);assert.ok(start);game.player.invulnerable=100;Object.assign(game.player,{x:start.x,y:start.y});
+  assert.equal((await f.method(f.first,'interactWorldEvent',start.id)).data.accepted,true);assert.equal(event.phase,'wave-warning');return event;
+}
+async function killEventActors(f,event){
+  const game=f.game(f.first),actors=eventActors(game,event);
+  // Only HP is shortened by this trusted balance-isolation fixture. Actors,
+  // wave order, damage commands, deaths and completion hooks remain native.
+  for(const actor of actors)actor.hp=1;
+  for(const actor of actors.filter(value=>value.alive)){
+    if(!actor.alive)continue;
+    Object.assign(game.player,{x:actor.x-35,y:actor.y,face:0});game.cooldowns.attack=0;
+    assert.equal((await f.action(f.first,'attack')).data.accepted,true);assert.equal(actor.alive,false);
+  }
+  Object.assign(game.player,{x:event.x,y:event.y});f.step(.08);return actors.length;
 }
 async function fulfillObjective(f,quest,index){
   const game=f.game(f.first),objective=quest.objectives[index];if(game.questState[quest.id].counts[index]>=objective.count)return;
@@ -285,5 +310,84 @@ test('an interrupted new expedition cannot resume at its finale or pay rewards f
     const restored=f.game(f.first),failed=restored.world.worldEvents.find(value=>value.id===event.id);assert.equal(failed.state,'failure');assert.ok(failed.readyAt>restored.time);assert.equal(restored.world.enemies.some(enemy=>enemy.eventId===event.id&&enemy.alive),false);
     Object.assign(restored.player,{x:failed.x,y:failed.y});assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,false);assert.equal((await f.method(f.first,'interactWorldEvent',`${event.id}:start`)).data.accepted,false);
     assert.equal(restored.player.gold,gold);assert.equal(restored.player.xp,xp);assert.equal(restored.resources.dust,dust);assert.equal(restored.journey.records.events.includes(event.id),false);
+  }finally{await f.close();}
+});
+
+test('all three HTTP trials honor native six-second wave order, bounded pushing and a once-only boss completion reward',async()=>{
+  const f=await fixture();try {
+    const game=f.game(f.first);establishLegacyProgress(game);assert.equal(TRIALS.length,3);
+    for(const definition of TRIALS){
+      const event=await startTrial(f,definition.id);assert.equal(definition.mode,'gauntlet');assert.equal(definition.contentType,'challenge');
+      for(let index=0;index<definition.waves.length;index++){
+        const plan=definition.waves[index],before=purse(game);assert.equal(event.waveIndex,index);assert.equal(event.phase,'wave-warning');
+        assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,false);
+        f.step(5.92);assert.equal(eventActors(game,event).length,0,'An actual six-second warning precedes every wave');f.step(.12);
+        const actors=eventActors(game,event),expected=plan.boss?1:Math.min(7,plan.count+(index?1:0));assert.equal(actors.length,expected);
+        assert.deepEqual(actors.map(actor=>actor.type),Array.from({length:expected},(_,actorIndex)=>plan.boss||plan.types[actorIndex%plan.types.length]));
+        assert.equal(event.phase,'wave-combat');const summary=(await f.get(f.first)).authoritativeWorldEventSummary.find(value=>value.id===event.id);
+        assert.deepEqual(summary.wave,{current:index+1,total:definition.waves.length,cleared:index,bossFinal:true});
+        for(const actor of actors){
+          assert.equal(actor.rewardless,true);assert.equal(actor.xp,0);assert.equal(actor.gold,0);assert.equal(actor.eventRun,event.run);
+          const base=bestiaryCombatStats(WORLD_EVENT_ENEMIES[actor.type]||BESTIARY_ENEMIES[actor.type],event.level);
+          assert.equal(actor.maxHp,plan.boss?base.maxHp:Math.round(Math.round(base.maxHp*.65)*(plan.hpScale||1)),'Pushing changes only normal actor count, never the authored per-actor HP budget');
+        }
+        assert.equal(await killEventActors(f,event),expected);assert.deepEqual(purse(game),before,'Rewardless trial waves cannot pay ordinary monster or partial completion rewards');
+        if(index<definition.waves.length-1){
+          assert.equal(event.phase,'intermission');const choice=game.world.eventObjects.find(object=>object.eventId===event.id&&object.role==='choice'&&object.choice==='push'&&!object.hidden);assert.ok(choice);
+          Object.assign(game.player,{x:choice.x,y:choice.y});const state=clone({phase:event.phase,waveIndex:event.waveIndex,bonus:event.bonus,pending:event.pending});
+          const forged=await f.post(`/api/session/${f.first.token}/command`,{type:'method',name:'interactWorldEvent',args:[choice.id],count:999,bonus:999,participants:[f.first.playerId]});assert.equal(forged.status,400);
+          assert.equal((await f.method(f.first,'interactWorldEvent',choice.id,999)).status,400);
+          assert.equal((await f.method(f.first,'interactWorldEvent',choice.id,'unlimited')).data.accepted,false);assert.deepEqual({phase:event.phase,waveIndex:event.waveIndex,bonus:event.bonus,pending:event.pending},state);
+          assert.equal((await f.method(f.first,'interactWorldEvent',choice.id)).data.accepted,true);assert.equal(event.bonus,Math.min(1.25,1+(index+1)*.05));
+          assert.equal((await f.method(f.first,'interactWorldEvent',choice.id)).data.accepted,false,'The same hidden choice cannot increase the bonus twice');
+        }
+      }
+      assert.equal(event.state,'success');assert.equal(event.waveIndex,definition.waves.length);const boss=definition.waves.at(-1).boss,record=boss.endsWith('_boss')?boss.slice(0,-5):boss;
+      assert.ok(game.world.enemies.some(actor=>actor.eventId===event.id&&actor.type===boss&&!actor.alive));assert.ok(game.journey.records.events.includes(event.id));assert.ok(game.journey.records.bosses.includes(record));
+      const preview=game.worldEventSummary().find(value=>value.id===event.id),before=purse(game);assert.equal(preview.claimable,true);
+      assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,true);assert.equal(game.player.gold,before.gold+preview.reward.gold);assert.equal(game.resources.dust,before.dust+preview.reward.dust);
+      const paid=purse(game);assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,false);assert.deepEqual(purse(game),paid);
+    }
+    const paid=purse(game),journey=clone(game.journey);await f.restart();const restored=f.game(f.first);assert.deepEqual(purse(restored),paid);assert.deepEqual(restored.journey,journey);
+    for(const definition of TRIALS){const event=restored.world.worldEvents.find(value=>value.id===definition.id);assert.equal(event.state,'rewarded');Object.assign(restored.player,{x:event.x,y:event.y});assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,false);}
+  }finally{await f.close();}
+});
+
+test('native HTTP trial rest heals qualified nearby living party members once and excludes distant, dead and unqualified players',async()=>{
+  const f=await fixture();try {
+    const join=async playerName=>{const result=await f.post(`/api/rooms/${f.first.roomCode}/join`,{playerName,classId:'guardian'});assert.equal(result.status,201);return result.data;};
+    const distant=await join('Fernwacht'),fallen=await join('Gefallene'),game=f.game(f.first);establishLegacyProgress(game);const event=await startTrial(f,TRIALS[0].id);
+    for(const session of [f.second,distant,fallen]){const ally=f.game(session);establishLegacyProgress(ally);Object.assign(ally.player,{x:event.x,y:event.y});}
+    f.step(6.04);for(const session of [f.first,f.second,distant,fallen])assert.ok(event.participants.includes(session.playerId),'Participation is earned by actual time near the active trial');
+    assert.ok(eventActors(game,event).length);await killEventActors(f,event);assert.equal(event.phase,'intermission');
+    const newcomer=await join('Spätankunft'),sessions=[f.first,f.second,distant,fallen,newcomer];
+    for(const session of sessions){const ally=f.game(session);ally.player.level=100;ally.player.hp=ally.stats().maxHp*.35;ally.player.mana=ally.stats().mana*.25;Object.assign(ally.player,{x:event.x,y:event.y});}
+    Object.assign(f.game(distant).player,{x:event.x+300});f.game(fallen).dead=true;f.game(fallen).player.hp=0;f.game(fallen).player.mana=0;
+    assert.equal(event.participants.includes(newcomer.playerId),false,'An arriving bystander has not earned participation');
+    const rest=game.world.eventObjects.find(object=>object.eventId===event.id&&object.role==='choice'&&object.choice==='rest'&&!object.hidden);assert.ok(rest);
+    const before=sessions.map(session=>({hp:f.game(session).player.hp,mana:f.game(session).player.mana}));
+    Object.assign(game.player,{x:rest.x+86,y:rest.y});assert.equal((await f.method(f.first,'interactWorldEvent',rest.id)).data.accepted,false,'A choice cannot be issued outside its real interaction radius');
+    assert.deepEqual(sessions.map(session=>({hp:f.game(session).player.hp,mana:f.game(session).player.mana})),before);
+    Object.assign(game.player,{x:rest.x,y:rest.y});assert.equal((await f.method(f.first,'interactWorldEvent',rest.id)).data.accepted,true);assert.equal(event.phase,'wave-warning');assert.equal(event.bonus,1);
+    sessions.forEach((session,index)=>{const ally=f.game(session),eligible=index<2;assert.equal(ally.player.hp,before[index].hp+(eligible?ally.stats().maxHp*.2:0));assert.equal(ally.player.mana,before[index].mana+(eligible?ally.stats().mana*.15:0));});
+    assert.equal(f.game(fallen).dead,true);assert.equal(event.participants.includes(newcomer.playerId),false);
+    const healed=sessions.map(session=>({hp:f.game(session).player.hp,mana:f.game(session).player.mana}));assert.equal((await f.method(f.first,'interactWorldEvent',rest.id)).data.accepted,false);assert.deepEqual(sessions.map(session=>({hp:f.game(session).player.hp,mana:f.game(session).player.mana})),healed);
+  }finally{await f.close();}
+});
+
+test('a legacy thirty-activity HTTP room retains canonical layout and paid history while new trials restore idle and interrupted trials fail safely',async()=>{
+  const f=await fixture();try {
+    const game=f.game(f.first);establishLegacyProgress(game);await completeWorldEvent(f,'expedition-weisshorn');assert.equal((await f.method(f.first,'claimWorldEvent','expedition-weisshorn')).data.accepted,true);
+    const paid=game.world.worldEvents.find(value=>value.id==='expedition-weisshorn'),history=clone({state:paid.state,run:paid.run,completions:paid.completions,rewardedRuns:paid.rewardedRuns,claimedBy:paid.claimedBy}),before=purse(game);
+    await f.restart(data=>{const room=data.rooms[0];room.world.worldEvents=room.world.worldEvents.filter(event=>loop3EventIds.has(event.id));room.world.eventObjects=room.world.eventObjects.filter(object=>loop3EventIds.has(object.eventId));for(const member of room.members)member.save.world.worldEvents=member.save.world.worldEvents.filter(event=>loop3EventIds.has(event.id));});
+    let restored=f.game(f.first);assert.equal(restored.world.worldEvents.length,WORLD_EVENT_DEFINITIONS.length+EXPEDITIONS.length);assert.deepEqual(purse(restored),before);
+    for(const [id,x,y] of LOOP3_EVENT_LAYOUT){const event=restored.world.worldEvents.find(value=>value.id===id);assert.ok(event);assert.equal(event.x,x);assert.equal(event.y,y);}
+    const oldPaid=restored.world.worldEvents.find(value=>value.id===paid.id);assert.deepEqual({state:oldPaid.state,run:oldPaid.run,completions:oldPaid.completions,rewardedRuns:oldPaid.rewardedRuns,claimedBy:oldPaid.claimedBy},history);
+    Object.assign(restored.player,{x:oldPaid.x,y:oldPaid.y});assert.equal((await f.method(f.first,'claimWorldEvent',oldPaid.id)).data.accepted,false);
+    for(const definition of TRIALS){const event=restored.world.worldEvents.find(value=>value.id===definition.id);assert.equal(event.state,'idle');assert.equal(restored.world.eventObjects.filter(object=>object.id===`${event.id}:start`&&!object.hidden).length,1);assert.equal(restored.world.eventObjects.filter(object=>object.id===`${event.id}:reward`&&object.hidden).length,1);}
+    const interrupted=await startTrial(f,TRIALS[0].id);f.step(6.04);assert.ok(eventActors(restored,interrupted).length);const interruptedPurse=purse(restored);
+    const forged=await f.post(`/api/session/${f.first.token}/command`,{type:'method',name:'claimWorldEvent',args:[interrupted.id],waveIndex:99,state:'success',bonus:99});assert.equal(forged.status,400);await f.restart();
+    restored=f.game(f.first);const failed=restored.world.worldEvents.find(value=>value.id===interrupted.id);assert.equal(failed.state,'failure');assert.ok(failed.readyAt>restored.time);assert.equal(eventActors(restored,failed).length,0);assert.deepEqual(purse(restored),interruptedPurse);
+    Object.assign(restored.player,{x:failed.x,y:failed.y});assert.equal((await f.method(f.first,'claimWorldEvent',failed.id)).data.accepted,false);assert.equal((await f.method(f.first,'interactWorldEvent',`${failed.id}:start`)).data.accepted,false);assert.equal(restored.journey.records.events.includes(failed.id),false);
   }finally{await f.close();}
 });

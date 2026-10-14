@@ -82,6 +82,24 @@ test('local threat capacity includes existing enemies and group additions never 
   updateEncounterDirector(game,.04,party);assert.equal(game.world.encounterDirector.stage,'warning');assert.ok(game.world.encounterDirector.plan.length<=10);assert.ok(game.world.encounterDirector.plan.every(point=>party.every(g=>distance(point,g.player)>=240)));
 });
 
+test('a trial cannot erase an incoming pursuit and its own warned waves pause further wilderness scheduling',()=>{
+  const game=field({level:100,region:'nexusriss'}),canonical=new Game({storage:null});
+  const event=canonical.world.worldEvents.find(e=>e.id==='trial-last-scar');
+  game.world.worldEvents=[event];game.world.eventObjects=canonical.world.eventObjects.filter(o=>o.eventId===event.id);
+  Object.assign(game.player,{x:event.x,y:event.y});const state=warning(game,2),plan=clone(state.plan);
+  assert.equal(game.interactWorldEvent(`${event.id}:start`),false);
+  assert.equal(event.state,'idle');assert.equal(state.stage,'warning');assert.deepEqual(state.plan,plan);
+  tick(game,8.04);assert.ok(actors(game).some(e=>e.alive));
+  // Controlled native damage isolates the scheduling transition, not a fight.
+  for(const actor of actors(game))game.hitEnemy(actor,actor.hp*2,0);
+  game.update(.04);assert.equal(state.stage,'calm');
+  assert.equal(game.interactWorldEvent(`${event.id}:start`),true);state.nextIn=.04;
+  const elapsed=state.elapsed;tick(game,1);
+  assert.equal(state.stage,'calm');assert.equal(state.elapsed,elapsed);assert.equal(state.nextIn,.04);
+  assert.equal(actors(game).length,0);assert.equal(event.phase,'wave-warning');
+  assert.equal(game.world.enemies.filter(e=>e.alive&&e.eventId===event.id).length,0);
+});
+
 test('enemies arriving during the eight-second warning consume the live spawn capacity before materialization',()=>{
   const game=field();warning(game,2);assert.equal(game.world.encounterDirector.plan.length,7);tick(game,7.9);
   for(let index=0;index<12;index++)game.world.enemies.push(createBestiaryEnemy('jade_stalker',`late-existing-${index}`,game.player.x+200,game.player.y+index*6,{level:20}));

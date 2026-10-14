@@ -6,6 +6,8 @@ import { SIDE_QUESTS } from '../src/side-stories.js';
 import { NPCS } from '../src/catalog.js';
 import { REGIONS } from '../src/catalog.js';
 import { NAMED_BOSS_HUNTS } from '../src/encounter-content.js';
+import { TRIALS } from '../src/trial-content.js';
+import { updateWorldEvents } from '../src/world-events.js';
 
 const view=()=>Object.assign(Object.create(GameUI.prototype),{game:new Game({storage:null}),questTab:'available',questContentFilter:'side',questRegionFilter:'all',questSearch:'',questPage:0});
 const ids=html=>[...html.matchAll(/data-quest-id="([^"]+)"/g)].map(match=>match[1]);
@@ -54,7 +56,7 @@ test('journal clamps pages after result shrinkage and renders escaped empty-sear
 });
 
 test('adventures expose every canonical event in bounded six-card pages and filter named boss metadata',()=>{
-  const ui=view(),events=ui.game.worldEventSummary(),found=[];assert.ok(events.length>=26);
+  const ui=view(),events=ui.game.worldEventSummary(),found=[];assert.ok(events.length>=33);
   for(let page=0;page<Math.ceil(events.length/6);page++){ui.adventurePage=page;const html=ui.adventures(),shown=[...html.matchAll(/data-adventure-id="([^"]+)"/g)].map(match=>match[1]);assert.ok(shown.length<=6);found.push(...shown);}
   assert.deepEqual(new Set(found),new Set(events.map(event=>event.id)));
   ui.adventureContentFilter='boss';ui.adventureRegionFilter='nexusriss';ui.adventureSearch=NAMED_BOSS_HUNTS.at(-1).name;ui.adventurePage=100;
@@ -87,4 +89,49 @@ test('participants can claim remaining personal rewards after another player cla
   let html=ui.adventureCard(event,{eventObjects:[]});assert.match(html,/reward-available/);assert.match(html,/Belohnung bereit/);assert.match(html,/data-command="claimWorldEvent" data-id="event-vey"\s*>/);assert.ok(!html.includes('Erneut bereit'));
   html=ui.adventureCard({...event,state:'success',claimable:false,readyAt:0},{eventObjects:[]});assert.ok(!html.includes('data-command="claimWorldEvent"'));assert.match(html,/keine offene Teilnehmerbelohnung/);
   assert.equal(ui.adventureRewardReady(event),true);assert.equal(ui.adventureRewardReady({...event,state:'success',claimable:false}),false);
+});
+
+test('the existing adventure filter exposes all three authored trials with real entry levels and boss finales',()=>{
+  const ui=view();ui.adventureContentFilter='challenge';
+  const html=ui.adventures(),shown=[...html.matchAll(/data-adventure-id="([^"]+)"/g)].map(match=>match[1]);
+  assert.deepEqual(new Set(shown),new Set(TRIALS.map(trial=>trial.id)));assert.equal(shown.length,3);
+  assert.match(html,/Wellenprüfungen · 3/);assert.ok(!html.includes('data-content-type="boss"'));
+  for(const trial of TRIALS){const card=ui.adventureCard(ui.game.worldEventSummary().find(event=>event.id===trial.id),ui.game.world);assert.ok(card.includes(`Stufe ${trial.minLevel}+`));assert.ok(card.includes(`${trial.waves.length} Wellen · Bossfinale`));assert.match(card,/Sechs Sekunden Vorwarnung/);assert.match(card,/data-kind="event"/);}
+  assert.equal(ui.adventureType({mode:'gauntlet'}),'challenge');
+});
+
+function activeTrial() {
+  const ui=view(),game=ui.game,event=game.world.worldEvents.find(event=>event.id===TRIALS[0].id);
+  game.started=true;game.player.level=event.minLevel;game.player.x=event.x;game.player.y=event.y;game.discovered.push(event.region);
+  assert.equal(game.interactWorldEvent(`${event.id}:start`),true);
+  return {ui,game,event,summary:()=>game.worldEventSummary().find(entry=>entry.id===event.id)};
+}
+
+test('trial cards and the HUD model share the actual six-second countdown and expose combat only after warning',()=>{
+  const {ui,game,event,summary}=activeTrial();let state=summary();
+  assert.match(ui.adventureWaveCard(state),/data-phase="wave-warning"/);assert.match(ui.adventureWave(state).compact,/Gegner in 6 s/);
+  assert.match(ui.adventureWave({...state,warningRemaining:6.000000000000002}).compact,/Gegner in 6 s/);assert.equal(ui.adventureWarningSeconds({...state,warningRemaining:2.000000000000002}),2);
+  updateWorldEvents(game.world,3.25,[game.player],3.25);state=summary();assert.match(ui.adventureWave(state).compact,/Gegner in 3 s/);
+  assert.equal(game.world.enemies.filter(enemy=>enemy.eventId===event.id&&enemy.alive).length,0);
+  updateWorldEvents(game.world,2.8,[game.player],6.05);state=summary();assert.equal(state.phase,'wave-combat');assert.match(ui.adventureWaveCard(state),/Im Kampf/);assert.match(ui.adventureWave(state).compact,/Noch 2 Gegner/);
+  assert.ok(!ui.adventureCard(state,game.world).includes('Abenteuer beginnen'));
+});
+
+test('intermission explains the real respite and bonus choices while disabling remote and exact-boundary decisions',()=>{
+  const {ui,game,event,summary}=activeTrial();updateWorldEvents(game.world,6.1,[game.player],6.1);
+  for(const enemy of game.world.enemies.filter(enemy=>enemy.eventId===event.id)){enemy.alive=false;enemy.hp=0;}
+  updateWorldEvents(game.world,.1,[game.player],6.2);const state=summary();assert.equal(state.phase,'intermission');
+  const rest=game.world.eventObjects.find(object=>object.eventId===event.id&&object.choice==='rest'&&!object.hidden);
+  game.player.x=rest.x-85;game.player.y=rest.y;let html=ui.adventureCard(state,game.world);
+  assert.match(html,/Rastphase · 1\/4 Wellen bezwungen/);assert.match(html,/20 % ihres maximalen Lebens/);assert.match(html,/höchstens auf 25 %/);assert.match(html,/data-choice="rest"\s+disabled/);assert.match(html,/Gehe zu diesem Zeichen/);assert.equal(game.interactWorldEvent(rest.id),false);
+  game.player.x=rest.x-80;html=ui.adventureCard(state,game.world);assert.match(html,/data-choice="rest"\s*>Rasten/);assert.match(html,/data-choice="push"\s+disabled/);
+  game.player.hp=game.stats().maxHp*.5;game.player.mana=game.stats().mana*.5;const before={hp:game.player.hp,mana:game.player.mana};
+  assert.equal(game.interactWorldEvent(rest.id),true);assert.ok(game.player.hp>before.hp&&game.player.mana>before.mana);assert.equal(summary().phase,'wave-warning');assert.ok(!ui.adventureChoices(summary(),game.world));
+});
+
+test('a tracked online trial uses authoritative wave metadata without leaking unrelated distant encounters into the HUD',()=>{
+  const {ui,game,event,summary}=activeTrial(),canonical=summary();game.networkWorldEventSummary=[canonical];game.networkActive=true;game.world.worldEvents=[];
+  assert.equal(ui.trackedAdventure(),undefined);game.waypoint={kind:'event',id:event.id};assert.equal(ui.trackedAdventure().id,event.id);
+  assert.match(ui.adventureWave(ui.trackedAdventure()).compact,/Welle 1\/4/);
+  ui.adventureContentFilter='challenge';const html=ui.adventures();assert.match(html,/data-adventure-id="trial-cinderwatch"/);assert.match(html,/data-phase="wave-warning"/);
 });

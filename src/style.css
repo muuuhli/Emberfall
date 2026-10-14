@@ -239,6 +239,28 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 
 .dialogue-quest .dialogue-quest-kind{font-size:10px;line-height:1.6;letter-spacing:.04em;color:#d2b3cb;margin:0 0 13px}@media(any-pointer:coarse),(max-width:900px){.dialogue-quest .dialogue-quest-kind{font-size:11px}}
 
+/* Wave phases share the existing adventure card and measured HUD rail. */
+.adventure-card[data-content-type=challenge] .adventure-kind{color:#dfb5cb}
+.trial-wave-status{margin:18px 0;padding:15px;border:1px solid #866074;background:linear-gradient(135deg,#36202c,#1c141e)}
+.trial-wave-heading{display:flex;align-items:flex-start;gap:9px;color:#ead0dc;font-size:12px;line-height:1.6}
+.trial-wave-heading>svg{height:17px;width:17px;margin-top:2px}
+.trial-wave-detail{font-size:11px;line-height:1.7;color:#c6aab9;margin:9px 0 13px}
+.trial-wave-status[data-phase=wave-warning]{border-color:#c18c59;background:linear-gradient(135deg,#43281e,#201419)}
+.trial-wave-status[data-phase=wave-warning] .trial-wave-heading{color:#f1ca96}
+.trial-wave-status[data-phase=intermission]{border-color:#8da58a;background:linear-gradient(135deg,#243027,#161d1c)}
+.trial-wave-status[data-phase=intermission] .trial-wave-heading{color:#cbe0be}
+.trial-wave-progress{display:flex;gap:7px;flex-wrap:wrap}
+.trial-wave-progress>span{display:grid;place-items:center;width:31px;height:31px;border:1px solid #76606f;background:#19111b;color:#b699ad;font-size:11px}
+.trial-wave-progress>span>svg{height:15px;width:15px}
+.trial-wave-progress>.cleared{background:#27332c;border-color:#819a76;color:#cbe4bc}
+.trial-wave-progress>.current{background:#553028;border-color:#d39b64;color:#f3cd99}
+.event-choice-lock{display:block;font-size:10px;line-height:1.6;color:#c1a28b;margin:9px 0}
+.event-choices [data-choice=rest]{border-color:#849c76;color:#d0dfbe}
+.event-choices [data-choice=push]{border-color:#b37b68;color:#e6bdac}
+.event-choices button:disabled{color:#aa9087;border-color:#685044}
+.tracked-wave-detail{display:block;font-size:10px;line-height:1.6;color:#bba3b1;margin:7px 0 9px}
+@media(any-pointer:coarse),(max-width:900px){.trial-wave-heading{font-size:13px}.trial-wave-detail{font-size:12px}.event-choice-lock{font-size:12px}.trial-wave-progress>span{width:34px;height:34px}.event-choices .small-button{min-height:44px}}
+
 .adventure-toolbar{margin-bottom:22px}.adventure-filters{gap:12px}.adventure-filters>label{flex:1;min-width:0}.adventure-clear{font-size:11px;margin-top:7px}.bounded-adventure-intro{border:1px solid #73513e;background:#211319;padding:16px 18px;gap:20px;margin-bottom:21px}.bounded-adventure-intro h3{font-size:25px;margin-top:4px}.bounded-adventure-intro>button{flex-shrink:0}.adventure-kind{display:flex;align-items:center;gap:6px;color:#d6b082;font-size:9px;letter-spacing:.07em}.adventure-kind svg{height:15px;width:15px}.adventure-card[data-content-type=boss] .adventure-kind{color:#e5a19b}.adventure-facts{display:flex;flex-wrap:wrap;gap:7px 12px;font-size:10px;color:#c8a88f;margin:-5px 0 18px}.adventure-counterplay{border-left:2px solid #b37759;padding:8px 0 8px 12px;margin:16px 0;background:#5b312015}.adventure-counterplay>span{font-size:8px;letter-spacing:.07em;color:#d5a475}.adventure-counterplay>p{font-size:11px;line-height:1.7;color:#dbc0a3;margin:8px 0 0}.adventure-reward-preview{margin:17px 0;border-top:1px solid #76503e;padding-top:13px}.adventure-reward-preview>span{font-size:8px;letter-spacing:.08em;color:#c4a583}.adventure-reward-preview>p{font-size:11px;line-height:1.6;color:#e2bd91;margin:8px 0}.adventure-reward-preview>small{font-size:10px;line-height:1.5;color:#aa8e7d;display:block}.adventure-lock{display:flex;gap:7px;align-items:flex-start;color:#caa08b!important;font-size:11px!important;line-height:1.5!important;margin-top:13px!important}.adventure-lock svg{height:14px;width:14px;margin-top:1px}.bounded-adventure-intro>div>svg{display:none}
 @media(any-pointer:coarse),(max-width:900px){.adventure-kind{font-size:10px}.adventure-facts{font-size:11px}.adventure-counterplay>span,.adventure-reward-preview>span{font-size:9px}.adventure-counterplay>p,.adventure-reward-preview>p{font-size:12px}.adventure-reward-preview>small{font-size:11px}.adventure-lock{font-size:12px!important}.bounded-adventure-intro>button{font-size:12px}}
 @media(max-width:600px){.bounded-adventure-intro{flex-direction:column;align-items:stretch;padding:17px}.bounded-adventure-intro h3{font-size:28px}.bounded-adventure-intro>button{justify-content:center}.adventure-facts{font-size:11px}.adventure-counterplay>p{font-size:13px}.adventure-reward-preview>p{font-size:12px}.adventure-clear{font-size:12px;min-height:44px}}

@@ -40,9 +40,10 @@ function solve(w,id,{risky=false,player,clock=0}={}) {
 }
 
 test('regional events, curated hunts and solo expeditions have distinct rules, visible objects and deterministic placement',()=>{
-  assert.equal(WORLD_EVENT_DEFINITIONS.filter(e=>!NAMED_BOSS_HUNTS.includes(e)).length,16);assert.ok(EXPEDITIONS.length>=4);
+  const regional=WORLD_EVENT_DEFINITIONS.filter(e=>!NAMED_BOSS_HUNTS.includes(e)&&e.contentType!=='challenge');
+  assert.equal(regional.length,16);assert.ok(EXPEDITIONS.length>=4);
   assert.equal(new Set(WORLD_EVENT_DEFINITIONS.map(e=>e.region)).size,16);
-  assert.equal(new Set(WORLD_EVENT_DEFINITIONS.map(e=>e.mode)).size,6);
+  assert.equal(new Set(regional.map(e=>e.mode)).size,6);
   assert.equal(Object.keys(WORLD_EVENT_ENEMIES).length,4+NAMED_BOSS_HUNTS.length);
   const a=world(),b=world();assert.deepEqual(a,b);
   const before=JSON.stringify(a);addWorldEvents(a);assert.equal(JSON.stringify(a),before);

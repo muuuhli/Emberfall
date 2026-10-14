@@ -266,13 +266,16 @@ export class GameUI {
     const destinationPill=document.getElementById('exploration-pill');if(destinationPill){destinationPill.dataset.nearby=String(!!nearby);destinationPill.title=nearby?.label || '';}
     const touchInteract=document.getElementById('touch-interact');
     if(touchInteract){touchInteract.querySelector('span').textContent=nearby?nearby.kind==='npc'?'Sprechen':['node','resource'].includes(nearby.kind)?'Sammeln':'Entdecken':'Entdecken';touchInteract.setAttribute('aria-label',nearby?.label || 'Interagieren, sprechen oder sammeln');touchInteract.title=nearby?.label || 'Gehe näher an eine Person oder Ressource.';}
-    const target=game.waypointTarget?.();
-    this.setText('waypoint-text',target?`${target.label} · ${format(target.distance)} Schritte`:'Jenseits des Feuers wartet die Finsternis');
-    document.getElementById('exploration-pill')?.classList.toggle('waypoint-active',!!target);
-    const eventState=(game.world?.worldEvents || []).filter(event=>event.state==='active'||event.state==='success').map(event=>[event.id,event.state,event.objective?.label,Math.floor(event.objective?.progress || 0)]);
+    const target=game.waypointTarget?.(),eventSummary=game.worldEventSummary?.() || summarizeWorldEvents(game.world || {}),trackedEvent=this.trackedAdventure(eventSummary);
+    const trial=trackedEvent?.state==='active'&&!this.dungeonId()&&Math.hypot(trackedEvent.x-player.x,trackedEvent.y-player.y)<800?this.adventureWave(trackedEvent):null;
+    this.setText('waypoint-text',trial?.compact || (target?`${target.label} · ${format(target.distance)} Schritte`:'Jenseits des Feuers wartet die Finsternis'));
+    const destination=document.getElementById('exploration-pill');
+    destination?.classList.toggle('waypoint-active',!!target || !!trial);
+    if(destination){destination.dataset.adventurePhase=trial?trackedEvent.phase:'';destination.title=trial?`${trackedEvent.name} · ${trial.compact}`:nearby?.label || target?.label || '';}
+    const eventState=eventSummary.filter(event=>event.state==='active'||this.adventureRewardReady(event)).map(event=>[event.id,event.state,event.phase,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]);
     const trackerState = JSON.stringify([game.questState || {},game.contracts,game.trackedQuestId,game.endgame,eventState]);
     if (force || trackerState !== this.lastTracker) { this.lastTracker = trackerState; this.renderTracker(); }
-    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.waypoint,game.trackedQuestId,(game.worldEventSummary?.() || []).map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0)]),game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,this.dungeonId()]);
+    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.waypoint,game.trackedQuestId,eventSummary.map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]),game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,this.dungeonId()]);
     if (force || state !== this.lastState) { this.lastState = state; if (this.activePanel && !['death','victory','reset','settings','party'].includes(this.activePanel)) this.renderPanel(); }
     this.updateParty();
     const now = performance.now();
@@ -409,13 +412,15 @@ export class GameUI {
 
   renderTracker() {
     const quests = [...QUESTS.filter(quest => ['active','ready'].includes(this.game.questState?.[quest.id]?.status)),...(this.game.contracts?.active||[])].sort((a,b)=>Number(b.id===this.game.trackedQuestId)-Number(a.id===this.game.trackedQuestId));
-    const event=(this.game.world?.worldEvents || []).find(event=>event.state==='active'||event.state==='success');
+    const event=this.trackedAdventure(),wave=event?this.adventureWave(event):null;
     const hunt=!event&&!this.game.trackedQuestId?this.game.endgameSummary?.()?.active?.[0]:null;
     const tracker=this.elements['quest-tracker']?.parentElement;
     tracker?.classList.toggle('tracker-expanded',!!this.trackerExpanded);
     const toggle=document.getElementById('tracker-toggle');toggle?.setAttribute('aria-expanded',String(!!this.trackerExpanded));
-    const toggleLabel=document.getElementById('tracker-toggle-label');if(toggleLabel)toggleLabel.textContent=event?`Ereignis · ${event.name}`:hunt?`Jagd · ${hunt.name}`:quests[0]?.title || 'Chronik der Asche';
-    this.elements['quest-tracker'].innerHTML = `${event?`<div class="tracked-event"><span>${event.state==='success'?'BELOHNUNG BEREIT':'EREIGNIS'}</span><h3>${escape(event.name)}</h3><p>${escape(event.objective?.label)}</p>${event.state==='active'?`<b>${format(event.objective?.progress)}/${format(event.objective?.goal)}</b>`:''}<button class="text-button" data-panel="adventures">Ereignis ansehen ${icon('arrow')}</button></div>`:''}${hunt?`<div class="tracked-hunt"><span>${hunt.ready?'JAGDBELOHNUNG BEREIT':'JAGDPFAD'}</span><h3>${escape(hunt.name)}</h3>${hunt.objectives.map(objective=>`<p class="${objective.current>=objective.count?'complete':''}">${escape(objective.name)}${objective.kind==='boss'?' · Bossform':''}${objective.minTier?` · Tiefe ${objective.minTier}+`:''}<b>${objective.current}/${objective.count}</b></p>`).join('')}<button class="text-button" data-command="open-hunts">Jagdziele ansehen ${icon('arrow')}</button></div>`:''}` + (quests.length ? quests.slice(0,event||hunt?1:3).map(quest => {
+    const eventLabel=event?`${wave?'Prüfung':'Ereignis'} · ${event.name}${wave?` · ${wave.compact}`:''}`:'';
+    const toggleLabel=document.getElementById('tracker-toggle-label');if(toggleLabel)toggleLabel.textContent=eventLabel || (hunt?`Jagd · ${hunt.name}`:quests[0]?.title || 'Chronik der Asche');
+    toggle?.setAttribute('aria-label',eventLabel || 'Chronik öffnen');
+    this.elements['quest-tracker'].innerHTML = `${event?`<div class="tracked-event"><span>${this.adventureRewardReady(event)?'BELOHNUNG BEREIT':wave?'WELLENPRÜFUNG':'EREIGNIS'}</span><h3>${escape(event.name)}</h3><p>${escape(wave?.compact || event.objective?.label)}</p>${wave?`<small class="tracked-wave-detail">${escape(wave.detail)}</small>`:event.state==='active'?`<b>${format(event.objective?.progress)}/${format(event.objective?.goal)}</b>`:''}<button class="text-button" data-panel="adventures">${wave?'Prüfung':'Ereignis'} ansehen ${icon('arrow')}</button></div>`:''}${hunt?`<div class="tracked-hunt"><span>${hunt.ready?'JAGDBELOHNUNG BEREIT':'JAGDPFAD'}</span><h3>${escape(hunt.name)}</h3>${hunt.objectives.map(objective=>`<p class="${objective.current>=objective.count?'complete':''}">${escape(objective.name)}${objective.kind==='boss'?' · Bossform':''}${objective.minTier?` · Tiefe ${objective.minTier}+`:''}<b>${objective.current}/${objective.count}</b></p>`).join('')}<button class="text-button" data-command="open-hunts">Jagdziele ansehen ${icon('arrow')}</button></div>`:''}` + (quests.length ? quests.slice(0,event||hunt?1:3).map(quest => {
       const state = this.game.questState[quest.id]||quest;
       const isReady = state.status === 'ready' || quest.objectives.every((objective,index) => (state.counts?.[index] || 0) >= objective.count);
       const giver=quest.giver?NPCS.find(npc=>npc.id===quest.giver):this.game.contractGiver?.(quest.region);
@@ -740,7 +745,50 @@ export class GameUI {
   }
 
   adventureType(event) {
-    return event.contentType || (event.mode==='expedition'?'expedition':event.mode==='boss_hunt'?'boss':'event');
+    return event.contentType || (event.mode==='expedition'?'expedition':event.mode==='boss_hunt'?'boss':event.mode==='gauntlet'?'challenge':'event');
+  }
+
+  trackedAdventure(events=this.game.worldEventSummary?.() || summarizeWorldEvents(this.game.world || {})) {
+    const local=new Set((this.game.world?.worldEvents || []).map(event=>event.id)),waypoint=this.game.waypoint;
+    return events.filter(event=>(event.state==='active'||this.adventureRewardReady(event))&&(!this.game.networkActive||local.has(event.id)||waypoint?.kind==='event'&&waypoint.id===event.id)).sort((a,b)=>{
+      const pinned=event=>Number(waypoint?.kind==='event'&&waypoint.id===event.id);
+      const distance=event=>Math.hypot(event.x-this.game.player.x,event.y-this.game.player.y);
+      return pinned(b)-pinned(a)||distance(a)-distance(b);
+    })[0];
+  }
+
+  adventureWave(event) {
+    if(this.adventureType(event)!=='challenge'||!event.wave?.total)return null;
+    const total=Math.max(1,Math.floor(event.wave.total)),current=Math.floor(clamp(event.wave.current || 1,1,total)),cleared=Math.floor(clamp(event.wave.cleared || 0,0,total));
+    const finale=event.wave.bossFinal&&current===total?' · Bossfinale':'',wave=`Welle ${current}/${total}`;
+    const result={total,current,cleared,heading:`${total} Wellen${event.wave.bossFinal?' · Bossfinale':''}`,compact:`${total} Wellen`,detail:'Sechs Sekunden Vorwarnung vor jeder Welle. Zwischen den Rudeln wählst du vor Ort Rasten oder Drängen.'};
+    if(this.adventureRewardReady(event))return {...result,heading:`Prüfung bestanden · ${total}/${total} Wellen`,compact:'Prüfung bestanden · Beute bereit',detail:'Alle Wellen sind bezwungen. Berge deine Abschlussbeute am Wachtzeichen.'};
+    if(event.state==='failure')return {...result,heading:`Prüfung beendet · ${cleared}/${total} Wellen bezwungen`,compact:'Prüfung gescheitert',detail:'Beim nächsten Versuch beginnst du wieder mit der ersten Welle.'};
+    if(event.state!=='active')return result;
+    if(event.phase==='wave-warning')return {...result,heading:`${wave}${finale} · Start in ${this.adventureWarningSeconds(event)} s`,compact:`${wave} · ${finale?'Boss':'Gegner'} in ${this.adventureWarningSeconds(event)} s`,detail:'Nutze die sechs Sekunden Vorwarnung für deine Aufstellung. Halte eine freie Flanke; die Gegner erscheinen erst nach der Warnung.'};
+    if(event.phase==='intermission')return {...result,heading:`Rastphase · ${cleared}/${total} Wellen bezwungen`,compact:`Rastphase · ${cleared}/${total} geschafft`,detail:'Gehe zum linken Wachtzeichen für Rast oder zum rechten für Drängen. Die nächste Welle beginnt erst nach deiner Wahl.'};
+    return {...result,heading:`${wave}${finale} · Im Kampf`,compact:event.objective?.label || `${wave} · Im Kampf`,detail:event.objective?.label || 'Bezwinge die Gegner dieser Welle.'};
+  }
+
+  adventureWarningSeconds(event) {
+    // Subtracting accumulated clocks can leave a tiny fraction above six.
+    return Math.ceil(clamp((event.warningRemaining || 0)-1e-6,0,6));
+  }
+
+  adventureWaveCard(event) {
+    const wave=this.adventureWave(event);if(!wave)return '';
+    return `<div class="trial-wave-status" data-phase="${escape(event.phase || event.state)}"><div class="trial-wave-heading">${icon(event.phase==='wave-warning'?'flame':event.phase==='intermission'?'heart':'skull')}<strong>${escape(wave.heading)}</strong></div><p class="trial-wave-detail">${escape(wave.detail)}</p><div class="trial-wave-progress" aria-label="${wave.cleared} von ${wave.total} Wellen bezwungen">${Array.from({length:wave.total},(_,index)=>`<span class="${index<wave.cleared?'cleared':event.state==='active'&&index===wave.current-1&&event.phase!=='intermission'?'current':''}" title="Welle ${index+1}${event.wave.bossFinal&&index===wave.total-1?' · Bossfinale':''}">${index<wave.cleared?icon('check'):event.wave.bossFinal&&index===wave.total-1?icon('crown'):index+1}</span>`).join('')}</div></div>`;
+  }
+
+  adventureChoices(event,world) {
+    if(event.state!=='active')return '';
+    const choices=(world.eventObjects || []).filter(object=>object.eventId===event.id&&object.role==='choice'&&!object.active&&!object.hidden);
+    if(!choices.length)return '';
+    return `<div class="event-choices">${choices.map(object=>{
+      const distance=Math.hypot(object.x-this.game.player.x,object.y-this.game.player.y),trial=this.adventureType(event)==='challenge',near=distance<85&&!this.dungeonId()&&(!trial||event.phase==='intermission');
+      const label=trial&&object.choice==='rest'?'Rasten':trial&&object.choice==='push'?'Drängen':'Diesen Weg wählen';
+      return `<article><h4>${escape(object.name)}</h4><p>${escape(object.description)}</p>${near?'':`<small class="event-choice-lock">${this.dungeonId()?'Kehre zuerst aus dem Dungeon zurück.':`Gehe zu diesem Zeichen · ${format(distance)} Schritte.`}</small>`}<button class="small-button" data-command="world-event" data-id="${escape(object.id)}" data-choice="${escape(object.choice || '')}" ${near?'':'disabled'}>${label}</button></article>`;
+    }).join('')}</div>`;
   }
 
   adventureRewardReady(event) { return event.claimable===true || event.claimable!==false&&event.state==='success'; }
@@ -761,8 +809,8 @@ export class GameUI {
     const hint=event.hint || event.counterplay,hintText=Array.isArray(hint)?hint.join(' '):hint,description=hintText?String(event.description || '').replace(hintText,'').trim():event.description,stage=type==='expedition'?`Etappe ${Math.min((event.stageIndex || 0)+1,event.stages || 1)}/${event.stages || 1}`:'';
     const canClaim=ready&&this.game.player.level>=minimum&&!this.dungeonId();
     const locked=this.game.player.level<minimum?`Benötigt Stufe ${minimum}.`:!ready&&party<required?`Mindestens ${required} Reisende müssen gemeinsam aufbrechen.`:!ready&&cooldown?`Erneut bereit in ${Math.ceil(cooldown/60)} Min.`:!ready&&event.claimable===false&&['success','rewarded'].includes(event.state)?'Für diesen Abschluss hast du keine offene Teilnehmerbelohnung.':'';
-    const startId=point.role==='start'?point.id:`${event.id}:start`;
-    return `<article class="adventure-card ${event.state} ${ready?'reward-available':''}" data-adventure-id="${escape(event.id)}" data-content-type="${escape(type)}"><div class="adventure-heading"><div class="adventure-kind">${icon(glyphs[type] || 'portal')}<span>${types[type] || 'ABENTEUER'}${stage?` · ${stage}`:''}</span></div><span class="event-state">${ready?'Belohnung bereit':states[event.state] || 'Entdecken'}</span><h3>${escape(event.name)}</h3></div><div class="adventure-facts"><span>${escape(region?.name || 'Unbekannte Wege')}</span><span>Stufe ${minimum}+</span><span>${required>1?`${required} Reisende`:'Allein oder gemeinsam'}</span>${event.repeatable?'<span>Wiederholbar</span>':''}</div><p>${escape(description)}</p>${hint?`<div class="adventure-counterplay"><span>${type==='boss'?'SO BESTEHST DU DIE BOSSJAGD':'DEIN WEG DURCH DAS ABENTEUER'}</span><p>${escape(hintText)}</p></div>`:''}${event.objective&&(event.state!=='idle'||event.objective.label!==event.description)?`<div class="event-objective">${icon(ready?'check':'marker')}<span>${escape(event.objective.label)}</span>${event.state!=='idle'?`<b>${format(event.objective.progress)}/${format(event.objective.goal)}</b>`:''}</div>${event.state==='active'?`<div class="discovery-progress"><i style="width:${clamp(event.objective.progress/Math.max(1,event.objective.goal)*100,0,100)}%"></i></div>`:''}`:''}${event.warning?`<p class="event-warning">${escape(event.warning)}</p>`:''}${this.adventureReward(event)}${locked?`<p class="adventure-lock">${icon('lock')}${escape(locked)}</p>`:''}<div class="adventure-actions"><span>${this.dungeonId()?'Kehre zuerst aus dem Dungeon zurück.':discovered?`${format(distance)} Schritte`:'Region noch nicht entdeckt'}</span><button class="small-button" data-command="waypoint" data-kind="event" data-id="${escape(event.id)}" ${discovered&&!this.dungeonId()?'':'disabled'}>${icon('marker')}Weg markieren</button></div>${distance<=85&&!this.dungeonId()?`<button class="small-button" data-command="${ready?'claimWorldEvent':'world-event'}" data-id="${escape(ready?event.id:startId)}" ${canBegin||canClaim?'':'disabled'}>${ready?'Belohnung bergen':canBegin?'Abenteuer beginnen':`Beginnen · Stufe ${minimum}`}</button>`:''}${event.state==='active'?`<div class="event-choices">${objects.filter(object=>object.eventId===event.id&&object.role==='choice'&&!object.active&&!object.hidden).map(object=>`<article><h4>${escape(object.name)}</h4><p>${escape(object.description)}</p><button class="small-button" data-command="world-event" data-id="${escape(object.id)}" ${Math.hypot(object.x-this.game.player.x,object.y-this.game.player.y)<=85&&!this.dungeonId()?'':'disabled'}>Diesen Weg wählen</button></article>`).join('')}</div>`:''}</article>`;
+    const startId=point.role==='start'?point.id:`${event.id}:start`,wave=this.adventureWave(event);
+    return `<article class="adventure-card ${event.state} ${ready?'reward-available':''}" data-adventure-id="${escape(event.id)}" data-content-type="${escape(type)}"><div class="adventure-heading"><div class="adventure-kind">${icon(glyphs[type] || 'portal')}<span>${types[type] || 'ABENTEUER'}${stage?` · ${stage}`:''}</span></div><span class="event-state">${ready?'Belohnung bereit':states[event.state] || 'Entdecken'}</span><h3>${escape(event.name)}</h3></div><div class="adventure-facts"><span>${escape(region?.name || 'Unbekannte Wege')}</span><span>Stufe ${minimum}+</span><span>${required>1?`${required} Reisende`:'Allein oder gemeinsam'}</span>${event.repeatable?'<span>Wiederholbar</span>':''}</div>${this.adventureWaveCard(event)}<p>${escape(description)}</p>${hint?`<div class="adventure-counterplay"><span>${type==='boss'?'SO BESTEHST DU DIE BOSSJAGD':'DEIN WEG DURCH DAS ABENTEUER'}</span><p>${escape(hintText)}</p></div>`:''}${!wave&&event.objective&&(event.state!=='idle'||event.objective.label!==event.description)?`<div class="event-objective">${icon(ready?'check':'marker')}<span>${escape(event.objective.label)}</span>${event.state!=='idle'?`<b>${format(event.objective.progress)}/${format(event.objective.goal)}</b>`:''}</div>${event.state==='active'?`<div class="discovery-progress"><i style="width:${clamp(event.objective.progress/Math.max(1,event.objective.goal)*100,0,100)}%"></i></div>`:''}`:''}${event.warning?`<p class="event-warning">${escape(event.warning)}</p>`:''}${this.adventureReward(event)}${locked?`<p class="adventure-lock">${icon('lock')}${escape(locked)}</p>`:''}<div class="adventure-actions"><span>${this.dungeonId()?'Kehre zuerst aus dem Dungeon zurück.':discovered?`${format(distance)} Schritte`:'Region noch nicht entdeckt'}</span><button class="small-button" data-command="waypoint" data-kind="event" data-id="${escape(event.id)}" ${discovered&&!this.dungeonId()?'':'disabled'}>${icon('marker')}Weg markieren</button></div>${(ready||event.state==='idle')&&distance<85&&!this.dungeonId()?`<button class="small-button" data-command="${ready?'claimWorldEvent':'world-event'}" data-id="${escape(ready?event.id:startId)}" ${canBegin||canClaim?'':'disabled'}>${ready?'Belohnung bergen':canBegin?'Abenteuer beginnen':`Beginnen · Stufe ${minimum}`}</button>`:''}${this.adventureChoices(event,world)}</article>`;
   }
 
   adventures() {
@@ -988,7 +1036,7 @@ export class GameUI {
     if(name==='adventure-clear-filters'){this.adventureSearch='';this.adventureContentFilter='all';this.adventureRegionFilter='all';this.adventureFilter='all';this.adventurePage=0;this.pendingScrollReset=true;this.renderPanel();return;}
     if(name==='toggle-tracker'){
       if(window.matchMedia('(any-pointer:coarse),(max-width:900px)').matches){
-        const event=(this.game.world?.worldEvents || []).some(event=>event.state==='active'||event.state==='success');
+        const event=this.trackedAdventure();
         if(event)this.togglePanel('adventures');else if(!this.game.trackedQuestId&&this.game.endgameSummary?.()?.active?.length){this.journeyTab='hunts';this.togglePanel('journey');}else this.togglePanel('journal');
       }else{this.trackerExpanded=!this.trackerExpanded;this.renderTracker();}return;
     }

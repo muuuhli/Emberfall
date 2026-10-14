@@ -1,6 +1,7 @@
 import { BESTIARY_ENEMIES, REGION_ENEMY_POOLS, bestiaryCombatStats } from './bestiary.js';
 import { NAMED_BOSS_ENEMIES, NAMED_BOSS_HUNTS } from './encounter-content.js';
 import { EXPEDITION_CONTENT } from './expedition-content.js';
+import { TRIALS } from './trial-content.js';
 
 const alive = value => value && value.hp !== 0 && !value.dead && !value.downed && value.alive !== false;
 const body = value => value?.player || value;
@@ -47,7 +48,7 @@ const REGIONAL_EVENT_DEFINITIONS = Object.freeze([
   { id:'event-sternensund',region:'sternensund',name:'Die Karte aus kaltem Licht',mode:'ritual',rule:'alignment',rotations:[1,2,3],at:[.56,.8],description:'Richte die drei Sternlinsen nach Osten, Süden und Westen. Jede Linse dreht sich im Uhrzeigersinn. Besiege danach die Wächter der zerbrochenen Karte.' },
   { id:'event-nexusriss',region:'nexusriss',name:'Drei Narben der Quelle',mode:'boss_hunt',at:[.52,.68],boss:'abyss_beholder_boss',tracks:3,description:'Schließe die drei Quellnarben nacheinander. Jede Narbe ruft einen Risshetzer. Das Abgrundauge tritt erst hervor, wenn du die dritte bindest.' },
 ]);
-export const WORLD_EVENT_DEFINITIONS = Object.freeze([...REGIONAL_EVENT_DEFINITIONS,...NAMED_BOSS_HUNTS]);
+export const WORLD_EVENT_DEFINITIONS = Object.freeze([...REGIONAL_EVENT_DEFINITIONS,...NAMED_BOSS_HUNTS,...TRIALS]);
 
 const LEGACY_EXPEDITIONS = Object.freeze([
   {id:'expedition-trauerweg',region:'daemmerhain',name:'Der Weg der Trauerglocke',level:3,minLevel:3,at:[.19,.52],mode:'expedition',description:'Ein kurzer Weg durch die Gräber: Wähle, wessen Asche du trägst, durchbrich den Hinterhalt und ordne die drei letzten Namen vor der Trauerglocke.',stages:[{type:'choice',safe:'Die Namen bewahren',risk:'Das Grab plündern'},{type:'ambush',pack:2,traps:2},{type:'ritual',rule:'sequence',symbols:['mond','asche','name']},{type:'boss_hunt',boss:'mourning_bell',tracks:1}]},
@@ -58,7 +59,7 @@ const LEGACY_EXPEDITIONS = Object.freeze([
 export const EXPEDITIONS = Object.freeze([...LEGACY_EXPEDITIONS,...EXPEDITION_CONTENT]);
 // Preserve the placement order of the original twenty activities. New hunts
 // append after them, so saved routes and one-use evidence do not move.
-const allDefinitions = [...REGIONAL_EVENT_DEFINITIONS,...LEGACY_EXPEDITIONS,...NAMED_BOSS_HUNTS,...EXPEDITION_CONTENT];
+const allDefinitions = [...REGIONAL_EVENT_DEFINITIONS,...LEGACY_EXPEDITIONS,...NAMED_BOSS_HUNTS,...EXPEDITION_CONTENT,...TRIALS];
 const definitionOf = event => allDefinitions.find(def => def.id === event.id);
 
 function addObject(world,event,role,x,y,changes={}) {
@@ -110,10 +111,29 @@ export function addWorldEvents(world) {
 }
 
 function stageOf(event) {const def=definitionOf(event);return def.mode==='expedition'?def.stages[event.stageIndex]:{...def,type:def.mode};}
-function wave(world,event,count,{delay=2,boss,type}={}) {
-  event.pending.push({at:event.elapsed+delay,count,boss,type,wave:event.waveSerial++});
+function wave(world,event,count,{delay=2,boss,type,types,hpScale=1,damageScale=1}={}) {
+  event.pending.push({at:event.elapsed+delay,count,boss,type,types,hpScale,damageScale,wave:event.waveSerial++});
   event.warningUntil=event.elapsed+delay;
   return effect('warning',event,boss?'Ein mächtiger Gegner antwortet. Verlasse die rote Fläche!':'Schatten sammeln sich. Bereite dich auf den Angriff vor.',{duration:delay,radius:170});
+}
+function scheduleTrialWave(world,event) {
+  const def=definitionOf(event),plan=def.waves[event.waveIndex];
+  if(!plan)return finishEvent(world,event);
+  const count=plan.boss?1:Math.min(7,plan.count+(event.pushNext?1:0));
+  event.pushNext=false;event.phase='wave-warning';
+  event.objective={type:'gauntlet',progress:event.waveIndex,goal:def.waves.length,
+    label:`Welle ${event.waveIndex+1} / ${def.waves.length} · ${plan.boss?'Bossfinale':`${count} Gegner`} in sechs Sekunden. Bereite deine freie Flanke vor.`};
+  return [wave(world,event,count,{...plan,delay:6})];
+}
+function trialIntermission(world,event) {
+  event.phase='intermission';
+  addObject(world,event,'choice',event.x-75,event.y,{choice:'rest',name:'Am Wachtzeichen rasten',label:'Rasten · 20 % Leben und 15 % Mana',
+    description:'Nahe lebende Teilnehmer erhalten einmalig 20 % ihres maximalen Lebens und 15 % ihres maximalen Manas. Danach folgt die nächste Warnung.'});
+  addObject(world,event,'choice',event.x+75,event.y,{choice:'push',name:'Die nächste Welle fordern',label:'Drängen · mehr Gegner, mehr Abschlussbeute',
+    description:'Der Abschlussbonus steigt um 5 %, höchstens auf 25 %. Nur das nächste normale Rudel erhält einen zusätzlichen Gegner, höchstens sieben; das Bossfinale bleibt ein einzelner Boss.'});
+  event.objective={type:'gauntlet',progress:event.waveIndex,goal:definitionOf(event).waves.length,
+    label:`Welle ${event.waveIndex} bezwungen. Wähle am linken Zeichen Rast oder am rechten Zeichen Drängen.`};
+  return [effect('notice',event,event.objective.label)];
 }
 function setupStage(world,event) {
   world.eventObjects=world.eventObjects.filter(o=>o.eventId!==event.id||['start','reward'].includes(o.role));
@@ -122,7 +142,10 @@ function setupStage(world,event) {
   if(!stage)return finishEvent(world,event);
   event.stageType=stage.type;
   const x=event.x,y=event.y;
-  if(stage.type==='choice'||stage.type==='seal_choice') {
+  if(stage.type==='gauntlet') {
+    event.pushNext=false;
+    return scheduleTrialWave(world,event);
+  } else if(stage.type==='choice'||stage.type==='seal_choice') {
     const options=stage.options||[{id:'safe',name:stage.safe,text:'Weniger Gegner; normale Beute.',bonus:1},{id:'risk',name:stage.risk,text:'Mehr Gegner und stärkere Bosse; 25 % mehr Abschlussbeute.',bonus:1.25}];
     options.forEach((option,index)=>addObject(world,event,'choice',x+(index?75:-75),y,{label:option.name,name:option.name,description:option.text,choice:option.id}));
     event.objective={type:'choice',progress:0,goal:1,label:'Entscheide dich am linken oder rechten Zeichen.'};
@@ -184,6 +207,9 @@ export function interactWorldEvent(world,objectId,values,time=0,{choice}={}) {
   if(object.role==='start') {
     if(event.state==='active')return {success:false,message:event.objective.label,effects:[]};
     if(event.state==='success'||event.state==='rewarded'||time<event.readyAt)return {success:false,message:'Die Region braucht Zeit, bevor dieses Abenteuer erneut beginnt.',effects:[]};
+    const director=world.encounterDirector;
+    if(definitionOf(event).mode==='gauntlet'&&director?.stage!=='calm'&&director?.anchor&&distance(director.anchor,event)<1000)
+      return {success:false,message:'Beende die angekündigte Wildnisjagd oder ziehe dich zurück, bevor du diese Wellenprüfung beginnst.',effects:[]};
     // Remove the previous run's corpses and temporary servants before retrying.
     // Reward history lives in the event record, not in an ever-growing actor list.
     world.enemies=world.enemies.filter(e=>e.eventId!==event.id&&!String(e.summonedBy||'').startsWith(`${event.id}:run:`));
@@ -193,7 +219,14 @@ export function interactWorldEvent(world,objectId,values,time=0,{choice}={}) {
   if(event.state!=='active')return {success:false,message:'Das Abenteuer ist noch nicht aktiv.',effects:[]};
   if(!event.participants.includes(playerId(player))&&event.participants.length<16)event.participants.push(playerId(player));
   const stage=stageOf(event),effects=[];
-  if(object.role==='choice') {
+  if(object.role==='choice'&&stage.type==='gauntlet') {
+    const selected=choice||object.choice;
+    if(event.phase!=='intermission'||!['rest','push'].includes(selected)||selected!==object.choice)return {success:false,message:'Wähle die Entscheidung am passenden Wachtzeichen.',effects:[]};
+    for(const prop of ownObjects(world,event).filter(o=>o.role==='choice'))prop.hidden=true;
+    if(selected==='rest')effects.push(effect('respite',event,'Die Wachtzeichen geben nahen Teilnehmern neue Kraft.'));
+    else {event.pushNext=true;event.bonus=Math.min(1.25,Math.round((event.bonus+.05)*100)/100);}
+    effects.push(...scheduleTrialWave(world,event));
+  } else if(object.role==='choice') {
     const optionId=choice||object.choice;
     const options=stage.options||[{id:'safe',bonus:1},{id:'risk',bonus:1.25}];
     const option=options.find(o=>o.id===optionId);
@@ -231,7 +264,7 @@ function spawnWave(world,event,pending) {
   let count=pending.count;
   if(stage.type==='ambush')count=Math.max(1,count-event.objective.progress);
   for(let i=0;i<count;i++) {
-    const type=pending.boss||pending.type||pool[(pending.wave+i)%pool.length],def=WORLD_EVENT_ENEMIES[type]||BESTIARY_ENEMIES[type];
+    const type=pending.boss||pending.types?.[i%pending.types.length]||pending.type||pool[(pending.wave+i)%pool.length],def=WORLD_EVENT_ENEMIES[type]||BESTIARY_ENEMIES[type];
     if(!def)continue;
     const angle=(i+.35)*Math.PI*2/count+pending.wave*.73,radius=pending.boss?175:170;
     const x=clamp(event.x+Math.cos(angle)*radius,30,world.width-30),y=clamp(event.y+Math.sin(angle)*radius,30,world.height-30);
@@ -240,6 +273,7 @@ function spawnWave(world,event,pending) {
       boss:def.boss,bestiary:true,eventId:event.id,eventRun:event.run,challengeId:event.id,rewardless:true,xp:0,gold:0,alive:true,respawnAt:Infinity,phase:'idle',attackTimer:1,aggro:true,region:event.region,
       name:def.name};
     if(!def.boss) {actor.hp=actor.maxHp=Math.round(actor.maxHp*.65);actor.damage=Math.max(1,Math.round(actor.damage*.8));}
+    if(stage.type==='gauntlet'&&!def.boss) {actor.hp=actor.maxHp=Math.round(actor.maxHp*(pending.hpScale||1));actor.damage=Math.max(1,Math.round(actor.damage*(pending.damageScale||1)));}
     if(event.risky&&def.boss)actor.hp=actor.maxHp=Math.round(actor.maxHp*1.2);
     world.enemies.push(actor);
   }
@@ -267,7 +301,7 @@ export function updateWorldEvents(world,dt,values,time=0) {
       if(event.contributionSeconds[id]>=2&&!event.participants.includes(id)&&event.participants.length<16)event.participants.push(id);
     }
     event.absent=present.length?0:event.absent+dt;
-    if(event.absent>20||event.elapsed>300) {effects.push(...failEvent(world,event,event.absent>20?'Die Wacht wurde verlassen. Das Abenteuer ist gescheitert.':'Das Abenteuer versank in der Nacht.',time));continue;}
+    if(event.absent>20||event.elapsed>(definitionOf(event).timeout||300)) {effects.push(...failEvent(world,event,event.absent>20?'Die Wacht wurde verlassen. Das Abenteuer ist gescheitert.':'Das Abenteuer versank in der Nacht.',time));continue;}
     for(const pending of event.pending.filter(p=>p.at<=event.elapsed))spawnWave(world,event,pending);
     event.pending=event.pending.filter(p=>p.at>event.elapsed);
     const enemies=ownEnemies(world,event),stage=stageOf(event),props=ownObjects(world,event);
@@ -278,7 +312,17 @@ export function updateWorldEvents(world,dt,values,time=0) {
       if(target.hp<=0) {effects.push(...failEvent(world,event,`${target.name} wurde der Nacht überlassen.`,time));continue;}
     }
     let done=false;
-    if(stage.type==='defend') {
+    if(stage.type==='gauntlet') {
+      if(event.pending.length&&!enemies.length) {
+        event.objective.label=`Welle ${event.waveIndex+1} / ${stage.waves.length} · ${stage.waves[event.waveIndex]?.boss?'Bossfinale':'Angreifer'} in ${Math.ceil(Math.max(0,event.warningUntil-event.elapsed-1e-9))} Sekunden. Halte eine freie Flanke.`;
+      } else if(enemies.length) {
+        event.phase='wave-combat';event.objective.label=`Welle ${event.waveIndex+1} / ${stage.waves.length} · Noch ${enemies.length} ${stage.waves[event.waveIndex]?.boss?'Boss':'Gegner'}.`;
+      } else if(!event.pending.length&&event.phase!=='intermission') {
+        event.waveIndex++;
+        if(event.waveIndex>=stage.waves.length)effects.push(...finishEvent(world,event));
+        else effects.push(...trialIntermission(world,event));
+      }
+    } else if(stage.type==='defend') {
       const elapsed=event.elapsed-event.stageStartedAt,duration=stage.duration;
       if(present.some(p=>distance(p,target)<160))event.objective.progress=Math.min(duration,event.objective.progress+dt);
       const waves=stage.waves||[2,2],index=Math.min(waves.length-1,Math.floor(elapsed/(duration/waves.length)));
@@ -335,7 +379,7 @@ export function worldEventRewardPreview(event,value) {
   const factor=repeatFactor*(ongoing?event.bonus||1:1);
   return {xp:Math.round((70+event.level**2*3)*factor*xpFactor),gold:Math.round((18+event.level*5)*factor),
     dust:Math.max(1,Math.round((2+event.level/12)*factor)),lootLevel:event.level,lootTier:event.mode==='expedition'?2:1,
-    boss:event.mode==='expedition'||event.mode==='boss_hunt',repeatFactor};
+    boss:['expedition','boss_hunt','gauntlet'].includes(event.mode),repeatFactor};
 }
 
 export function summarizeWorldEvents(world,value) {
@@ -344,7 +388,9 @@ export function summarizeWorldEvents(world,value) {
     return {id,name,description,region,level,minLevel,x,y,mode,state,status:statusNames[state],phase,objective:{...objective},readyAt,stageIndex,
       stages:mode==='expedition'?def.stages.length:1,contentType:def.contentType||(mode==='expedition'?'expedition':mode==='boss_hunt'?'boss':'event'),
       partyRequired:def.partyRequired||1,repeatable:def.repeatable!==false,hint:def.hint||'',reward:worldEventRewardPreview(event,player),
-      claimable:!!player&&['success','rewarded'].includes(state)&&event.participants.includes(playerId(player))&&!event.claimedBy.includes(playerId(player))};
+      claimable:!!player&&['success','rewarded'].includes(state)&&event.participants.includes(playerId(player))&&!event.claimedBy.includes(playerId(player)),
+      ...(mode==='gauntlet'?{wave:{current:Math.min(def.waves.length,event.phase==='intermission'?event.waveIndex:(event.waveIndex||0)+1),total:def.waves.length,cleared:event.waveIndex||0,bossFinal:!!def.waves.at(-1).boss},
+        warningRemaining:Math.max(0,Math.min(6,(event.warningUntil||0)-event.elapsed))}:{})};
   });
 }
 
@@ -357,7 +403,7 @@ export function validateWorldEventSave(entries) {
     ['run','completions','rewardedRuns'].every(k=>Number.isInteger(e[k])&&e[k]>=0&&e[k]<=100000)&&Number.isFinite(e.readyAt)&&e.readyAt>=0&&
     Array.isArray(e.claimedBy)&&Array.isArray(e.participants)&&e.participants.length<=16&&e.claimedBy.length<=16&&e.claimedBy.every(id=>e.participants.includes(id))&&
     [...e.claimedBy,...e.participants].every(id=>typeof id==='string'&&id.length<100)&&new Set(e.claimedBy).size===e.claimedBy.length&&new Set(e.participants).size===e.participants.length&&
-    Number.isFinite(e.bonus)&&e.bonus>=1&&e.bonus<=1.5);
+    Number.isFinite(e.bonus)&&e.bonus>=1&&e.bonus<=(allDefinitions.find(d=>d.id===e.id).mode==='gauntlet'?1.25:1.5));
 }
 export function restoreWorldEvents(world,entries=[],time=0) {
   if(!validateWorldEventSave(entries))throw new TypeError('Ungültige gespeicherte Weltaktivität.');

@@ -48,6 +48,7 @@ function protectedPoint(game,point){
 }
 function eligible(game){
   if(game.dead||game.worldMode==='pvp'||game.dungeonInstance||game.player.level<4||game.inSettlement())return false;
+  if(game.world.worldEvents?.some(event=>event.mode==='gauntlet'&&event.state==='active'&&distance(event,game.player)<800))return false;
   const region=game.regionAt();
   return !!REGION_ENEMY_POOLS[region.id]&&game.player.level>=region.level-4;
 }

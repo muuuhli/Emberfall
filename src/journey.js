@@ -182,6 +182,8 @@ export function restoreJourneyState(saved,{level=1,legacy}={}) {
     for(const entry of legacy.world?.interactions||[])if(entry.used)add('encounters',entry.id);
     for(const id of EVENT_IDS)if(legacy.ledger?.[`world_event:${id}`]>0||(legacy.world?.worldEvents||[]).some(entry=>entry.id===id&&entry.claimedBy?.includes(legacy.player?.id||'local'))) {
       add('events',id);
+      const definition=WORLD_EVENT_DEFINITIONS.find(event=>event.id===id),boss=definition?.boss||(definition?.mode==='gauntlet'?definition.waves.at(-1)?.boss:null);
+      if(boss)add('bosses',boss.endsWith('_boss')?boss.slice(0,-5):boss);
       for(const stage of EXPEDITIONS.find(expedition=>expedition.id===id)?.stages||[])if(stage.boss)add('bosses',stage.boss);
     }
     state.reputation=computeJourneyReputation(state);
@@ -206,8 +208,8 @@ export function advanceJourney(game,kind,target,amount=1,context={}) {
   const map={explore:'explored',rescue:'rescued',boss:'bosses',dungeon:'dungeons',puzzle:'puzzles',craft:'crafted',contract:'contracts',revive:'revives',world_event:'events'};
   if(map[kind])add(map[kind],kind==='boss'&&typeof target==='string'&&target.endsWith('_boss')?target.slice(0,-5):target);
   if(kind==='world_event'){
-    const definition=WORLD_EVENT_DEFINITIONS.find(event=>event.id===target);
-    if(definition?.boss)add('bosses',definition.boss.endsWith('_boss')?definition.boss.slice(0,-5):definition.boss);
+    const definition=WORLD_EVENT_DEFINITIONS.find(event=>event.id===target),boss=definition?.boss||(definition?.mode==='gauntlet'?definition.waves.at(-1)?.boss:null);
+    if(boss)add('bosses',boss.endsWith('_boss')?boss.slice(0,-5):boss);
     for(const stage of EXPEDITIONS.find(expedition=>expedition.id===target)?.stages||[])if(stage.boss)add('bosses',stage.boss);
   }
   if(kind==='dungeon'&&(context.coop===true||context.partySize>=2||DUNGEONS.some(d=>d.id===target&&d.raid)))add('coopDungeons',target);
