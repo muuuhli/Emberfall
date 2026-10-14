@@ -2,6 +2,15 @@
 
 Ein großes kooperatives 2D-Action-RPG mit acht unterschiedlichen Klassen, Fortschritt bis Level 100, Rätseldungeons, schweren Gruppenbossen, tiefem Loot, mehr Quests, besserer Grafik/Animation und mindestens 200 Stunden sinnvoller Spielentwicklung. Das Ziel bleibt aktiv. Eine externe 5/5-Bewertung und 200 Stunden Spielqualität werden nicht behauptet.
 
+## Version 5.1: Aschenjagd
+
+- Ein priorisierter Hinweis statt mehrerer überlagernder Meldungen, gebündelte Beute-/Questmeldungen und Meldungsverlauf in den Einstellungen.
+- Mobil gemeinsamer Statusbereich und gemessener Abstand zur Touchsteuerung, kompakte Chronik, Wegziel, Interaktion und Gefahranzeige.
+- Persistente lokale Jagdgruppen mit acht Sekunden Ankündigung, wechselnder Stärke bis zur Blutnacht, zwei verstärkten Gegnern und begrenzter Anzahl statt ungehemmtem Dauerspawn.
+- Koordinierte Packflanken und Fernkampfpositionen, angekündigte schnellere Championphasen; ab Stufe 12 kürzere Trefferschonzeit und 32 Sekunden gewöhnliche Respawnzeit bei ausreichendem Abstand.
+- Dörfer, Anfänger, PvP und Dungeoninstanzen bleiben durch echte Spielregeln geschützt. Server bestimmt den Jagdzustand und stellt kanonische Kampfwerte nach Neustarts wieder her.
+- Konkrete Prüfungen und Grenzen: [Mobil- und Schwierigkeitsbericht](docs/pressure-quality.md).
+
 ## Version 5.0: Schwarzer Horizont
 
 - Geschichtete originale Musik für Regionen, Dungeons, Bosse und Duelle; acht Klassenklänge, Raumklang, begrenzte Stimmen und getrennte gespeicherte Lautstärken.

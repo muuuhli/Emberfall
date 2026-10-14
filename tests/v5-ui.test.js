@@ -40,9 +40,9 @@ test('PvP result and sound settings offer a return path and no PvE save or load 
 
 test('finished arena uses its result dialog for ordinary notices and still shows genuine errors',()=>{
   const ui=view(),appended=[];ui.game.worldMode='pvp';ui.game.pvp={duel:{state:'finished'}};
-  ui.notices=[];ui.elements={'notice-stack':{appendChild:notice=>appended.push(notice)}};
+  ui.notices=[];ui.elements={'notice-stack':{appendChild:notice=>appended.push(notice),setAttribute(){}}};
   const originalDocument=globalThis.document,originalTimeout=globalThis.setTimeout;
-  globalThis.document={createElement:()=>({classList:{add(){}},remove(){this.removed=true;}})};
+  globalThis.document={getElementById:()=>null,createElement:()=>{const text={textContent:''};return {classList:{add(){}},querySelector:()=>text,get textContent(){return text.textContent;},remove(){this.removed=true;}};}};
   globalThis.setTimeout=()=>0;
   try{
     for(const tone of ['info','quest','success'])GameUI.prototype.showNotice.call(ui,'Duell beendet; deine Reise bleibt erhalten.',tone);

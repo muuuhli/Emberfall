@@ -113,6 +113,7 @@ export class NetworkClient {
     game.pvp=snapshot.pvp||null;game.pvpStats=isPvp?snapshot.pvpStats||null:null;
     game.networkInteractionSummary=snapshot.authoritativeInteractionSummary||null;
     game.networkWorldEventSummary=snapshot.authoritativeWorldEventSummary||null;
+    game.networkEncounterDirectorSave=isPvp?null:snapshot.authoritativeEncounterDirectorSave||null;
     game.worldMode=snapshot.worldMode;game.activeDungeon=snapshot.activeDungeon;game.paused=!!game.dead;
     if(snapshot.npcs)game.npcs=snapshot.npcs;
     const previousParty=new Map(this.players.map(p=>[p.id,p]));this._targets.clear();
@@ -182,6 +183,7 @@ export class NetworkClient {
     this.game.network=null;this.game.networkActive=false;this.game.partyPlayers=[];this.game.otherPlayers=[];this.game.party=[];
     this.game.networkInteractionSummary=null;
     this.game.networkWorldEventSummary=null;
+    this.game.networkEncounterDirectorSave=null;
     this.game.pvp=null;this.game.pvpStats=null;this.game._pvpTravelSave=null;this.game.worldMode='overworld';
     if(this._offlineSave){this.game.applySave(this._offlineSave);this.game.started=this._offlineStarted;this.game.paused=false;this._offlineSave=null;}
     if(forget)try{this.storage?.removeItem(SESSION_KEY);}catch{}

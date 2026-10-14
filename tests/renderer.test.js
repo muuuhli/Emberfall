@@ -314,3 +314,31 @@ test('decorative chunks are reused, bounded, and keep interactive locations clea
   for(let i=0;i<80;i++){renderer.bounds={x:(i%15)*512,y:Math.floor(i/15)*512,w:512,h:512};renderer.worldDecorations();}
   assert.ok(renderer.decorationChunks.size<=TERRAIN_CACHE_LIMIT);assert.ok([...renderer.decorationChunks.values()].every(props=>props.length<=3));
 }));
+
+test('director spawn rings keep exact positions and radii and count down from the authoritative lifetime',()=>environment(({canvas})=>{
+  const view=canvas(),renderer=new Renderer(view,makeWorld()),game=gameFor(makeWorld()),warning={directorId:'director-1',kind:'warning',x:920,y:1120,radius:34,life:6,maxLife:8,windup:true,color:'#c883b1'};
+  view.context.calls.length=0;renderer.hazard(view.context,warning,game);
+  const arcs=view.context.calls.filter(call=>call.method==='arc');assert.equal(arcs.length,2);assert.deepEqual(arcs[0].args,[920,1120,34,0,Math.PI*2]);assert.deepEqual(arcs[1].args,[920,1120,34,-Math.PI/2,0]);
+  assert.ok(!view.context.calls.some(call=>call.method==='fillText'),'The world ring does not duplicate the HUD countdown');
+  const still=view.context.calls.map(call=>({...call,args:[...call.args]}));game.time+=20;view.context.calls.length=0;renderer.hazard(view.context,warning,game);assert.deepEqual(view.context.calls,still,'Reduced motion adds no decorative movement');
+  warning.life=2;view.context.calls.length=0;renderer.hazard(view.context,warning,game);assert.deepEqual(view.context.calls.filter(call=>call.method==='arc')[1].args,[920,1120,34,-Math.PI/2,Math.PI]);
+}));
+
+test('mobile director bearings use the closest real marker per pack and remain bounded without text',()=>environment(({canvas})=>{
+  const view=canvas();view.getBoundingClientRect=()=>({width:360,height:580,left:0,top:0});const world=makeWorld(),renderer=new Renderer(view,world),game=gameFor(world);game.player.x=1000;game.player.y=1000;renderer.camera={x:1000,y:1000};
+  const warning=(id,x,y,life=8)=>({directorId:id,kind:'warning',x,y,life,maxLife:8,radius:34}),route={label:'Mira'};renderer.activeWaypoint=route;
+  game.hazards=[warning('a',1250,1000),warning('a',1400,1100),warning('b',1000,650),warning('c',800,1000),warning('d',1000,1400),warning('far',1800,1000),warning('expired',900,1000,0)];
+  view.context.calls.length=0;renderer.directorIndicators(view.context,game);const angles=view.context.calls.filter(call=>call.method==='rotate').map(call=>call.args[0]);assert.equal(angles.length,3);assert.deepEqual(angles.sort((a,b)=>a-b),[-Math.PI/2,0,Math.PI]);
+  assert.ok(!view.context.calls.some(call=>call.method==='fillText'));assert.equal(renderer.activeWaypoint,route,'Pack bearings never replace the travel route');
+  game.hazards=[warning('visible',1010,1000),warning('visible',1400,1000),warning('far',1800,1000)];view.context.calls.length=0;renderer.directorIndicators(view.context,game);assert.ok(!view.context.calls.some(call=>call.method==='rotate'),'A visible nearest marker needs no additional arrow');
+  game.worldMode='pvp';game.hazards=[warning('a',1250,1000)];view.context.calls.length=0;renderer.directorIndicators(view.context,game);assert.equal(view.context.calls.length,0,'PvE signals do not leak into a duel');
+}));
+
+test('PvE elites keep their native silhouette and gain a red crown, larger HP bar and explicit name',()=>environment(({canvas})=>{
+  const world=makeWorld(),view=canvas(),renderer=new Renderer(view,world),game=gameFor(world),enemy={...world.enemies[0],x:game.player.x+200,y:game.player.y,hp:100,maxHp:200,elite:true,aggro:true,level:8,name:'Aschenjäger'};
+  view.context.calls.length=0;renderer.enemy(view.context,enemy,game);
+  assert.ok(view.context.calls.some(call=>call.method==='ellipse'&&call.args[0]===enemy.x&&call.args[1]===enemy.y+2&&call.args[2]===27&&call.args[3]===10));
+  assert.ok(view.context.calls.some(call=>call.method==='roundRect'&&call.args[2]===62&&call.args[3]===5));assert.ok(view.context.calls.some(call=>call.method==='fillText'&&call.args[0]==='Elite · Aschenjäger · 8'));
+  assert.equal(enemy.hp,100);assert.equal(enemy.maxHp,200);assert.equal(enemy.x,game.player.x+200,'An elite badge never enlarges or moves the actor');
+  enemy.elite=false;view.context.calls.length=0;renderer.enemy(view.context,enemy,game);assert.ok(view.context.calls.some(call=>call.method==='roundRect'&&call.args[2]===43&&call.args[3]===5));assert.ok(!view.context.calls.some(call=>call.method==='fillText'&&String(call.args[0]).startsWith('Elite')));
+}));

@@ -274,7 +274,7 @@ export class Renderer {
     display.save();display.translate(this.screenOrigin.x+shakeX-this.camera.x,this.screenOrigin.y+shakeY-this.camera.y);
     for(const label of this.worldLabels)this.drawLabel(display,...label);
     display.restore();this.worldLabels=null;
-    this.waypointIndicator(display,game);
+    this.waypointIndicator(display,game);this.directorIndicators(display,game);
 
   }
   worldDecorations() {
@@ -363,10 +363,20 @@ export class Renderer {
     line(c,[[target.x,target.y-29],[target.x,target.y-55]],'#e4c28c80',2);
     if(distance<130)this.label(c,target.label||target.name||'Reiseziel',target.x,target.y-72,'#e4c995',10);
   }
-  waypointIndicator(c,game) {
-    const target=this.activeWaypoint;if(!target)return;
+  directorIndicators(c,game) {
+    if(game.world?.isPvp||game.world?.isDungeon||game.worldMode==='pvp')return;
+    const nearest=new Map(),player=game.player;
+    for(const h of game.hazards||[]){
+      if(!h.directorId||h.kind!=='warning'||!(h.life>0)||!Number.isFinite(h.x)||!Number.isFinite(h.y))continue;
+      const distance=Math.hypot(h.x-player.x,h.y-player.y);if(distance>700)continue;
+      if(!nearest.has(h.directorId)||distance<nearest.get(h.directorId).distance)nearest.set(h.directorId,{x:h.x,y:h.y,distance,kind:'directorWarning'});
+    }
+    for(const target of [...nearest.values()].sort((a,b)=>a.distance-b.distance).slice(0,3))this.waypointIndicator(c,game,target);
+  }
+  waypointIndicator(c,game,target=this.activeWaypoint) {
+    if(!target)return;
     const targetScreen=this.worldToScreen(target.x,target.y),w=this.viewport.width,h=this.viewport.height;
-    const hostile=target.kind==='pvpOpponent';
+    const opponent=target.kind==='pvpOpponent',director=target.kind==='directorWarning',hostile=opponent||director;
     if(hostile?targetScreen.x>=0&&targetScreen.x<=w&&targetScreen.y>=0&&targetScreen.y<=h:targetScreen.x>26&&targetScreen.x<w-26&&targetScreen.y>65&&targetScreen.y<h-90)return;
     const playerScreen=this.worldToScreen(game.player.x,game.player.y),angle=Math.atan2(targetScreen.y-playerScreen.y,targetScreen.x-playerScreen.x),dx=Math.cos(angle),dy=Math.sin(angle);
     const mobile=w<700,left=mobile?26:32,right=w-(mobile?24:36),top=mobile?86:80,bottom=h-(mobile?172:110);
@@ -377,9 +387,9 @@ export class Renderer {
     // small bearing marker on a clear edge of the playable world.
     if(mobile){if(x>w-115&&y<240)y=240;if(x>w-115&&y>240&&y<365)y=dy<0?240:375;if(x<190&&y<215)y=215;}
     else {if(x>w-270&&y<220)y=220;else if(x>w-270&&y>230&&y<610)y=dy<0?220:620;if(x<340&&y<155)y=165;}
-    c.save();c.translate(x,y);ellipse(c,0,0,17,17,'#15121dee');c.beginPath();c.arc(0,0,16,0,TAU);c.strokeStyle=hostile?'#c57582':'#ae8b58';c.lineWidth=1;c.stroke();c.rotate(angle);
+    c.save();c.translate(x,y);ellipse(c,0,0,director?13:17,director?13:17,'#15121dee');c.beginPath();c.arc(0,0,director?12:16,0,TAU);c.strokeStyle=hostile?'#c57582':'#ae8b58';c.lineWidth=1;c.stroke();c.rotate(angle);
     poly(c,[[9,0],[-3,-6],[-1,0],[-3,6]],hostile?'#f0a0ac':'#e8c992');line(c,[[-8,-4],[-5,0],[-8,4]],hostile?'#be6f80':'#a78961',1.5);c.restore();
-    if(hostile){c.font='10px "Inter",system-ui,sans-serif';const caption=`Gegner · ${Math.round(target.distance)} Schritte`,rightEdge=x>w/2,captionX=x+(rightEdge?-24:24),captionWidth=c.measureText(caption).width+12;rounded(c,rightEdge?captionX-captionWidth:captionX,y-10,captionWidth,20,3,'#15121dee');text(c,caption,captionX+(rightEdge?-6:6),y,10,'#efa0ac',rightEdge?'right':'left');}
+    if(opponent){c.font='10px "Inter",system-ui,sans-serif';const caption=`Gegner · ${Math.round(target.distance)} Schritte`,rightEdge=x>w/2,captionX=x+(rightEdge?-24:24),captionWidth=c.measureText(caption).width+12;rounded(c,rightEdge?captionX-captionWidth:captionX,y-10,captionWidth,20,3,'#15121dee');text(c,caption,captionX+(rightEdge?-6:6),y,10,'#efa0ac',rightEdge?'right':'left');}
     // The HUD already names the destination; the bearing stays one small icon.
   }
   worldEventObject(c,o,game) {
@@ -540,6 +550,14 @@ export class Renderer {
   }
   hazard(c,h,game) {
     const radius=h.radius||100,color=h.color||'#df7568',pending=(h.windup||0)>0||h.pending;
+    if(h.directorId&&h.kind==='warning'){
+      const progress=clamp(1-Math.max(0,h.life||0)/(h.maxLife||8),0,1);
+      ellipse(c,h.x,h.y,radius,radius,`${color}26`);c.beginPath();c.arc(h.x,h.y,radius,0,TAU);c.strokeStyle=`${color}c0`;c.lineWidth=2;c.stroke();
+      c.beginPath();c.arc(h.x,h.y,radius,-Math.PI/2,-Math.PI/2+TAU*progress);c.strokeStyle='#f2b8a6';c.lineWidth=4;c.stroke();
+      for(let i=0;i<4;i++){const a=i*TAU/4;line(c,[[h.x+Math.cos(a)*(radius-7),h.y+Math.sin(a)*(radius-7)],[h.x+Math.cos(a)*(radius-2),h.y+Math.sin(a)*(radius-2)]],`${color}e0`,2);}
+      poly(c,[[h.x,h.y-8],[h.x+6,h.y],[h.x,h.y+8],[h.x-6,h.y]],'#281925',`${color}e0`,2);
+      return;
+    }
     if(h.pvp&&['line','cone'].includes(h.shape)){
       const angle=h.angle||0,length=h.length||85,progress=clamp(1-(h.life||0)/(h.maxLife||1),0,1);
       if(h.shape==='line'){const dx=Math.cos(angle),dy=Math.sin(angle),half=(h.width||30)/2,x=h.x+dx*length,y=h.y+dy*length;poly(c,[[h.x-dy*half,h.y+dx*half],[x-dy*half,y+dx*half],[x+dy*half,y-dx*half],[h.x+dy*half,h.y-dx*half]],`${color}28`,`${color}d8`,2);line(c,[[h.x,h.y],[h.x+dx*length*progress,h.y+dy*length*progress]],`${color}80`,2);}
@@ -719,16 +737,18 @@ export class Renderer {
     rounded(c,x-width/2,y-8,width,17,4,'#11131be8');text(c,value,x,y,size,color);
   }
   enemy(c,e,game) {
-    const def=ENEMY_TYPES[e.type]||{},boss=!!(e.boss||e.bossVariant||def.boss);
+    const def=ENEMY_TYPES[e.type]||{},boss=!!(e.boss||e.bossVariant||def.boss),elite=!!e.elite&&!boss;
     if(boss){ellipse(c,e.x,e.y+2,39,15,'#240c1880');c.beginPath();c.ellipse(e.x,e.y+2,35,13,0,0,TAU);c.strokeStyle='#d0784d88';c.lineWidth=2;c.stroke();}
+    else if(elite){c.beginPath();c.ellipse(e.x,e.y+2,27,10,0,0,TAU);c.strokeStyle='#d67f8dba';c.lineWidth=2;c.stroke();}
     drawPixelEnemy(c,e,game.settings?.reducedMotion?0:game.time);
     if((e.hitUntil||0)>game.time)drawPixelImpact(c,{x:e.x,y:e.y-28,variant:'physical',impactFrame:game.settings?.reducedMotion?0:e.hitUntil-game.time>.08?0:e.hitUntil-game.time>.04?1:2});
     if(!this.enemyPixelHeights.has(e.type))this.enemyPixelHeights.set(e.type,pixelEnemyHeight(e.type));
     if(e.shielded){glow(c,e.x,e.y-38,78,'#b5b3ee12');c.beginPath();c.ellipse(e.x,e.y-34,61,75,0,0,TAU);c.strokeStyle='#c4b5eeaa';c.lineWidth=3;c.stroke();for(let i=0;i<4;i++){const a=game.time*.3+i*TAU/4;text(c,'◈',e.x+Math.cos(a)*61,e.y-34+Math.sin(a)*75,13,'#ded0f0');}}
     const dist=Math.hypot(e.x-game.player.x,e.y-game.player.y);
-    if(dist<500&&(e.hp<e.maxHp||e.aggro||boss)) {
-      const width=boss?94:43,top=e.y-this.enemyPixelHeights.get(e.type)-12;rounded(c,e.x-width/2,top,width,5,2,'#1d2c29');rounded(c,e.x-width/2,top,width*clamp(e.hp/e.maxHp,0,1),5,2,boss?'#cf7456':'#af706b');
-      if(boss||dist<170)this.label(c,`${e.name||def.name||e.type}${boss?'':' · '+(e.level||def.level||1)}`,e.x,top-15,boss?'#efc08c':'#c9beb4',boss?11:9);
+    if(dist<500&&(e.hp<e.maxHp||e.aggro||boss||elite)) {
+      const width=boss?94:elite?62:43,top=e.y-this.enemyPixelHeights.get(e.type)-12;rounded(c,e.x-width/2,top,width,5,2,'#1d2c29');rounded(c,e.x-width/2,top,width*clamp(e.hp/e.maxHp,0,1),5,2,boss?'#cf7456':elite?'#d77f8d':'#af706b');
+      if(elite){const x=e.x-width/2-11,y=top+3;poly(c,[[x-5,y+2],[x-6,y-5],[x-2,y-2],[x,y-7],[x+2,y-2],[x+6,y-5],[x+5,y+2]],'#f0a1ad','#341c29',1.5);}
+      if(boss||elite&&dist<360||dist<170)this.label(c,`${elite?'Elite · ':''}${e.name||def.name||e.type}${boss?'':' · '+(e.level||def.level||1)}`,e.x,top-15,boss?'#efc08c':elite?'#efb0b9':'#c9beb4',boss?11:9);
       if(boss&&e.shielded)this.label(c,`Schild · ${def.mechanics?.shield?.plates||3} Quellsiegel gemeinsam halten`,e.x,e.y+30,'#cebbea',10);
       else if(boss&&e.mechanicCycle)this.label(c,e.mechanicCycle==='stack'?`Sternfall · ${e.stackRequired||2} zusammen`:'Nova · Abstand halten',e.x,e.y+30,e.mechanicCycle==='stack'?'#afd7d8':'#e0aa90',10);
       if(e.enraged)this.label(c,'RASEREI',e.x,e.y+51,'#ef9788',11);

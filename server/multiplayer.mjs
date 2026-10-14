@@ -8,6 +8,7 @@ import { getArsenalShopStock } from '../src/arsenal.js';
 import { EQUIPMENT_SLOT_IDS, getEquipmentShopStock } from '../src/equipment-system.js';
 import { captureWorldEvents, restoreWorldEvents } from '../src/world-events.js';
 import { PvpArena } from '../src/pvp.js';
+import { captureEncounterDirector, restoreEncounterDirector } from '../src/encounter-director.js';
 
 const KEYS = new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
 const ACTIONS = new Set(['attack','dash','bolt','nova','potion','interact','primary','secondary','ultimate']);
@@ -20,7 +21,7 @@ const SHOP_STOCK = {
 };
 const PERSONAL_FIELDS = ['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame'];
 const SHARED_FIELDS = ['effects','projectiles','drops','hazards','summons','dungeonInstance','overworld','activeDungeon','worldMode'];
-const MUTABLE_WORLD = ['enemies','nodes','plots','shrines','chests','puzzles','puzzleObjects','gates','portals','dungeonPortals','dungeonState','dungeonExit','interactions','worldEvents','eventObjects'];
+const MUTABLE_WORLD = ['enemies','nodes','plots','shrines','chests','puzzles','puzzleObjects','gates','portals','dungeonPortals','dungeonState','dungeonExit','interactions','worldEvents','eventObjects','encounterDirector'];
 const LAYOUT_FIELDS = ['seed','width','height','regions','paths','river','bridges','structures','trees','rocks','landmarks','dungeons','walls','floors','entrance','exit','rooms','isDungeon','dungeonId','tier'];
 const STORE_KEY = 'emberfall.multiplayer.v1';
 const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
@@ -101,6 +102,10 @@ export class MultiplayerHub {
   }
   _syncRoom(room,source) {
     room.world=source.world;
+    // Joins/restores can replace a Game.world reference. Outside a dungeon,
+    // its portable overworld must follow that live shared world rather than
+    // an earlier initialized copy with stale enemies or director deadlines.
+    if(!source.dungeonInstance)source.overworld=source.world;
     const party=[...room.members.values()].filter(m=>m.active&&!this.pvp.occupied(m)).map(m=>m.game);
     for(const member of room.members.values()) {
       const game=member.game;
@@ -155,6 +160,9 @@ export class MultiplayerHub {
     data.pvp=this.pvp.summary(member);data.pvpStats=null;
     const arena=this.pvp.snapshot(member);
     if(arena)return {...data,...arena,...(includeLayout?{pvpTravelSave:game.capture()}:{})};
+    // Portable director context includes every active or spent actor even when
+    // the render snapshot culls its enemy outside this client's view radius.
+    data.authoritativeEncounterDirectorSave=captureEncounterDirector(game.overworld||world);
     for(const key of MUTABLE_WORLD)if(world[key]!==undefined)data.world[key]=Array.isArray(world[key])?world[key].filter(near):world[key];
     // Doors and collision rectangles may change as a party solves a dungeon.
     if(world.structures)data.world.structures=world.structures.filter(near);
@@ -231,6 +239,10 @@ export class MultiplayerHub {
       // Canonical event restoration also applies after the shared-world overlay:
       // an interrupted run fails safely and its combat actors cannot revive.
       if(Array.isArray(leader.world.worldEvents))restoreWorldEvents(leader.world,captureWorldEvents(leader.world),room.time);
+      // Rebuild director enemies from canonical plans, including their spent
+      // rewards and relative wilderness timers. Raw room actors never decide
+      // difficulty, HP budgets, ownership or whether a dead spawn can revive.
+      restoreEncounterDirector(leader.world,leaderSave?.world?.encounterDirector);
       this._syncRoom(room,leader);
     }
   }

@@ -8,6 +8,7 @@ import { getArsenalShopStock } from './arsenal.js';
 import { getConsumableProfile } from './professions.js';
 import { drawMapFeatures } from './map-art.js';
 import { PVP_RULES } from './pvp.js';
+import { NoticeQueue, noticeKind } from './ui-notices.js';
 import { relicPresentation } from './relics.js';
 import { loadoutProblems } from './inventory-system.js';
 import { summarizeWorldEvents } from './world-events.js';
@@ -75,9 +76,12 @@ export class GameUI {
     this.lastAbilityClass = '';
     this.lastSeenLevel = game.player?.level || 1;
     this.notices = [];
+    this.noticeQueue = new NoticeQueue();
     this.elements = {};
     for (const id of ['welcome-overlay','welcome-classes','start-button','continue-button','panel-overlay','game-panel','panel-title','panel-description','panel-content','close-panel','save-button','save-state','save-import','world-hud','quest-tracker','region-name','region-subtitle','player-name','player-class','player-level','hp-fill','hp-text','hp-shield','party-hud','mana-fill','mana-text','xp-fill','xp-text','gold-count','talent-badge','potion-count','interact-prompt','world-time','world-weather','world-effects','pvp-hud','waypoint-text','notice-stack','minimap','world']) this.elements[id] = document.getElementById(id);
     this.bind();
+    window.addEventListener('resize',()=>this.updateHudLayout(true));
+    window.visualViewport?.addEventListener('resize',()=>this.updateHudLayout(true));
     this.syncWelcome();
     this.update(true);
   }
@@ -248,6 +252,10 @@ export class GameUI {
     const nearby = !this.inPvp&&game.started && !game.paused && typeof game.nearby === 'function' ? game.nearby() : null;
     this.elements['interact-prompt'].hidden = !nearby;
     if (nearby) this.elements['interact-prompt'].querySelector('span').textContent = nearby.label || 'Interagieren';
+    const nearbyRail=document.getElementById('nearby-rail-text');if(nearbyRail)nearbyRail.textContent=nearby?.label || '';
+    const destinationPill=document.getElementById('exploration-pill');if(destinationPill){destinationPill.dataset.nearby=String(!!nearby);destinationPill.title=nearby?.label || '';}
+    const touchInteract=document.getElementById('touch-interact');
+    if(touchInteract){touchInteract.querySelector('span').textContent=nearby?nearby.kind==='npc'?'Sprechen':['node','resource'].includes(nearby.kind)?'Sammeln':'Entdecken':'Entdecken';touchInteract.setAttribute('aria-label',nearby?.label || 'Interagieren, sprechen oder sammeln');touchInteract.title=nearby?.label || 'Gehe näher an eine Person oder Ressource.';}
     const target=game.waypointTarget?.();
     this.setText('waypoint-text',target?`${target.label} · ${format(target.distance)} Schritte`:'Jenseits des Feuers wartet die Finsternis');
     document.getElementById('exploration-pill')?.classList.toggle('waypoint-active',!!target);
@@ -275,6 +283,9 @@ export class GameUI {
     document.querySelector('.touch-controls').hidden=blocked;
     document.querySelector('.touch-controls').inert=blocked;
     document.body.classList.toggle('gameplay-blocked',blocked);
+    this.updateEncounter();
+    this.renderNotice();
+    this.updateHudLayout(force);
   }
 
   updateCooldowns(stats=this.game.stats()) {
@@ -321,7 +332,7 @@ export class GameUI {
 
   pvpResult(duel) {
     const result={victory:'Du hast das Duell gewonnen.',defeat:'Das Duell geht an deinen Gegner.',draw:'Das Duell endet unentschieden.'}[duel.result] || 'Das Duell ist beendet.';
-    return `<div class="pvp-result-card" role="dialog" aria-modal="true" aria-labelledby="pvp-result-title" aria-describedby="pvp-result-description"><span class="eyebrow">DUELL DER SCHATTEN · ABGESCHLOSSEN</span>${icon(duel.result==='victory'?'crown':duel.result==='draw'?'shield':'flame')}<h3 id="pvp-result-title">${result}</h3><p id="pvp-result-description">${escape(duel.opponentName || 'Dein Gegner')}${duel.reason?` · ${escape(duel.reason)}`:''}<br>Deine Reiseausrüstung, Erfahrung und Vorräte bleiben erhalten.</p><button class="primary-button" data-command="pvp-return">Zur Reise zurück ${icon('arrow')}</button><button class="text-button" data-panel="settings">Lautstärke einstellen</button><small>Automatische Rückkehr in ${Math.ceil(Math.max(0,duel.returnIn || 0))} Sekunden.</small></div>`;
+    return `<div class="pvp-result-card" role="dialog" aria-modal="true" aria-labelledby="pvp-result-title" aria-describedby="pvp-result-description"><span class="eyebrow">DUELL DER SCHATTEN · ABGESCHLOSSEN</span>${icon(duel.result==='victory'?'crown':duel.result==='draw'?'shield':'flame')}<h3 id="pvp-result-title">${result}</h3><p id="pvp-result-description">${escape(duel.opponentName || 'Dein Gegner')}${duel.reason?` · ${escape(duel.reason)}`:''}<br>Deine Reiseausrüstung, Erfahrung und Vorräte bleiben erhalten.</p><div class="pvp-notice-slot" data-pvp-notice-slot></div><button class="primary-button" data-command="pvp-return">Zur Reise zurück ${icon('arrow')}</button><button class="text-button" data-panel="settings">Lautstärke einstellen</button><small>Automatische Rückkehr in ${Math.ceil(Math.max(0,duel.returnIn || 0))} Sekunden.</small></div>`;
   }
 
   duelLobby() {
@@ -340,7 +351,7 @@ export class GameUI {
   updatePvp() {
     const arena=this.inPvp,pvp=this.game.pvp || {},duel=pvp.duel,phase=duel?.state;
     document.body.classList.toggle('pvp-mode',arena);document.body.classList.toggle('pvp-finished',arena&&phase==='finished');
-    if(arena&&!this.wasInPvp){for(const notice of this.notices)notice.remove();this.notices=[];}
+    if(arena&&!this.wasInPvp){this.noticeQueue?.clear();for(const notice of this.notices)notice.remove();this.notices=[];}
     if(arena&&this.activePanel&&!(phase==='finished'&&['party','settings'].includes(this.activePanel))){this.closePanel();this.game.paused=false;}
     for(const button of document.querySelectorAll('button[data-panel]')){
       const blocked=arena&&!(phase==='finished'&&['party','settings'].includes(button.dataset.panel));
@@ -355,7 +366,7 @@ export class GameUI {
     if(hud){hud.hidden=!arena||!duel;if(digest!==this.lastPvpHud){
       this.lastPvpHud=digest;const focusedCommand=hud.contains(document.activeElement)?document.activeElement.dataset.command:null;
       const remaining=Math.max(0,Math.ceil(duel?.timeLeft || 0)),clock=`${String(Math.floor(remaining/60)).padStart(2,'0')}:${String(remaining%60).padStart(2,'0')}`;
-      hud.innerHTML=arena&&duel?`<div class="pvp-toolbar"><div class="pvp-match-title"><span>DUELL DER SCHATTEN</span><strong>${phase==='countdown'?'Bereit machen':phase==='finished'?'Duell beendet':clock}</strong><small>Gleiche Werte · 300 Leben / 100 Mana</small></div><div class="pvp-opponent"><span>DEIN GEGNER</span><strong>${escape(duel.opponentName)}</strong>${opponent?`<div class="pvp-opponent-health" aria-label="Gegnerleben ${format(opponent.hp)} von 300"><i style="width:${clamp(opponent.hp/300*100,0,100)}%"></i><b>${format(opponent.hp)} / 300</b></div>`:''}</div></div>${phase==='finished'?`<div class="pvp-result-shade">${this.pvpResult(duel)}</div>`:`<button class="small-button pvp-forfeit" data-command="pvp-forfeit">Duell aufgeben</button>`}${phase==='countdown'?`<div class="pvp-countdown" role="status"><span>Das Spiegelduell beginnt</span><strong>${Math.max(1,Math.ceil(duel.countdown || 0))}</strong><p>Wähle deinen Abstand. Beide beginnen mit identischen Werten.</p></div>`:''}`:'';
+      hud.innerHTML=arena&&duel?`<div class="pvp-toolbar"><div class="pvp-match-title"><span>DUELL DER SCHATTEN</span><strong>${phase==='countdown'?'Bereit machen':phase==='finished'?'Duell beendet':clock}</strong><small>Gleiche Werte · 300 Leben / 100 Mana</small></div><div class="pvp-opponent"><span>DEIN GEGNER</span><strong>${escape(duel.opponentName)}</strong>${opponent?`<div class="pvp-opponent-health" aria-label="Gegnerleben ${format(opponent.hp)} von 300"><i style="width:${clamp(opponent.hp/300*100,0,100)}%"></i><b>${format(opponent.hp)} / 300</b></div>`:''}</div></div>${phase==='finished'?`<div class="pvp-result-shade">${this.pvpResult(duel)}</div>`:`<button class="small-button pvp-forfeit" data-command="pvp-forfeit">Duell aufgeben</button>`}${phase==='active'?'<div class="pvp-notice-slot pvp-live-notice" data-pvp-notice-slot></div>':''}${phase==='countdown'?`<div class="pvp-countdown" role="status"><span>Das Spiegelduell beginnt</span><strong>${Math.max(1,Math.ceil(duel.countdown || 0))}</strong><p>Wähle deinen Abstand. Beide beginnen mit identischen Werten.</p><div class="pvp-notice-slot" data-pvp-notice-slot></div></div>`:''}`:'';
       if(focusedCommand)hud.querySelector(`[data-command="${focusedCommand}"]`)?.focus({preventScroll:true});
       else if(phase==='finished'&&this.lastPvpPhase!=='finished')requestAnimationFrame(()=>hud.querySelector('[data-command="pvp-return"]')?.focus({preventScroll:true}));
       this.lastPvpPhase=phase;
@@ -413,7 +424,6 @@ export class GameUI {
     this.activePanel = name;
     this.pendingScrollReset=true;
     this.elements['panel-content'].scrollTop=0;
-    for(const notice of this.notices)notice.remove();this.notices=[];
     if(name==='reset') this.pendingClass=this.game.player.classId || 'guardian';
     if (this.game.started) this.game.paused = true;
     this.game.keys?.clear();
@@ -424,6 +434,7 @@ export class GameUI {
     this.elements['world-hud'].classList.add('disabled');
     document.querySelectorAll('.nav-item').forEach(button=>button.classList.toggle('active',groupFor(button.dataset.panel)?.id===groupFor(name)?.id));
     this.renderPanel();
+    this.renderNotice();
     if(name==='party') this.refreshRooms();
     requestAnimationFrame(() => (name === 'death' ? this.elements['panel-content'].querySelector('button') : this.elements['close-panel'])?.focus({preventScroll:true}));
   }
@@ -441,6 +452,8 @@ export class GameUI {
     if (this.previousFocus?.isConnected) this.previousFocus.focus({preventScroll:true});
     else if (this.game.started) this.elements.world.focus({preventScroll:true});
     this.previousFocus = null;
+    this.renderNotice();
+    this.updateHudLayout(true);
   }
 
   renderPanel(allowFocusedSelect = false) {
@@ -837,10 +850,10 @@ export class GameUI {
   }
 
   settings() {
-    if(this.inPvp)return `${this.audioControls()}<button class="small-button" data-command="resume">Zum Duellstatus zurück</button>`;
+    if(this.inPvp)return `${this.audioControls()}${this.noticeHistory()}<button class="small-button" data-command="resume">Zum Duellstatus zurück</button>`;
     const abilities=getClass(this.game.player.classId).abilities;
     const mobileMenu=`<div class="mobile-menu-shortcuts">${[["map","map","Weltkarte"],["character","shield","Charakter"],["inventory","bag","Inventar"],["talents","tree","Talente"],["craft","craft","Handwerk"],["journal","book","Questen"],["dungeons","portal","Dungeons"],["party","group","Gruppe"],["bestiary","skull","Bestiarium"],["interactions","relic","Spuren"]].map(([panel,glyph,label])=>`<button class="small-button" data-panel="${panel}">${icon(glyph)}${label}</button>`).join("")}</div>`;
-    return `${mobileMenu}${this.audioControls()}<div class="settings-row"><div><h3>Weniger Bewegung</h3><p>Reduziert Kamerabewegungen und Animationen in der Oberfläche.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="reducedMotion" ${this.game.settings?.reducedMotion?'checked':''}/>Aktiv</label></div><h3 class="section-title">Dein Spielstand</h3><p class="panel-note">Emberfall speichert deine Einzelspieler-Reise in diesem Browser und deine Gruppenreise auf dem Spielserver. Exportiere deinen Einzelspieler-Spielstand, um ihn zu sichern oder auf einem anderen Gerät weiterzuspielen.</p><div class="settings-actions"><button class="small-button" data-command="save">${icon('save')}Jetzt speichern</button><button class="small-button" data-command="export">Spielstand exportieren</button><button class="small-button" data-command="import">Spielstand laden</button><button class="small-button danger-button" data-panel="reset">Neue Reise</button></div><h3 class="section-title">Deine Hände, deine Fähigkeiten</h3><p class="panel-note">Auf dem Handy: Joystick für acht Richtungen ziehen, Angriff für automatische Wiederholung halten. Bewegung, Angriff und eine weitere Aktion funktionieren gleichzeitig. Angriffe zielen auf den nächsten sichtbaren Gegner.</p><div class="settings-controls"><div class="summary-stat"><span>Bewegen</span><strong>WASD / Pfeiltasten</strong></div><div class="summary-stat"><span>${escape(abilities.attack.name)} / Ausweichen</span><strong>J oder Klick / Leertaste</strong></div><div class="summary-stat"><span>${escape(abilities.nova.name)} / ${escape(abilities.bolt.name)} / Heiltrank</span><strong>F / Q / R</strong></div><div class="summary-stat"><span>Erlernte Zusatzfähigkeiten</span><strong>3 / 4 · Im Talentfenster belegen</strong></div><div class="summary-stat"><span>Sprechen, sammeln, pflanzen & ernten</span><strong>E</strong></div><div class="summary-stat"><span>Inventar / Talente / Handwerk / Questen</span><strong>I / T / B / L</strong></div><div class="summary-stat"><span>Weltkarte / Charakter / Gruppe</span><strong>M / C / P</strong></div></div>`;
+    return `${mobileMenu}${this.audioControls()}${this.noticeHistory()}<div class="settings-row"><div><h3>Weniger Bewegung</h3><p>Reduziert Kamerabewegungen und Animationen in der Oberfläche.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="reducedMotion" ${this.game.settings?.reducedMotion?'checked':''}/>Aktiv</label></div><h3 class="section-title">Dein Spielstand</h3><p class="panel-note">Emberfall speichert deine Einzelspieler-Reise in diesem Browser und deine Gruppenreise auf dem Spielserver. Exportiere deinen Einzelspieler-Spielstand, um ihn zu sichern oder auf einem anderen Gerät weiterzuspielen.</p><div class="settings-actions"><button class="small-button" data-command="save">${icon('save')}Jetzt speichern</button><button class="small-button" data-command="export">Spielstand exportieren</button><button class="small-button" data-command="import">Spielstand laden</button><button class="small-button danger-button" data-panel="reset">Neue Reise</button></div><h3 class="section-title">Deine Hände, deine Fähigkeiten</h3><p class="panel-note">Auf dem Handy: Joystick für acht Richtungen ziehen, Angriff für automatische Wiederholung halten. Bewegung, Angriff und eine weitere Aktion funktionieren gleichzeitig. Angriffe zielen auf den nächsten sichtbaren Gegner.</p><div class="settings-controls"><div class="summary-stat"><span>Bewegen</span><strong>WASD / Pfeiltasten</strong></div><div class="summary-stat"><span>${escape(abilities.attack.name)} / Ausweichen</span><strong>J oder Klick / Leertaste</strong></div><div class="summary-stat"><span>${escape(abilities.nova.name)} / ${escape(abilities.bolt.name)} / Heiltrank</span><strong>F / Q / R</strong></div><div class="summary-stat"><span>Erlernte Zusatzfähigkeiten</span><strong>3 / 4 · Im Talentfenster belegen</strong></div><div class="summary-stat"><span>Sprechen, sammeln, pflanzen & ernten</span><strong>E</strong></div><div class="summary-stat"><span>Inventar / Talente / Handwerk / Questen</span><strong>I / T / B / L</strong></div><div class="summary-stat"><span>Weltkarte / Charakter / Gruppe</span><strong>M / C / P</strong></div></div>`;
   }
 
   contractBoard() {
@@ -898,11 +911,17 @@ export class GameUI {
   showVictory() { if (this.activePanel==='victory') return; this.togglePanel('victory'); }
 
   async command(name, id, button) {
+    if(name==='dismiss-notice'){this.noticeQueue?.dismiss();this.renderNotice();this.updateHudLayout(true);return;}
     if(name.startsWith('pvp-')){await this.pvpCommand(name,id);return;}
     if(this.inPvp&&name!=='resume'){this.showNotice('Kehre zuerst aus dem Duell zurück.','info');return;}
     if(name==='open-hunts'){this.journeyTab='hunts';this.togglePanel('journey');return;}
     if(name==='inventory-filters'){this.inventoryFiltersOpen=!this.inventoryFiltersOpen;this.renderPanel();return;}
-    if(name==='toggle-tracker'){this.trackerExpanded=!this.trackerExpanded;this.renderTracker();return;}
+    if(name==='toggle-tracker'){
+      if(window.matchMedia('(any-pointer:coarse),(max-width:900px)').matches){
+        const event=(this.game.world?.worldEvents || []).some(event=>event.state==='active'||event.state==='success');
+        if(event)this.togglePanel('adventures');else if(!this.game.trackedQuestId&&this.game.endgameSummary?.()?.active?.length){this.journeyTab='hunts';this.togglePanel('journey');}else this.togglePanel('journal');
+      }else{this.trackerExpanded=!this.trackerExpanded;this.renderTracker();}return;
+    }
     if(name==='inspect-item'){
       const fromOther=this.activePanel!=='inventory'||button?.classList?.contains('gear-belt-slot');this.inventorySelected=id;
       if(fromOther){this.inventoryTab='equipment';this.inventoryType='all';this.inventoryRarity='all';this.inventoryFlags='all';this.inventorySearch='';this.inventoryUsable=false;const entries=Object.keys(this.game.inventory || {}).filter(key=>this.item(key)?.type!=='consumable');this.inventoryPage=Math.floor(Math.max(0,entries.indexOf(id))/12);this.togglePanel('inventory');}else this.renderPanel();
@@ -972,17 +991,72 @@ export class GameUI {
 
   showNotice(message, tone = 'info') {
     if (!message) return;
-    if(this.inPvp){
-      if(tone!=='error')return;
-      for(const notice of this.notices)notice.remove();this.notices=[];
+    if(this.inPvp&&noticeKind(message,tone).kind!=='error')return;
+    this.noticeQueue ||= new NoticeQueue();
+    this.noticeQueue.push(message,tone);this.renderNotice();this.updateHudLayout(true);
+  }
+
+  renderNotice() {
+    const stack=this.elements['notice-stack'];if(!stack)return;
+    const host=this.activePanel?document.getElementById('panel-notice-slot'):this.inPvp?this.elements['pvp-hud']?.querySelector('[data-pvp-notice-slot]'):document.getElementById('hud-status-rail');
+    if(host&&stack.parentElement!==host)host.appendChild(stack);
+    const entry=this.noticeQueue?.advance();stack.hidden=!entry;
+    if(!entry){for(const notice of this.notices || [])notice.remove();this.notices=[];this.lastNoticeId=null;return;}
+    if(entry.id!==this.lastNoticeId){
+      for(const notice of this.notices || [])notice.remove();
+      const notice=document.createElement('div');notice.className=`notice ${entry.kind==='error'?'error':entry.kind==='danger'?'danger':entry.priority>=70?'milestone':''}`;
+      notice.innerHTML='<span class="notice-text"></span><button type="button" class="notice-dismiss" data-command="dismiss-notice" aria-label="Hinweis schließen">×</button>';
+      stack.appendChild(notice);this.notices=[notice];this.lastNoticeId=entry.id;
     }
-    const notice = document.createElement('div');
-    notice.className = `notice ${['success','error'].includes(tone)?tone:''}`;
-    notice.textContent = message;
-    this.elements['notice-stack'].appendChild(notice);
-    this.notices.push(notice);
-    if (this.notices.length>4) this.notices.shift().remove();
-    setTimeout(()=>{notice.classList.add('fading');setTimeout(()=>{notice.remove();this.notices=this.notices.filter(entry=>entry!==notice);},350);},3700);
+    const notice=this.notices[0],text=notice.querySelector('.notice-text');if(text.textContent!==entry.text)text.textContent=entry.text;notice.title=entry.text;
+    stack.setAttribute('aria-live',entry.kind==='error'?'assertive':'polite');
+  }
+
+  noticeHistory() {
+    const history=this.noticeQueue?.history || [];
+    return `<details class="notice-history"><summary>${icon('book')}Letzte Hinweise <span>${history.length}</span></summary><p class="panel-note">Beute und gleichzeitige Questziele werden zusammengefasst. Hier bleibt auch eine Meldung erhalten, die im Gefecht Platz für eine wichtigere gemacht hat.</p>${history.length?`<ol>${history.map(entry=>`<li class="${entry.kind}"><span>${escape({error:'AKTION NICHT MÖGLICH',danger:'GEFAHR',level:'NEUE MACHT',story:'REISE',progress:'QUESTZIELE',rewards:'BEUTE',craft:'WERKBANK'}[entry.kind] || 'HINWEIS')}</span><p>${escape(entry.text)}</p></li>`).join('')}</ol>`:'<p class="panel-note">Deine letzten Reisehinweise erscheinen hier.</p>'}</details>`;
+  }
+
+  updateEncounter() {
+    const element=document.getElementById('encounter-pressure');if(!element)return;
+    const status=this.game.encounterSummary?.();element.hidden=this.inPvp||!status?.active;
+    if(element.hidden)return;
+    const warning=status.stage==='warning',remaining=Math.max(0,Math.ceil(status.remaining || 0));
+    const digest=JSON.stringify([status.tier,status.label,warning,remaining,status.count]);if(digest===this.lastEncounterHud)return;this.lastEncounterHud=digest;
+    element.dataset.tier=status.tier;element.dataset.stage=status.stage;
+    element.innerHTML=`${icon('skull')}<div><strong>${escape(status.label)}</strong><small>${warning?`${remaining}s · `:''}${format(status.count)} Gegner</small></div>`;
+    element.setAttribute('aria-label',`${status.label}: ${warning?`in ${remaining} Sekunden`:'aktive Jagd'}, ${format(status.count)} Gegner`);element.title=element.getAttribute('aria-label');
+  }
+
+  updateHudLayout(force = false) {
+    if(typeof window==='undefined'||!window.matchMedia||!document.getElementById)return;
+    const stage=document.getElementById('game-stage'),rail=document.getElementById('hud-status-rail'),controls=document.querySelector('.touch-controls');if(!stage||!rail||!controls)return;
+    const mobile=window.matchMedia('(any-pointer:coarse),(max-width:900px)').matches;
+    const tracker=document.querySelector('.quest-tracker'),trackerHost=mobile?rail.querySelector('.hud-status-toolbar'):this.elements['world-hud'];
+    if(tracker&&trackerHost&&tracker.parentElement!==trackerHost)trackerHost.appendChild(tracker);
+    const digest=JSON.stringify([mobile,stage.clientWidth,stage.clientHeight,this.activePanel,this.inPvp,this.game.pvp?.duel?.state,controls.hidden,this.elements['notice-stack']?.hidden,this.notices?.[0]?.textContent,document.getElementById('exploration-pill')?.className,document.getElementById('encounter-pressure')?.hidden,this.elements['interact-prompt']?.hidden]);
+    if(!force&&digest===this.lastHudGeometry)return;this.lastHudGeometry=digest;
+    const bounds=stage.getBoundingClientRect(),visible=element=>element&&!element.hidden&&element.getClientRects().length&&getComputedStyle(element).display!=='none';
+    const bottom=element=>visible(element)?element.getBoundingClientRect().bottom-bounds.top:0;
+    if(!mobile){stage.classList.remove('hud-crowded');return;}
+    const vitals=document.querySelector('.player-vitals');
+    if(this.inPvp){
+      const forfeit=document.querySelector('.pvp-forfeit'),opponent=document.querySelector('.pvp-opponent');
+      stage.style.setProperty('--pvp-notice-top',`${Math.max(bottom(forfeit),bottom(opponent))+8}px`);
+      const vitalsRight=visible(vitals)?vitals.getBoundingClientRect().right-bounds.left:0;
+      stage.style.setProperty('--pvp-notice-width',`${Math.max(80,Math.min(235,bounds.width*.44,bounds.width-vitalsRight-22))}px`);
+      const countdown=document.querySelector('.pvp-countdown');if(countdown){
+        const height=countdown.getBoundingClientRect().height;
+        stage.style.setProperty('--pvp-countdown-top',`${Math.max(8,Math.min(bounds.height-height-8,Math.max(bottom(vitals)+10,(bounds.height-height)/2)))}px`);
+      }
+      return;
+    }
+    const headBottom=Math.max(...['.region-label','.player-vitals','.minimap-wrap','.quick-tools'].map(selector=>bottom(document.querySelector(selector))));
+    stage.style.setProperty('--hud-rail-top',`${headBottom+8}px`);
+    const controlTop=visible(controls)?controls.getBoundingClientRect().top-bounds.top:bounds.height-12;
+    stage.style.setProperty('--hud-controls-clearance',`${Math.max(12,bounds.height-controlTop+8)}px`);
+    const prompt=this.elements['interact-prompt'];stage.classList.remove('hud-crowded');
+    if(visible(prompt)&&rail.getBoundingClientRect().bottom+8>prompt.getBoundingClientRect().top)stage.classList.add('hud-crowded');
   }
 
   trapFocus(event) {
