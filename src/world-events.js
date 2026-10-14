@@ -1,5 +1,6 @@
 import { BESTIARY_ENEMIES, REGION_ENEMY_POOLS, bestiaryCombatStats } from './bestiary.js';
 import { NAMED_BOSS_ENEMIES, NAMED_BOSS_HUNTS } from './encounter-content.js';
+import { EXPEDITION_CONTENT } from './expedition-content.js';
 
 const alive = value => value && value.hp !== 0 && !value.dead && !value.downed && value.alive !== false;
 const body = value => value?.player || value;
@@ -48,15 +49,16 @@ const REGIONAL_EVENT_DEFINITIONS = Object.freeze([
 ]);
 export const WORLD_EVENT_DEFINITIONS = Object.freeze([...REGIONAL_EVENT_DEFINITIONS,...NAMED_BOSS_HUNTS]);
 
-export const EXPEDITIONS = Object.freeze([
+const LEGACY_EXPEDITIONS = Object.freeze([
   {id:'expedition-trauerweg',region:'daemmerhain',name:'Der Weg der Trauerglocke',level:3,minLevel:3,at:[.19,.52],mode:'expedition',description:'Ein kurzer Weg durch die Gräber: Wähle, wessen Asche du trägst, durchbrich den Hinterhalt und ordne die drei letzten Namen vor der Trauerglocke.',stages:[{type:'choice',safe:'Die Namen bewahren',risk:'Das Grab plündern'},{type:'ambush',pack:2,traps:2},{type:'ritual',rule:'sequence',symbols:['mond','asche','name']},{type:'boss_hunt',boss:'mourning_bell',tracks:1}]},
   {id:'expedition-salzzug',region:'sturmkueste',name:'Der letzte Salzzug',level:30,minLevel:28,at:[.33,.78],mode:'expedition',description:'Begleite eine Fracht der Verschollenen. Entscheide zwischen sicherem Licht und verbotener Ladung, eskortiere den Karren und öffne das Tor zum Hafenrichter.',stages:[{type:'choice',safe:'Die Leuchte entzünden',risk:'Die verbotene Ladung öffnen'},{type:'escort',targetName:'Karren der Verschollenen',speed:25},{type:'ritual',rule:'switches',pattern:[false,true,true]},{type:'boss_hunt',boss:'harbor_bailiff',tracks:1}]},
   {id:'expedition-ofenpfad',region:'obsidianpass',name:'Der Pfad der Ofenwitwe',level:46,minLevel:44,at:[.3,.79],mode:'expedition',description:'Stiehl den Glasschmieden ihr letztes Feuer. Ein Eid oder eine Opfergabe öffnet den Weg; halte den Ofen, richte seine Linsen aus und brich Serevas Herrschaft.',stages:[{type:'choice',safe:'Den alten Eid halten',risk:'Eine Opfergabe nehmen'},{type:'defend',duration:25,waves:[2,2],targetName:'Ofen der vergessenen Wacht',repairs:2},{type:'ritual',rule:'alignment',rotations:[3,1,2]},{type:'boss_hunt',boss:'furnace_widow',tracks:1}]},
   {id:'expedition-schlafgericht',region:'traumsenke',name:'Das Gericht der Schlaflosen',level:78,minLevel:76,at:[.28,.77],mode:'expedition',description:'Ein Gericht urteilt über fremde Träume. Wähle Erinnerung oder Beute, halte das einzelne Wachlicht, zerreiße die Albtraumknoten und stelle dich dem Richter ohne Augen.',stages:[{type:'choice',safe:'Die Erinnerung zurückgeben',risk:'Den fremden Traum nehmen'},{type:'ritual',rule:'hold',duration:5},{type:'ambush',pack:3,traps:2},{type:'boss_hunt',boss:'sleep_judge',tracks:1}]},
 ]);
+export const EXPEDITIONS = Object.freeze([...LEGACY_EXPEDITIONS,...EXPEDITION_CONTENT]);
 // Preserve the placement order of the original twenty activities. New hunts
 // append after them, so saved routes and one-use evidence do not move.
-const allDefinitions = [...REGIONAL_EVENT_DEFINITIONS,...EXPEDITIONS,...NAMED_BOSS_HUNTS];
+const allDefinitions = [...REGIONAL_EVENT_DEFINITIONS,...LEGACY_EXPEDITIONS,...NAMED_BOSS_HUNTS,...EXPEDITION_CONTENT];
 const definitionOf = event => allDefinitions.find(def => def.id === event.id);
 
 function addObject(world,event,role,x,y,changes={}) {

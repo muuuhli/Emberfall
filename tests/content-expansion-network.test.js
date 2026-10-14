@@ -11,6 +11,7 @@ import { WORLD_EVENT_DEFINITIONS, EXPEDITIONS, WORLD_EVENT_ENEMIES } from '../sr
 import { SIDE_STORY_CHAINS } from '../src/side-stories.js';
 import { getContractOffers } from '../src/contracts.js';
 import { advanceJourney, validateJourneyState } from '../src/journey.js';
+import { EXPEDITION_CONTENT } from '../src/expedition-content.js';
 
 const LEGACY_QUESTS=[...STARTING_QUESTS,...EXPANSION_QUESTS];
 const legacyIds=new Set(LEGACY_QUESTS.map(quest=>quest.id));
@@ -70,11 +71,16 @@ async function killThroughHttp(f,type,{id='story-native-actor',region,level=9}={
   enemy.hp=1;game.world.enemies.push(enemy);game.cooldowns.attack=0;game.player.face=0;
   assert.equal((await f.action(f.first,'attack')).data.accepted,true);assert.equal(enemy.alive,false);return enemy;
 }
-async function completeWorldEvent(f,id){
+async function completeWorldEvent(f,id,{verifyStages=false}={}){
   const game=f.game(f.first),event=game.world.worldEvents.find(value=>value.id===id),definition=[...WORLD_EVENT_DEFINITIONS,...EXPEDITIONS].find(value=>value.id===id);assert.ok(event);assert.ok(definition);
+  game.player.invulnerable=Math.max(game.player.invulnerable||0,100);
   const start=game.world.eventObjects.find(object=>object.id===`${id}:start`);Object.assign(game.player,{x:start.x,y:start.y});assert.equal((await f.method(f.first,'interactWorldEvent',start.id)).data.accepted,true);
-  let serial=0;
+  let serial=0;const visited=new Set();
   for(let frame=0;frame<2000&&event.state==='active';frame++){
+    if(!visited.has(event.stageIndex)){
+      visited.add(event.stageIndex);
+      if(verifyStages){const before={gold:game.player.gold,xp:game.player.xp,dust:game.resources.dust,lootSerial:game.lootSerial};assert.equal((await f.method(f.first,'claimWorldEvent',id)).data.accepted,false);assert.deepEqual({gold:game.player.gold,xp:game.player.xp,dust:game.resources.dust,lootSerial:game.lootSerial},before,'An unfinished stage cannot pay completion rewards');}
+    }
     const stage=definition.mode==='expedition'?definition.stages[event.stageIndex]:{...definition,type:definition.mode};
     const props=game.world.eventObjects.filter(object=>object.eventId===id&&!object.hidden);
     let clickable;
@@ -91,6 +97,7 @@ async function completeWorldEvent(f,id){
     const anchor=escort||objective||hold||event;Object.assign(game.player,{x:anchor.x,y:anchor.y});f.step(.08);
   }
   assert.equal(event.state,'success',`Native event ${id} reaches its actual completion condition`);assert.ok(serial>0,'Event completion required real spawned opposition');
+  return {visited:[...visited],kills:serial,choice:event.choice,bonus:event.bonus};
 }
 async function fulfillObjective(f,quest,index){
   const game=f.game(f.first),objective=quest.objectives[index];if(game.questState[quest.id].counts[index]>=objective.count)return;
@@ -232,4 +239,51 @@ test('the permanent event chronicle accepts the complete expanded registry witho
   assert.equal(game.journey.records.events.length,definitions.length);assert.equal(validateJourneyState(game.journey,{level:100}),true);
   const before=clone(game.journey);for(const definition of definitions)advanceJourney(game,'world_event',definition.id);assert.deepEqual(game.journey,before,'Repeated completions do not mint permanent reputation twice');
   const loaded=sparseGame();loaded.applySave(clone(game.capture()));assert.deepEqual(loaded.journey,game.journey);
+});
+
+test('all four new expeditions traverse five native HTTP stages before once-only payment and durable completion',async()=>{
+  const f=await fixture();try {
+    const game=f.game(f.first);establishLegacyProgress(game);assert.equal(EXPEDITION_CONTENT.length,4);
+    for(const definition of EXPEDITION_CONTENT){
+      assert.ok(EXPEDITIONS.some(expedition=>expedition.id===definition.id));assert.equal(definition.stages.length,5);
+      const result=await completeWorldEvent(f,definition.id,{verifyStages:true});assert.deepEqual(result.visited,[0,1,2,3,4]);assert.equal(result.choice,'safe');assert.equal(result.bonus,1);
+      const event=game.world.worldEvents.find(value=>value.id===definition.id),boss=definition.stages.find(stage=>stage.type==='boss_hunt').boss;
+      assert.ok(game.world.enemies.some(enemy=>enemy.eventId===event.id&&enemy.type===boss&&!enemy.alive),'Each authored named finale was spawned and actually killed');assert.ok(game.journey.records.events.includes(event.id));assert.ok(game.journey.records.bosses.includes(boss));
+      Object.assign(game.player,{x:event.x,y:event.y});const preview=game.worldEventSummary().find(value=>value.id===event.id);assert.equal(preview.stages,5);assert.equal(preview.claimable,true);
+      const before={gold:game.player.gold,xp:game.player.xp,dust:game.resources.dust};assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,true);
+      assert.equal(game.player.gold,before.gold+preview.reward.gold);assert.equal(game.resources.dust,before.dust+preview.reward.dust);const paid=game.player.gold;
+      assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,false);assert.equal(game.player.gold,paid);
+    }
+    const gold=game.player.gold,inventory=clone(game.inventory),journey=clone(game.journey);await f.restart();const restored=await f.get(f.first);assert.equal(restored.player.gold,gold);assert.deepEqual(restored.inventory,inventory);assert.deepEqual(restored.journey,journey);
+    for(const definition of EXPEDITION_CONTENT){const event=f.game(f.first).world.worldEvents.find(value=>value.id===definition.id);assert.equal(event.state,'rewarded');assert.ok(event.claimedBy.includes(f.first.playerId));Object.assign(f.game(f.first).player,{x:event.x,y:event.y});assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,false);}
+  }finally{await f.close();}
+});
+
+test('a saved twenty-six-activity room acquires four new expeditions without moving paid legacy activities or duplicating props',async()=>{
+  const f=await fixture();try {
+    const game=f.game(f.first);establishLegacyProgress(game);await completeWorldEvent(f,'expedition-trauerweg');assert.equal((await f.method(f.first,'claimWorldEvent','expedition-trauerweg')).data.accepted,true);
+    const paid=game.world.worldEvents.find(event=>event.id==='expedition-trauerweg'),history={state:paid.state,run:paid.run,completions:paid.completions,rewardedRuns:paid.rewardedRuns,claimedBy:[...paid.claimedBy]},gold=game.player.gold;
+    await f.restart(data=>{
+      const room=data.rooms[0];room.world.worldEvents=room.world.worldEvents.filter(event=>loop2EventIds.has(event.id));room.world.eventObjects=room.world.eventObjects.filter(object=>loop2EventIds.has(object.eventId));
+      for(const member of room.members)member.save.world.worldEvents=member.save.world.worldEvents.filter(event=>loop2EventIds.has(event.id));
+    });
+    const restored=f.game(f.first);assert.equal(restored.world.worldEvents.length,WORLD_EVENT_DEFINITIONS.length+EXPEDITIONS.length);
+    for(const [id,x,y] of LOOP2_EVENT_LAYOUT){const event=restored.world.worldEvents.find(value=>value.id===id);assert.ok(event);assert.equal(event.x,x);assert.equal(event.y,y);}
+    const unchanged=restored.world.worldEvents.find(event=>event.id===paid.id);assert.deepEqual({state:unchanged.state,run:unchanged.run,completions:unchanged.completions,rewardedRuns:unchanged.rewardedRuns,claimedBy:unchanged.claimedBy},history);assert.equal(restored.player.gold,gold);
+    for(const definition of EXPEDITION_CONTENT){const event=restored.world.worldEvents.find(value=>value.id===definition.id);assert.equal(event.state,'idle');assert.equal(restored.world.eventObjects.filter(object=>object.id===`${event.id}:start`).length,1);assert.equal(restored.world.eventObjects.filter(object=>object.id===`${event.id}:reward`).length,1);}
+    await completeWorldEvent(f,EXPEDITION_CONTENT[0].id,{verifyStages:true});assert.equal(f.game(f.first).world.worldEvents.find(event=>event.id===EXPEDITION_CONTENT[0].id).state,'success','A newly acquired expedition is immediately playable after a genuine old room restart');
+  }finally{await f.close();}
+});
+
+test('an interrupted new expedition cannot resume at its finale or pay rewards from a forged completion',async()=>{
+  const f=await fixture();try {
+    const game=f.game(f.first);establishLegacyProgress(game);const definition=EXPEDITION_CONTENT.find(value=>value.id==='expedition-zeitbruch'),event=game.world.worldEvents.find(value=>value.id===definition.id),start=game.world.eventObjects.find(object=>object.id===`${event.id}:start`);
+    Object.assign(game.player,{x:start.x,y:start.y});assert.equal((await f.method(f.first,'interactWorldEvent',start.id)).data.accepted,true);
+    const safe=game.world.eventObjects.find(object=>object.eventId===event.id&&object.role==='choice'&&object.choice==='safe');Object.assign(game.player,{x:safe.x,y:safe.y});assert.equal((await f.method(f.first,'interactWorldEvent',safe.id)).data.accepted,true);f.step(2.04);
+    assert.equal(event.stageIndex,1);assert.ok(game.world.enemies.some(enemy=>enemy.eventId===event.id&&enemy.alive));const gold=game.player.gold,xp=game.player.xp,dust=game.resources.dust;
+    const forged=await f.post(`/api/session/${f.first.token}/command`,{type:'method',name:'claimWorldEvent',args:[event.id],stageIndex:5,state:'success',participants:[f.first.playerId]});assert.equal(forged.status,400);await f.restart();
+    const restored=f.game(f.first),failed=restored.world.worldEvents.find(value=>value.id===event.id);assert.equal(failed.state,'failure');assert.ok(failed.readyAt>restored.time);assert.equal(restored.world.enemies.some(enemy=>enemy.eventId===event.id&&enemy.alive),false);
+    Object.assign(restored.player,{x:failed.x,y:failed.y});assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,false);assert.equal((await f.method(f.first,'interactWorldEvent',`${event.id}:start`)).data.accepted,false);
+    assert.equal(restored.player.gold,gold);assert.equal(restored.player.xp,xp);assert.equal(restored.resources.dust,dust);assert.equal(restored.journey.records.events.includes(event.id),false);
+  }finally{await f.close();}
 });
