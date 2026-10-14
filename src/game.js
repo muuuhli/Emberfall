@@ -209,7 +209,7 @@ export class Game {
     return getContractOffers({regionId,level:this.player.level,completed:this.contracts.completed[regionId]||0});
   }
   contractGiver(regionId) {
-    const quest=QUESTS.find(q=>q.region===regionId);
+    const quest=QUESTS.find(q=>q.region===regionId&&q.contentType!=='side');
     return this.npcs.find(n=>n.id===quest?.giver)||this.npcs.find(n=>n.id==='rowan')||null;
   }
   acceptContract(id) {
@@ -235,7 +235,12 @@ export class Game {
   }
   questAccept(id) {
     const q=QUESTS.find(q=>q.id===id); if(!q || !this.canAccept(q)) return false;
-    const counts=q.objectives.map(o=>['explore','puzzle','dungeon','raid'].includes(o.kind)||(o.kind==='kill'&&ENEMY_TYPES[o.target]?.boss)?Math.min(o.count,this.ledger[`${o.kind}:${o.target}`]||0):0);
+    const counts=q.objectives.map(o=>{
+      if(o.fresh===true)return 0;
+      if(o.remembered===true&&o.kind==='interact')return Math.min(o.count,Math.max(this.ledger[`interact:${o.target}`]||0,(this.overworld||this.world).interactions?.find(object=>object.id===o.target)?.used?1:0));
+      if(o.remembered===true&&o.kind==='explore')return Math.min(o.count,Math.max(this.ledger[`explore:${o.target}`]||0,this.discovered.includes(o.target)?1:0));
+      return ['explore','puzzle','dungeon','raid'].includes(o.kind)||(o.kind==='kill'&&ENEMY_TYPES[o.target]?.boss)?Math.min(o.count,this.ledger[`${o.kind}:${o.target}`]||0):0;
+    });
     this.questState[id]={status:q.objectives.every((o,i)=>counts[i]>=o.count)?'ready':'active',counts};
     if(!this.trackedQuestId)this.trackQuest(id);
     this.notice(`Quest angenommen: ${q.title}`,'quest'); this.onSound('quest'); this.save(false); this.change(); return true;

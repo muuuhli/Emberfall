@@ -64,6 +64,11 @@ export class GameUI {
     this.talentTab = 'abilities';
     this.panelPointers = new Set();
     this.questTab = 'active';
+    this.questPage = 0;
+    this.questSearch = '';
+    this.questContentFilter = 'all';
+    this.questRegionFilter = 'all';
+    this.questFiltersOpen = false;
     this.contractRegion = null;
     this.dialogueNPC = null;
     this.lastState = '';
@@ -98,7 +103,7 @@ export class GameUI {
       if (button.dataset.inventoryTab) { this.pendingScrollReset=true;this.inventoryTab = button.dataset.inventoryTab;this.inventoryType='all';this.inventoryPage=0; this.renderPanel(); return; }
       if (button.dataset.characterTab) {this.pendingScrollReset=true;this.characterTab=button.dataset.characterTab;this.renderPanel();return;}
       if (button.dataset.journeyTab) {this.pendingScrollReset=true;this.journeyTab=button.dataset.journeyTab;this.renderPanel();return;}
-      if (button.dataset.questTab) { this.pendingScrollReset=true;this.questTab = button.dataset.questTab; this.renderPanel(); return; }
+      if (button.dataset.questTab) { this.pendingScrollReset=true;this.questPage=0;this.questTab = button.dataset.questTab; this.renderPanel(); return; }
       if (button.dataset.command) this.command(button.dataset.command, button.dataset.id, button);
     });
     this.elements['start-button'].addEventListener('click', () => {
@@ -128,12 +133,12 @@ export class GameUI {
       const draft=event.target.dataset.uiDraft;if(draft){this[draft]=event.target.value;return;}
       const key = event.target.dataset.uiSearch;
       if (!key) return;
-      this[key] = event.target.value; this.inventoryPage = 0; this.bestiaryPage = 0;
+      this[key] = event.target.value; this.inventoryPage = 0; this.bestiaryPage = 0;this.questPage=0;
       this.renderPanel();
     });
     document.addEventListener('change', event => {
       const filter = event.target.dataset.uiFilter;
-      if (filter) { this[filter]=event.target.type==='checkbox'?event.target.checked:event.target.value;this.inventoryPage=0;this.bestiaryPage=0;this.renderPanel(true);return; }
+      if (filter) { this[filter]=event.target.type==='checkbox'?event.target.checked:event.target.value;this.inventoryPage=0;this.bestiaryPage=0;this.questPage=0;this.renderPanel(true);return; }
       if(event.target.dataset.abilityLoadout!==undefined) {this.assignAbility(Number(event.target.dataset.abilityLoadout),event.target.value||null);return;}
       if(event.target.dataset.contractRegion!==undefined) {this.contractRegion=event.target.value;this.renderPanel();return;}
       const key = event.target.dataset.setting;
@@ -745,23 +750,48 @@ export class GameUI {
     return `${format(reward.xp)} EP · ${format(reward.gold)} Gold${reward.dust?` · ${format(reward.dust)} Glutstaub`:''}${reward.item?` · ${escape(ITEMS[reward.item]?.name || reward.item)}`:''}`;
   }
 
+  questType(quest) { return quest.contentType==='side'||quest.category==='side-story'?'side':'story'; }
+
+  questRegion(quest) {
+    if(quest.region)return REGIONS.find(region=>region.id===quest.region);
+    const giver=NPCS.find(npc=>npc.id===quest.giver);
+    return REGIONS.find(region=>giver&&giver.x>=region.x&&giver.x<region.x+region.w&&giver.y>=region.y&&giver.y<region.y+region.h);
+  }
+
+  questCard(quest) {
+    const state=this.game.questState?.[quest.id],side=this.questType(quest)==='side',giver=NPCS.find(npc=>npc.id===quest.giver),region=this.questRegion(quest);
+    const giverRegion=REGIONS.find(region=>giver&&giver.x>=region.x&&giver.x<region.x+region.w&&giver.y>=region.y&&giver.y<region.y+region.h);
+    const minimum=quest.minLevel || 1,prerequisites=Array.isArray(quest.prerequisite)?quest.prerequisite:quest.prerequisite?[quest.prerequisite]:[];
+    const missing=prerequisites.filter(id=>this.game.questState?.[id]?.status!=='done').map(id=>QUESTS.find(quest=>quest.id===id)?.title || 'Die vorherige Aufgabe');
+    const requirements=[...(this.game.player.level<minimum?[`Ab Stufe ${minimum}`]:[]),...(missing.length?[`Vorher abschließen: ${missing.join(', ')}`]:[])];
+    const available=!state&&this.game.canAccept(quest),tracked=this.game.trackedQuestId===quest.id;
+    const status=state?.status==='done'?'ABGESCHLOSSEN':state?.status==='ready'?'BELOHNUNG ABHOLEN':state?.status==='active'?'AUF DEINEM WEG':available?'BEIM AUFTRAGGEBER':'SPÄTER VERFÜGBAR';
+    const total=quest.objectives.reduce((sum,objective)=>sum+objective.count,0),complete=quest.objectives.reduce((sum,objective,index)=>sum+Math.min(state?.counts?.[index] || 0,objective.count),0);
+    const chapters=quest.chapters || QUESTS.filter(entry=>quest.chainId&&entry.chainId===quest.chainId).length || 1;
+    const objectives=`<div class="quest-log-objectives">${quest.objectives.map((objective,index)=>`<span>${state?.status==='done'||(state?.counts?.[index] || 0)>=objective.count?icon('check'):icon('marker')}${escape(objective.label)}${state&&state.status!=='done'?` ${Math.min(state.counts?.[index] || 0,objective.count)}/${objective.count}`:''}</span>`).join('')}</div>`;
+    const knownGiver=giver&&giverRegion&&(this.game.discovered || []).includes(giverRegion.id)&&!this.dungeonId();
+    return `<article class="quest-log-item ${side?'side-quest':'story-quest'} ${state?.status==='done'?'completed':''} ${tracked?'pinned':''}" data-quest-id="${escape(quest.id)}" data-quest-type="${side?'side':'story'}"><div class="quest-content-label"><span>${side?'NEBENQUEST':'HAUPTPFAD'}${side?` · KAPITEL ${quest.chapter || 1}/${chapters}`:''}</span><small>${escape(region?.name || 'Freie Lande')} · Stufe ${minimum}</small></div>${side&&quest.chainName?`<p class="quest-chain-name">${escape(quest.chainName)}</p>`:''}<div class="quest-log-heading"><h3>${escape(quest.title)}</h3><span class="quest-status">${status}</span></div><p class="quest-giver">${icon('group')}Auftraggeber: ${escape(giver?.name || 'Ein Reisender')}${giverRegion?` · ${escape(giverRegion.name)}`:''}</p>${state?.status==='done'?`<details class="quest-story-details"><summary>Geschichte & Belohnung ansehen</summary><p>${escape(quest.description)}</p>${objectives}<div class="quest-reward">${this.reward(quest)}</div></details>`:`<p>${escape(quest.description)}</p>${state?`<div class="quest-progress"><div style="width:${clamp(complete/Math.max(1,total)*100,0,100)}%"></div></div>`:''}${objectives}<div class="quest-reward">Belohnung: ${this.reward(quest)}</div>${requirements.length&&!state?`<p class="quest-lock">${icon('lock')}${escape(requirements.join(' · '))}</p>`:''}<div class="quest-card-actions">${state?`<button class="small-button" data-command="trackQuest" data-id="${tracked?'':escape(quest.id)}" aria-pressed="${tracked}">${icon('marker')}${tracked?'Ziel lösen':'Diese Quest verfolgen'}</button>`:`<button class="small-button" data-command="waypoint" data-kind="npc" data-id="${escape(giver?.id || '')}" ${knownGiver?'':'disabled'}>${icon('marker')}Zu ${escape(giver?.name || 'deinem Auftraggeber')}</button><small>${knownGiver?available?'Sprich vor Ort mit dem Auftraggeber, um die Quest anzunehmen.':'Du kannst den Auftraggeber besuchen; zuerst gelten die genannten Voraussetzungen.':this.dungeonId()?'Verlasse den Dungeon, bevor du den Auftraggeber besuchst.':`Entdecke zuerst ${escape(giverRegion?.name || 'den Ort des Auftraggebers')}.`}</small>`}</div>`}</article>`;
+  }
+
   journal() {
-    const guidance=this.game.adventureGuidance?.();
+    const active=QUESTS.filter(quest=>['active','ready'].includes(this.game.questState?.[quest.id]?.status)),done=QUESTS.filter(quest=>this.game.questState?.[quest.id]?.status==='done'),discover=QUESTS.filter(quest=>!this.game.questState?.[quest.id]);
+    const tab=this.questTab || 'active',tabs=`<div class="panel-tabs"><button data-quest-tab="active" class="${tab==='active'?'active':''}">Deine Questen · ${active.length}</button><button data-quest-tab="available" class="${tab==='available'?'active':''}">Entdecken · ${discover.length}</button><button data-quest-tab="done" class="${tab==='done'?'active':''}">Abgeschlossen · ${done.length}</button><button data-quest-tab="contracts" class="${tab==='contracts'?'active':''}">Aufträge · ${this.game.contracts?.active?.length || 0}/3</button></div>`;
+    if(tab==='contracts')return `${tabs}${this.contractBoard()}`;
+    const content=this.questContentFilter || 'all',area=this.questRegionFilter || 'all',search=(this.questSearch || '').trim().toLocaleLowerCase('de-DE'),filtered=content!=='all'||area!=='all'||!!search;
+    const quests=(tab==='done'?done:tab==='available'?discover:active).filter(quest=>{
+      const region=this.questRegion(quest),giver=NPCS.find(npc=>npc.id===quest.giver);
+      return (content==='all'||this.questType(quest)===content)&&(area==='all'||region?.id===area)&&(!search||[quest.title,quest.description,quest.chainName,region?.name,giver?.name,...quest.objectives.map(objective=>objective.label)].join(' ').toLocaleLowerCase('de-DE').includes(search));
+    }).sort((a,b)=>{
+      const rank=quest=>this.game.trackedQuestId===quest.id?-2:this.game.questState?.[quest.id]?.status==='ready'?-1:tab==='available'&&!this.game.canAccept(quest)?1:0;
+      return rank(a)-rank(b)||(a.minLevel || 1)-(b.minLevel || 1)||a.title.localeCompare(b.title,'de');
+    });
+    const pages=Math.max(1,Math.ceil(quests.length/8));this.questPage=clamp(this.questPage,0,pages-1);const start=this.questPage*8,shown=quests.slice(start,start+8);
+    const filters=`<div class="journal-toolbar"><div class="journal-search-row"><label class="search-field"><span>Questen & Geschichten durchsuchen</span><input class="game-input" type="search" data-ui-search="questSearch" value="${escape(this.questSearch || '')}" placeholder="Titel, Kette, Region oder Auftraggeber …" autocomplete="off" /></label><button class="small-button journal-filter-toggle" data-command="quest-filters" aria-expanded="${!!this.questFiltersOpen}" aria-controls="journal-filters">${icon('settings')}Filter${filtered?' · aktiv':''}</button></div><div id="journal-filters" class="journal-filters ${this.questFiltersOpen?'expanded':''}"><label><span>Geschichten</span><select class="game-input" data-ui-filter="questContentFilter">${[['all','Alle Geschichten'],['story','Hauptpfad'],['side','Nebenquests']].map(([id,label])=>`<option value="${id}" ${content===id?'selected':''}>${label}</option>`).join('')}</select></label><label><span>Aufgabenregion</span><select class="game-input" data-ui-filter="questRegionFilter"><option value="all">Alle Regionen</option>${REGIONS.map(region=>`<option value="${region.id}" ${area===region.id?'selected':''}>${escape(region.name)}</option>`).join('')}</select></label>${filtered?'<button class="text-button" data-command="quest-clear-filters">Filter zurücksetzen</button>':''}</div></div>`;
+    const pagination=pages>1?`<nav class="journal-pagination" aria-label="Questseiten"><button class="small-button" data-command="quest-page" data-id="${this.questPage-1}" ${this.questPage>0?'':'disabled'}>Zurück</button><span>Seite ${this.questPage+1} / ${pages}</span><button class="small-button" data-command="quest-page" data-id="${this.questPage+1}" ${this.questPage<pages-1?'':'disabled'}>Weiter ${icon('arrow')}</button></nav>`:'';
+    const guidance=tab==='active'&&!filtered?this.game.adventureGuidance?.():null;
     const guide=guidance?`<div class="journey-next-step"><div><span class="eyebrow">DEIN NÄCHSTER SCHRITT</span><h3>${escape(guidance.title)}</h3><p>${escape(guidance.description)}</p></div>${guidance.panel?`<button class="small-button" data-panel="${escape(guidance.panel)}">Weiter ${icon('arrow')}</button>`:`<button class="small-button" data-command="waypoint" data-kind="${escape(guidance.kind)}" data-id="${escape(guidance.id)}">${icon('marker')}Ort markieren</button>`}</div>`:'';
-    const active = QUESTS.filter(quest=>['active','ready'].includes(this.game.questState?.[quest.id]?.status));
-    const done = QUESTS.filter(quest=>this.game.questState?.[quest.id]?.status==='done');
-    const available = QUESTS.filter(quest=>this.game.canAccept(quest));
-    const quests = this.questTab==='done' ? done : this.questTab==='available' ? available : active;
-    const tabs = `<div class="panel-tabs"><button data-quest-tab="active" class="${this.questTab==='active'?'active':''}">Deine Questen · ${active.length}</button><button data-quest-tab="available" class="${this.questTab==='available'?'active':''}">Entdecken · ${available.length}</button><button data-quest-tab="done" class="${this.questTab==='done'?'active':''}">Abgeschlossen · ${done.length}</button><button data-quest-tab="contracts" class="${this.questTab==='contracts'?'active':''}">Aufträge · ${this.game.contracts?.active?.length||0}/3</button></div>`;
-    if(this.questTab==='contracts')return `${tabs}${this.contractBoard()}`;
-    return `${tabs}${guide}${quests.length ? quests.map(quest=> {
-      const state = this.game.questState?.[quest.id];
-      const giver = NPCS.find(npc=>npc.id===quest.giver);
-      const total = quest.objectives.reduce((sum,objective)=>sum+objective.count,0);
-      const complete = quest.objectives.reduce((sum,objective,index)=>sum+Math.min(state?.counts?.[index] || 0,objective.count),0);
-      const giverRegion=REGIONS.find(region=>giver&&giver.x>=region.x&&giver.x<region.x+region.w&&giver.y>=region.y&&giver.y<region.y+region.h);
-      return `<article class="quest-log-item"><div class="quest-log-heading"><h3>${escape(quest.title)}</h3><span class="quest-status">${state?.status==='done'?'ABGESCHLOSSEN':state?.status==='ready'?'BELOHNUNG ABHOLEN':state?.status==='active'?'AUF DEINEM WEG':`BEI ${escape(giver?.name || '').toUpperCase()}`}</span></div><p>${escape(quest.description)}</p>${state && state.status!=='done'?`<div class="quest-progress"><div style="width:${complete/total*100}%"></div></div>`:''}<div class="quest-log-objectives">${quest.objectives.map((objective,index)=>`<span>${state?.status==='done'||(state?.counts?.[index]||0)>=objective.count?icon('check'):icon('marker')}${escape(objective.label)}${state&&state.status!=='done'?` ${Math.min(state.counts?.[index]||0,objective.count)}/${objective.count}`:''}</span>`).join('')}</div><div class="quest-reward">Belohnung: ${this.reward(quest)} · ${escape(giver?.name || 'Ein Reisender')}${giverRegion?` in ${escape(giverRegion.name)}`:''}${quest.minLevel?` · Stufe ${quest.minLevel}`:''}</div>${state&&state.status!=='done'?`<button class="small-button" data-command="trackQuest" data-id="${this.game.trackedQuestId===quest.id?'':escape(quest.id)}">${icon('marker')}${this.game.trackedQuestId===quest.id?'Ziel lösen':'Diese Quest verfolgen'}</button>`:''}</article>`;
-    }).join('') : `<p class="empty-inventory">${this.questTab==='done'?'Die ersten Geschichten warten noch darauf, erzählt zu werden.':this.questTab==='available'?'Deine nächste Aufgabe wartet am Ende deines jetzigen Weges.':'Mach den ersten Schritt.'}<br><span class="panel-note">${this.questTab==='active'?'Sprich mit den Bewohnern von Glutwacht. Mira, Sera und Toma brauchen deine Hilfe.':'Setze deine Reise fort und sprich regelmäßig mit deinen Weggefährten.'}</span></p>`}`;
+    const empty=filtered?'Keine passenden Questen. Ändere die Suche oder setze deine Filter zurück.':tab==='done'?'Hier bleiben deine abgeschlossenen Geschichten erhalten.':tab==='available'?'Du hast alle bisherigen Geschichten entdeckt.':'Noch keine Quest angenommen. Entdecke Geschichten bei den Auftraggebern.';
+    return `${tabs}${filters}${guide}<p id="journal-results" class="journal-results" role="status" aria-live="polite">${quests.length} ${content==='side'?'Nebenquests':content==='story'?'Aufgaben im Hauptpfad':'Questen'}${quests.length?` · ${start+1}–${start+shown.length} sichtbar`:''}</p>${tab==='available'?'<p class="panel-note journal-discovery-note">Hauptpfade und Nebenquest-Ketten warten bei ihren Auftraggebern. Spätere Kapitel zeigen ihre Voraussetzungen; jede Annahme und Abgabe findet vor Ort statt.</p>':''}<div class="journal-list">${shown.map(quest=>this.questCard(quest)).join('') || `<p class="empty-inventory">${empty}${filtered?'<br><button class="small-button" data-command="quest-clear-filters">Alle Filter zurücksetzen</button>':tab==='active'?'<br><button class="small-button" data-quest-tab="available">Geschichten entdecken</button>':''}</p>`}</div>${pagination}`;
   }
 
   map() {
@@ -900,7 +930,7 @@ export class GameUI {
     return `<div class="dialogue-layout"><div class="npc-portrait">${icon(npc.id==='elin'?'craft':npc.id==='toma'?'leaf':npc.id==='sera'?'potion':npc.id==='oren'?'coin':npc.id==='rowan'?'map':'flame')}</div><div><p class="npc-role">${escape(npc.role).toUpperCase()}</p><p class="npc-dialogue">„${escape(npc.dialogue)}“</p>${current.map(quest=> {
       const state = this.game.questState?.[quest.id];
       const ready = state && (state.status==='ready' || quest.objectives.every((objective,index)=>(state.counts?.[index]||0)>=objective.count));
-      return `<article class="dialogue-quest"><h3>${escape(quest.title)}</h3><p>${escape(quest.description)}</p><div class="quest-reward">${this.reward(quest)}</div>${!state?`<button class="small-button" data-command="questAccept" data-id="${escape(quest.id)}">Ich helfe dir ${icon('arrow')}</button>`:ready?`<button class="small-button" data-command="questTurnIn" data-id="${escape(quest.id)}">Belohnung abholen ${icon('check')}</button>`:`<p class="panel-note">Deine Aufgabe läuft. ${quest.objectives.map((objective,index)=>`${escape(objective.label)} ${Math.min(state.counts?.[index]||0,objective.count)}/${objective.count}`).join(' · ')}</p>`}</article>`;
+      return `<article class="dialogue-quest">${this.questType(quest)==='side'?`<p class="dialogue-quest-kind">NEBENQUEST · ${escape(quest.chainName)}<br>Kapitel ${quest.chapter}/${quest.chapters} · Stufe ${quest.minLevel}</p>`:''}<h3>${escape(quest.title)}</h3><p>${escape(quest.description)}</p><div class="quest-reward">${this.reward(quest)}</div>${!state?`<button class="small-button" data-command="questAccept" data-id="${escape(quest.id)}">Ich helfe dir ${icon('arrow')}</button>`:ready?`<button class="small-button" data-command="questTurnIn" data-id="${escape(quest.id)}">Belohnung abholen ${icon('check')}</button>`:`<p class="panel-note">Deine Aufgabe läuft. ${quest.objectives.map((objective,index)=>`${escape(objective.label)} ${Math.min(state.counts?.[index]||0,objective.count)}/${objective.count}`).join(' · ')}</p>`}</article>`;
     }).join('')}${extra}${!current.length&&!extra?'<p class="panel-note">Dein Weg ist noch nicht zu Ende. Kehre wieder, wenn du neue Geschichten zu erzählen hast.</p>':''}</div></div>`;
   }
 
@@ -916,6 +946,9 @@ export class GameUI {
     if(this.inPvp&&name!=='resume'){this.showNotice('Kehre zuerst aus dem Duell zurück.','info');return;}
     if(name==='open-hunts'){this.journeyTab='hunts';this.togglePanel('journey');return;}
     if(name==='inventory-filters'){this.inventoryFiltersOpen=!this.inventoryFiltersOpen;this.renderPanel();return;}
+    if(name==='quest-filters'){this.questFiltersOpen=!this.questFiltersOpen;this.renderPanel();return;}
+    if(name==='quest-page'){this.questPage=Math.max(0,Number(id)||0);this.pendingScrollReset=true;this.renderPanel();return;}
+    if(name==='quest-clear-filters'){this.questSearch='';this.questContentFilter='all';this.questRegionFilter='all';this.questPage=0;this.pendingScrollReset=true;this.renderPanel();return;}
     if(name==='toggle-tracker'){
       if(window.matchMedia('(any-pointer:coarse),(max-width:900px)').matches){
         const event=(this.game.world?.worldEvents || []).some(event=>event.state==='active'||event.state==='success');

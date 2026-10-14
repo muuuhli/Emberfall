@@ -7,6 +7,7 @@ import { EXTRA_ITEMS, EXTRA_RECIPES } from './arsenal.js';
 import { EQUIPMENT_ITEMS, EQUIPMENT_RECIPES } from './equipment-system.js';
 import { JOURNEY_RECIPES } from './journey.js';
 import { WORLD_EVENT_ENEMIES } from './world-events.js';
+import { SIDE_QUESTS } from './side-stories.js';
 export const ITEMS={...base.ITEMS,...EXTRA_ITEMS,...EQUIPMENT_ITEMS};
 export const RECIPES=[...base.RECIPES,...EXTRA_RECIPES,...EQUIPMENT_RECIPES,...JOURNEY_RECIPES];
 export const RESOURCES={...base.RESOURCES,
@@ -19,5 +20,5 @@ export const RESOURCES={...base.RESOURCES,
 export const REGIONS=[...base.REGIONS,...EXPANSION_REGIONS];
 export const NPCS=[...base.NPCS,...EXPANSION_NPCS];
 export const ENEMY_TYPES={...base.ENEMY_TYPES,...EXPANSION_ENEMIES,...DUNGEON_ENEMIES,...BESTIARY_ENEMIES,...WORLD_EVENT_ENEMIES};
-export const QUESTS=[...base.QUESTS,...EXPANSION_QUESTS];
+export const QUESTS=[...base.QUESTS,...EXPANSION_QUESTS,...SIDE_QUESTS];
 export const SKILLS=[...new Map([...base.SKILLS,...CLASSES.flatMap(c=>c.talents)].map(s=>[s.id,s])).values()];

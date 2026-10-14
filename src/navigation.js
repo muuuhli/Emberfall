@@ -14,6 +14,9 @@ export function resolveQuestTarget(game,id) {
     const ordinary=matches.filter(e=>!ENEMY_TYPES[e.type]?.boss);
     return target(closest(ordinary.length?ordinary:matches,game.player),objective.label);
   }
+  if(objective.kind==='boss')return target(closest((game.overworld||world).enemies.filter(e=>e.alive&&!e.rewardless&&ENEMY_TYPES[e.type]?.boss&&(ENEMY_TYPES[e.type].baseType===objective.target||ENEMY_TYPES[e.type].speciesId===objective.target||e.type===objective.target)),game.player),objective.label);
+  if(objective.kind==='interact')return target((game.overworld||world).interactions?.find(o=>o.id===objective.target&&!o.used),objective.label);
+  if(objective.kind==='world_event')return resolveWaypoint(game,'event',objective.target);
   if(objective.kind==='gather')return target(closest(world.nodes.filter(n=>n.type===objective.target&&n.readyAt<=game.time),game.player),objective.label);
   if(objective.kind==='farm')return target(closest(world.plots,game.player),objective.label);
   if(['dungeon','raid','puzzle'].includes(objective.kind))return target(world.dungeonEntrances?.find(d=>d.id===objective.target),objective.label);
@@ -30,7 +33,8 @@ export function resolveWaypoint(game,kind,id) {
   if(kind==='event') {
     const state=game.world.worldEvents?.find(e=>e.id===id);
     const options=game.world.eventObjects?.filter(o=>o.eventId===id&&!o.hidden&&(state?.state==='active'?o.role!=='start':o.role==='start'||o.role==='reward'))||[];
-    return target(closest(options,game.player),state?.objective?.label||state?.name);
+    const summary=game.networkWorldEventSummary?.find(e=>e.id===id);
+    return target(closest(options,game.player)||state||summary,state?.objective?.label||summary?.objective?.label||state?.name||summary?.name);
   }
   if(kind==='dungeon')return target(game.world.dungeonEntrances?.find(o=>o.id===id));
   if(kind==='region') {
