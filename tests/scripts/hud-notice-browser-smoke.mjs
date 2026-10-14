@@ -22,18 +22,22 @@ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const report={kind:'native Chromium HUD geometry and real notice timeline',humanPlaytest:false,baseline,geometryOnly,views:[],timeline:[],errors:[],consoleErrors:[],failures:[],screenshots:output};
 let socket,send,evaluate;
 
-// Test-only observation of the local avatar's real atlas draw. Capture the
-// source frame and canvas transform rather than guessing a fixed screen centre.
+// Observe the actual full local avatar, whether it is the original atlas frame
+// or a composed 32x48 equipment canvas. Inspect real alpha and the draw transform.
 const avatarInstallExpression=`(async () => {
   const {renderer}=window.emberfall;await renderer.atlasReady;
   if(!renderer.characterAtlas)throw new Error('Native character atlas did not load');
-  const original=renderer.person;renderer.__hudAvatarAlpha=new Map();
+  const original=renderer.person;renderer.__hudAvatarAlpha=new Map();renderer.__hudAvatarImageIds=new WeakMap();renderer.__hudAvatarImageSerial=0;
   renderer.person=function(context,person,game,hero){
     if(!hero||person!==game.player)return original.call(this,context,person,game,hero);
     const draw=context.drawImage,owner=this;
     context.drawImage=function(image,...args){
-      if(image===owner.characterAtlas&&args.length===8){
-        const [sx,sy,sw,sh,dx,dy,dw,dh]=args,key=[sx,sy,sw,sh].join(':');
+      const atlasFrame=image===owner.characterAtlas&&args.length===8&&args[2]===32&&args[3]===48;
+      const canvasFrame=args.length===4&&image.width===32&&image.height===48&&(image instanceof HTMLCanvasElement||typeof OffscreenCanvas!=='undefined'&&image instanceof OffscreenCanvas);
+      if(atlasFrame||canvasFrame){
+        const [sx,sy,sw,sh,dx,dy,dw,dh]=atlasFrame?args:[0,0,image.width,image.height,...args];
+        if(!owner.__hudAvatarImageIds.has(image))owner.__hudAvatarImageIds.set(image,++owner.__hudAvatarImageSerial);
+        const key=[owner.__hudAvatarImageIds.get(image),sx,sy,sw,sh].join(':');
         if(!owner.__hudAvatarAlpha.has(key)){
           const sample=document.createElement('canvas');sample.width=sw;sample.height=sh;
           const pixels=sample.getContext('2d');pixels.drawImage(image,sx,sy,sw,sh,0,0,sw,sh);

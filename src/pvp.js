@@ -1,4 +1,7 @@
 /** Voluntary, mirrored duels. Arena state never writes to a PvE Game or save. */
+import { deriveCharacterAppearance } from './character-appearance.js';
+import { createCharacterPresentation } from './character-animation.js';
+
 export const PVP_STATS = Object.freeze({maxHp:300,mana:100,damage:32,armor:0,crit:0,speed:185,spellDamage:36,manaRegen:8,cooldown:0,dodgeCooldown:0,gatherYield:0,lifeSteal:0});
 export const PVP_RULES = Object.freeze({
   title:'Duell der Schatten',duration:90,countdown:3,
@@ -38,7 +41,7 @@ function segmentDistance(a,b,p) {
   return Math.hypot(p.x-a.x-t*dx,p.y-a.y-t*dy);
 }
 function fighter(member,index) {
-  return {id:member.id,name:member.game.player.name,classId:member.game.classId,level:1,x:index?690:210,y:320,face:index?Math.PI:0,hp:300,mana:100,maxHp:300,walking:false,invulnerable:0,attackUntil:0,castUntil:0,dashUntil:0,hitUntil:0,keys:new Set(),cooldowns:{attack:0,bolt:0,nova:0,dash:0,potion:0},damageDealt:0};
+  return {id:member.id,name:member.game.player.name,classId:member.game.classId,level:1,x:index?690:210,y:320,face:index?Math.PI:0,hp:300,mana:100,maxHp:300,walking:false,invulnerable:0,attackUntil:0,castUntil:0,dashUntil:0,hitUntil:0,presentation:null,appearance:deriveCharacterAppearance(member.game),keys:new Set(),cooldowns:{attack:0,bolt:0,nova:0,dash:0,potion:0},damageDealt:0};
 }
 const body=f=>Object.fromEntries(Object.entries(f).filter(([key])=>!['keys','cooldowns','damageDealt'].includes(key)));
 
@@ -124,10 +127,12 @@ export class PvpArena {
     p.cooldowns[name]=config.cooldown;p.mana-=config.cost;
     for(const listener of duel.members)this.sound(listener,name==='bolt'?'spell':name);
     if(name==='dash') {
-      move(duel.world,p,Math.cos(p.face)*115,Math.sin(p.face)*115);p.invulnerable=.3;p.dashUntil=duel.elapsed+.3;
+      move(duel.world,p,Math.cos(p.face)*115,Math.sin(p.face)*115);p.invulnerable=.3;p.dashUntil=duel.elapsed+.3;p.dashAngle=p.face;
       this._effect(duel,'burst',p.x,p.y,{color:'#a58abe',radius:35});return true;
     }
     p.attackUntil=duel.elapsed+.4;p.castUntil=duel.elapsed+(name==='nova'?.9:.4);
+    const windup=name==='attack'?.18:name==='bolt'?.4:.9;
+    p.presentation=createCharacterPresentation(name==='attack'?'melee':name==='bolt'?'projectile':'cast',duel.elapsed,{angle:p.face,windup,duration:windup+(name==='nova'?.42:.3),skillId:`pvp_${name}`,color:'#bf8398'});
     const angle=p.face,cast={name,ownerId:p.id,angle,x:p.x,y:p.y,remaining:name==='attack'?.18:name==='bolt'?.4:.9};
     if(name==='nova')for(let offset=5;offset<=220;offset+=5){const x=p.x+Math.cos(angle)*offset,y=p.y+Math.sin(angle)*offset;if(collides(duel.world,x,y,0))break;cast.x=x;cast.y=y;}
     cast.hazardId=`${duel.id}-${member.id}-${duel.elapsed}-${name}`;duel.casts.push(cast);

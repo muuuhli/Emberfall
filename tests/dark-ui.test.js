@@ -32,9 +32,11 @@ test('bestiary lists canonical species once and exposes their actual boss form a
 test('expanded skills expose every learned technique and enforce prerequisite ranks for keystones',()=>{
   const ui=view(),game=ui.game;game.player.level=100;game.player.skillPoints=30;
   const abilities=ABILITIES.filter(a=>a.classId===game.player.classId);assert.ok(abilities.length>=8);
-  for(const ability of abilities)assert.ok(ui.activeAbilities().includes(ability.name));
+  let all='';for(let page=0;page<Math.ceil(abilities.length/6);page++){ui.talentPage=page;all+=ui.activeAbilities();}
+  for(const ability of abilities)assert.ok(all.includes(ability.name));
   ui.talentTab='passives';const keystone=game.availableSkills().find(skill=>skill.keystone&&typeof skill.requires==='string');
   assert.ok(keystone);game.skills[keystone.requires]=(keystone.requiresRank || 1)-1;
+  ui.talentSearch=keystone.name;ui.talentPage=0;
   let html=ui.talents();const article=html.slice(html.indexOf(`data-talent-id="${keystone.id}"`)).split('</article>')[0];
   assert.match(article,/data-command="learn"[^>]+disabled/);assert.ok(article.includes(`Rang ${keystone.requiresRank}`));
   game.skills[keystone.requires]=keystone.requiresRank;html=ui.talents();

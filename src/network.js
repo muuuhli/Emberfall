@@ -1,3 +1,5 @@
+import { isCharacterAppearance } from './character-appearance.js';
+
 const SESSION_KEY='emberfall.network.v1';
 const INPUT_KEYS=new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
 const REMOTE_METHODS=['questAccept','questTurnIn','learn','learnAbility','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward'];
@@ -118,6 +120,7 @@ export class NetworkClient {
     if(snapshot.npcs)game.npcs=snapshot.npcs;
     const previousParty=new Map(this.players.map(p=>[p.id,p]));this._targets.clear();
     this.players=(snapshot.party||[]).map(player=>{
+      player={...player,appearance:isCharacterAppearance(player.appearance)?player.appearance:null};
       this._targets.set(player.id,{x:player.x,y:player.y});const old=previousParty.get(player.id);
       return !worldChanged&&old&&Math.hypot(old.x-player.x,old.y-player.y)<250?{...player,x:old.x,y:old.y}:player;
     });

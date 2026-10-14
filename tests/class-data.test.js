@@ -42,8 +42,8 @@ test('class-exclusive talent trees have valid prerequisites and late unlocks', (
       assert.ok(talent.id.startsWith(`${entry.id}_`));
       assert.ok(talent.maxRank > 0 && talent.cost > 0);
       assert.ok(talent.minLevel >= 1 && talent.minLevel <= 100);
-      assert.ok(stats.includes(talent.effect.stat));
-      assert.ok(Number.isFinite(talent.effect.value) && talent.effect.value > 0);
+      if(talent.combatDepth){assert.equal(talent.effect,null);assert.ok(talent.combatEffects.length>=2);assert.ok(talent.combatEffects.every(effect=>typeof effect.target==='string'&&typeof effect.stat==='string'&&Number.isFinite(effect.value)&&effect.value!==0));}
+      else {assert.ok(stats.includes(talent.effect.stat));assert.ok(Number.isFinite(talent.effect.value) && talent.effect.value > 0);}
       if (talent.requires) assert.ok(ids.has(talent.requires));
       const path = new Set([talent.id]);
       let current = talent;

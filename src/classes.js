@@ -351,6 +351,82 @@ const SPECIALIZATIONS={
 
 for(const characterClass of CLASSES)characterClass.talents.push(...SPECIALIZATIONS[characterClass.id]);
 
+// These paths alter action geometry, timing and resource decisions. A character
+// may learn both supporting passives, but chooses only one final combat oath.
+const combatEffect=(target,stat,value)=>({target,stat,value});
+const combatPath=(classId,branch,root,passive,keystone)=>[
+  talent(classId,branch,passive[0],passive[1],passive[2],null,0,{effect:null,minLevel:35,maxRank:2,cost:3,requires:root,requiresRank:2,mastery:true,tier:3,combatDepth:true,combatEffects:passive[3],icon:'⌘'}),
+  talent(classId,branch,keystone[0],keystone[1],keystone[2],null,0,{effect:null,minLevel:70,maxRank:1,cost:5,requires:`${classId}_${passive[0]}`,requiresRank:2,mastery:true,tier:4,keystone:true,combatDepth:true,exclusiveGroup:`${classId}_combat_oath`,combatEffects:keystone[3],secondaryEffects:keystone[4]||[],icon:'★'}),
+];
+const c=combatEffect;
+const COMBAT_PATHS={
+  guardian:[
+    ...combatPath('guardian','Bastion','guardian_black_plate',
+      ['watchful_aegis','Wachsame Aegis','Pro Rang halten Schilde 12 % länger und erreichen 8 % weiter, kosten aber 8 % mehr Mana.',[c('shielding','duration',.12),c('shielding','radius',.08),c('shielding','cost',.08)]],
+      ['gate_oath','Eid am letzten Tor','Schilde sind 20 % stärker; Spott erreicht 25 % weiter. Dafür benötigen Schilde 25 % längere Abklingzeit und du verlierst 6 Tempo. Schließt Eisenmarsch aus.',[c('shielding','shieldPower',.2),c('shielding','tauntRadius',.25),c('shielding','cooldown',.25)],[{stat:'speed',value:-6}]]),
+    ...combatPath('guardian','Vergeltung','guardian_avenger',
+      ['sweeping_guard','Weiträumige Wacht','Pro Rang wachsen Hiebwinkel um 15 % und Hiebreichweite um 8 %, doch Grundangriffe benötigen 10 % mehr Zeit.',[c('attack','arc',.15),c('attack','range',.08),c('attack','cooldown',.1)]],
+      ['iron_momentum','Eisenmarsch','Grundangriffe reichen 22 % weiter und treffen 12 % stärker, benötigen aber 25 % mehr Zeit. Du verlierst 3 Rüstung. Schließt den Eid am letzten Tor aus.',[c('attack','range',.22),c('attack','power',.12),c('attack','cooldown',.25)],[{stat:'armor',value:-3}]]),
+  ],
+  paladin:[
+    ...combatPath('paladin','Licht','paladin_mercy',
+      ['kindled_mercy','Entfachte Gnade','Pro Rang erreicht Heilung 10 % weiter und heilt 5 % mehr, kostet aber 10 % mehr Mana.',[c('healing','radius',.1),c('healing','healPower',.05),c('healing','cost',.1)]],
+      ['pilgrim_beacon','Leuchtfeuer der Pilger','Heilung erreicht 18 % weiter und heilt 15 % mehr, kostet aber 25 % mehr Mana. Du verlierst 5 Tempo. Schließt das Einsame Urteil aus.',[c('healing','radius',.18),c('healing','healPower',.15),c('healing','cost',.25)],[{stat:'speed',value:-5}]]),
+    ...combatPath('paladin','Vergeltung','paladin_zealot',
+      ['judging_reach','Reichweite des Richters','Pro Rang reichen Hammerhiebe 12 % weiter und ihr Winkel wächst um 10 %, doch Grundangriffe benötigen 12 % mehr Zeit.',[c('attack','range',.12),c('attack','arc',.1),c('attack','cooldown',.12)]],
+      ['lonely_judge','Einsames Urteil','Grundangriffe treffen 16 % stärker und erholen sich 10 % schneller, decken aber 25 % weniger Winkel ab. Deine Heilung wird 20 % schwächer. Schließt das Leuchtfeuer aus.',[c('attack','power',.16),c('attack','cooldown',-.1),c('attack','arc',-.25),c('healing','healPower',-.2)]]),
+  ],
+  ranger:[
+    ...combatPath('ranger','Jagd','ranger_keen_sight',
+      ['longdraw','Langer Auszug','Pro Rang reichen Grundpfeile 12 % weiter und fliegen 10 % schneller, benötigen aber 12 % mehr Zeit beim Schuss.',[c('attack','range',.12),c('attack','speed',.1),c('attack','cooldown',.12)]],
+      ['threading_arrow','Faden durch die Nacht','Grundpfeile durchdringen einen zusätzlichen Gegner, verursachen aber 18 % weniger Schaden und benötigen 12 % mehr Zeit. Schließt die Wandernde Schlinge aus.',[c('attack','piercing',1),c('attack','power',-.18),c('attack','cooldown',.12)]]),
+    ...combatPath('ranger','Wildnis','ranger_sure_foot',
+      ['patient_thorns','Geduldige Dornen','Pro Rang halten Fallen 12 % länger und decken 8 % mehr Fläche ab, kosten aber 10 % mehr Mana.',[c('trap','duration',.12),c('trap','radius',.08),c('trap','cost',.1)]],
+      ['moving_snare','Wandernde Schlinge','Fallen verlangsamen 30 % länger und erholen sich 12 % schneller, decken aber 15 % weniger Fläche ab. Grundpfeile werden 10 % schwächer. Schließt den Faden durch die Nacht aus.',[c('trap','slowDuration',.3),c('trap','cooldown',-.12),c('trap','radius',-.15),c('attack','power',-.1)]]),
+  ],
+  nightblade:[
+    ...combatPath('nightblade','Assassine','nightblade_ambusher',
+      ['knifes_reach','Die lange Schneide','Pro Rang reichen Dolchhiebe 10 % weiter und treffen 5 % stärker, doch ihr Winkel schrumpft um 10 %.',[c('attack','range',.1),c('attack','power',.05),c('attack','arc',-.1)]],
+      ['single_victim','Ein Name, eine Klinge','Grundangriffe treffen 18 % stärker, decken aber 30 % weniger Winkel ab und benötigen 15 % mehr Zeit. Du verlierst 2 Rüstung. Schließt die Wiederkehrende Dunkelheit aus.',[c('attack','power',.18),c('attack','arc',-.3),c('attack','cooldown',.15)],[{stat:'armor',value:-2}]]),
+    ...combatPath('nightblade','Schatten','nightblade_afterimage',
+      ['long_shadow','Langer Schatten','Pro Rang reichen offensive Schattenschritte 15 % weiter, kosten aber 8 % mehr Mana und erholen sich 10 % langsamer.',[c('dashstrike','range',.15),c('dashstrike','cost',.08),c('dashstrike','cooldown',.1)]],
+      ['returning_dark','Wiederkehrende Dunkelheit','Offensive Schritte erholen sich 15 % schneller und treffen 18 % mehr Fläche, verursachen aber 12 % weniger Schaden und kosten 20 % mehr Mana. Du verlierst 35 Leben. Schließt Ein Name, eine Klinge aus.',[c('dashstrike','cooldown',-.15),c('dashstrike','radius',.18),c('dashstrike','power',-.12),c('dashstrike','cost',.2)],[{stat:'maxHp',value:-35}]]),
+  ],
+  flamecaller:[
+    ...combatPath('flamecaller','Feuer','flamecaller_fire_gaze',
+      ['falling_sparks','Fallende Funken','Pro Rang wächst Feuerball-Spritzfläche um 12 %, doch Zaubergeschosse fliegen 8 % langsamer und kosten 8 % mehr Mana.',[c('projectile','splashRadius',.12),c('projectile','speed',-.08),c('projectile','cost',.08)]],
+      ['wide_embers','Weite Glut','Offensive Zauberflächen wachsen um 20 %, doch offensive Zauber verursachen 12 % weniger Schaden und kosten 20 % mehr Mana. Schließt den Rauchtunnel aus.',[c('offense','radius',.2),c('offense','splashRadius',.2),c('offense','power',-.12),c('offense','cost',.2)]]),
+    ...combatPath('flamecaller','Asche','flamecaller_cinder_shell',
+      ['banked_flame','Bewahrte Glut','Pro Rang kosten Techniken 6 % weniger Mana, erholen sich aber 8 % langsamer.',[c('ability','cost',-.06),c('ability','cooldown',.08)]],
+      ['smoke_tunnel','Rauchtunnel','Zaubergeschosse fliegen 25 % schneller und treffen 12 % stärker, ihre Spritzfläche schrumpft aber um 25 %. Du verlierst 40 Leben. Schließt die Weite Glut aus.',[c('projectile','speed',.25),c('projectile','power',.12),c('projectile','splashRadius',-.25)],[{stat:'maxHp',value:-40}]]),
+  ],
+  frostweaver:[
+    ...combatPath('frostweaver','Winter','frostweaver_white_hunger',
+      ['lingering_rime','Bleibender Reif','Pro Rang halten Verlangsamungen 12 % länger, doch kontrollierende Geschosse fliegen 8 % langsamer und kosten 8 % mehr Mana.',[c('control','slowDuration',.12),c('control','speed',-.08),c('control','cost',.08)]],
+      ['white_prison','Weißes Gefängnis','Verlangsamungen werden um 8 Prozentpunkte stärker und halten 20 % länger. Kontrollzauber verursachen 16 % weniger Schaden und erholen sich 20 % langsamer. Schließt den Ausgreifenden Eiswall aus.',[c('control','slow',.08),c('control','slowDuration',.2),c('control','power',-.16),c('control','cooldown',.2)]]),
+    ...combatPath('frostweaver','Eiswall','frostweaver_rime_plate',
+      ['cold_reserve','Kältereserve','Pro Rang kosten Techniken 6 % weniger Mana, erholen sich aber 8 % langsamer.',[c('ability','cost',-.06),c('ability','cooldown',.08)]],
+      ['ice_outreach','Ausgreifender Eiswall','Fallen decken 22 % mehr Fläche ab und halten 15 % länger, kosten aber 25 % mehr Mana. Du verlierst 6 Tempo. Schließt das Weiße Gefängnis aus.',[c('trap','radius',.22),c('trap','duration',.15),c('trap','cost',.25)],[{stat:'speed',value:-6}]]),
+  ],
+  druid:[
+    ...combatPath('druid','Blüte','druid_dew',
+      ['wandering_bloom','Wandernde Blüte','Pro Rang erreicht Heilung 12 % weiter, heilt aber 5 % weniger.',[c('healing','radius',.12),c('healing','healPower',-.05)]],
+      ['lasting_spring','Bleibender Frühling','Heilzonen halten 30 % länger und ihre Regeneration wird 15 % stärker; direkte Heilung wird 15 % schwächer und Heilung kostet 20 % mehr Mana. Schließt den Mondunterschlupf aus.',[c('healing','duration',.3),c('healing','regenPower',.15),c('healing','directHealPower',-.15),c('healing','cost',.2)]]),
+    ...combatPath('druid','Mond','druid_moon_step',
+      ['thornflight','Dornenflug','Pro Rang reichen Grundranken 10 % weiter und fliegen 12 % schneller, verursachen aber 8 % weniger Schaden.',[c('attack','range',.1),c('attack','speed',.12),c('attack','power',-.08)]],
+      ['moon_shelter','Mondunterschlupf','Heilung wird 15 % stärker, erreicht aber 25 % weniger Fläche. Grundangriffe benötigen 20 % mehr Zeit. Schließt den Bleibenden Frühling aus.',[c('healing','healPower',.15),c('healing','radius',-.25),c('attack','cooldown',.2)]]),
+  ],
+  shadowbinder:[
+    ...combatPath('shadowbinder','Pakt','shadowbinder_soul_reserve',
+      ['patient_pact','Geduldiger Pakt','Pro Rang halten Beschwörungen 12 % länger, erholen sich aber 10 % langsamer.',[c('summon','duration',.12),c('summon','cooldown',.1)]],
+      ['third_shadow','Der dritte Schatten','Ruft einen zusätzlichen Diener, doch Diener verursachen 18 % weniger Schaden, bleiben 15 % kürzer und der Pakt kostet 25 % mehr Mana. Du verlierst 20 Mana. Schließt die Rastlose Gruft aus.',[c('summon','summonCount',1),c('summon','power',-.18),c('summon','duration',-.15),c('summon','cost',.25)],[{stat:'mana',value:-20}]]),
+    ...combatPath('shadowbinder','Seele','shadowbinder_blood_rite',
+      ['far_siphon','Entfernter Entzug','Pro Rang reicht Seelenentzug 12 % weiter und heilt 10 % mehr, kostet aber 12 % mehr Mana.',[c('drain','range',.12),c('drain','healPower',.1),c('drain','cost',.12)]],
+      ['restless_grave','Rastlose Gruft','Diener greifen 10 % schneller an und erreichen 15 % weiter, bleiben aber 20 % kürzer. Du verlierst 35 Leben. Schließt den Dritten Schatten aus.',[c('summon','summonCadence',-.1),c('summon','summonRange',.15),c('summon','duration',-.2)],[{stat:'maxHp',value:-35}]]),
+  ],
+};
+for(const characterClass of CLASSES)characterClass.talents.push(...COMBAT_PATHS[characterClass.id]);
+
 export function getClass(id) { return CLASSES.find(entry => entry.id === id) || CLASSES[0]; }
 export const CLASS_TALENTS = CLASSES.flatMap(entry => entry.talents);
 
@@ -363,6 +439,7 @@ export function canLearnTalent(game,id) {
   if(!Number.isFinite(p.level)||p.level<(skill.minLevel||1))return {ok:false,reason:`Benötigt Stufe ${skill.minLevel||1}.`};
   const rank=Number.isFinite(ranks[id])?Math.max(0,Math.floor(ranks[id])):0;
   if(rank>=skill.maxRank)return {ok:false,reason:'Bereits gemeistert.'};
+  if(skill.exclusiveGroup){const chosen=CLASS_TALENTS.find(other=>other.id!==id&&other.exclusiveGroup===skill.exclusiveGroup&&ranks[other.id]>0);if(chosen)return {ok:false,reason:`Schließt ${chosen.name} aus. Verteile deine Talente neu, um diesen Eid zu wählen.`};}
   const requirements=!skill.requires?[]:Array.isArray(skill.requires)?skill.requires:[skill.requires];
   for(const requirement of requirements) {
     const requiredId=typeof requirement==='string'?requirement:requirement.id,requiredRank=typeof requirement==='string'?skill.requiresRank||1:requirement.rank||1;
@@ -373,6 +450,23 @@ export function canLearnTalent(game,id) {
   }
   if(!Number.isFinite(p.skillPoints)||p.skillPoints<skill.cost)return {ok:false,reason:`Benötigt ${skill.cost} Talentpunkte.`};
   return {ok:true,reason:''};
+}
+
+/** New combat choices are strict; original and legacy ranks retain their rules. */
+export function validateCombatTalentState(data) {
+  const ranks=data?.skills||{},player=data?.player||{},chosen=new Set();
+  const satisfied=(skill,seen=new Set())=>{
+    if(!skill||seen.has(skill.id)||skill.classId!==player.classId||!Number.isInteger(player.level)||player.level<1||player.level>100||player.level<(skill.minLevel||1))return false;
+    const rank=ranks[skill.id];if(!Number.isInteger(rank)||rank<1||rank>skill.maxRank)return false;
+    const next=new Set(seen).add(skill.id),requires=!skill.requires?[]:Array.isArray(skill.requires)?skill.requires:[skill.requires];
+    return requires.every(requirement=>{const id=typeof requirement==='string'?requirement:requirement.id,needed=typeof requirement==='string'?skill.requiresRank||1:requirement.rank||1;return ranks[id]>=needed&&satisfied(CLASS_TALENTS.find(other=>other.id===id),next);});
+  };
+  for(const skill of CLASS_TALENTS.filter(entry=>entry.combatDepth)){
+    const rank=ranks[skill.id];if(rank===undefined||rank===0)continue;
+    if(!satisfied(skill))return false;
+    if(skill.exclusiveGroup){if(chosen.has(skill.exclusiveGroup))return false;chosen.add(skill.exclusiveGroup);}
+  }
+  return true;
 }
 
 /** Additive modifiers, including the costs of keystones; does not mutate saves. */

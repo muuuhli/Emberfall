@@ -33,10 +33,10 @@ function prepare(game,id) {
   game.setAbilityLoadout(0,null);game.setAbilityLoadout(1,null);assert.equal(game.setAbilityLoadout(0,id),true);
 }
 
-test('all eight classes keep three original milestones and expand with five alternative techniques',()=>{
-  assert.equal(ABILITIES.length,64);assert.equal(new Set(ABILITIES.map(a=>a.id)).size,64);
+test('all eight classes keep their original milestones and expand with eight alternative techniques',()=>{
+  assert.equal(ABILITIES.length,88);assert.equal(new Set(ABILITIES.map(a=>a.id)).size,88);
   for(const cls of CLASSES) {
-    const defs=ABILITIES.filter(a=>a.classId===cls.id);assert.deepEqual(defs.slice(0,3).map(a=>a.level),[4,12,25]);assert.deepEqual(defs.slice(3).map(a=>a.level),[8,18,35,50,70]);
+    const defs=ABILITIES.filter(a=>a.classId===cls.id);assert.deepEqual(defs.slice(0,3).map(a=>a.level),[4,12,25]);assert.deepEqual(defs.slice(3,8).map(a=>a.level),[8,18,35,50,70]);assert.deepEqual(defs.slice(8).map(a=>a.level),[16,38,62]);
     const game=arena(cls.id,3),[first,second,third]=defs;
     assert.equal(canLearnAbility(game,first.id).ok,false);assert.equal(game.learnAbility(first.id),false);
     game.player.level=25;assert.equal(game.learnAbility(second.id),false);
@@ -56,6 +56,7 @@ test('every learned skill pays mana once, animates and has a real combat / suppo
     const game=arena(a.classId),ally=arena('guardian');ally.player.x=game.player.x+20;ally.player.hp=ally.stats().maxHp*.5;
     party(game,ally);prepare(game,a.id);game.player.hp=game.stats().maxHp*.8;
     const target=enemy(game,['trap','fan','projectile','meteor','summon','storm','curse'].includes(a.kind)?140:60);
+    if(a.kind==='stepStrike')target.y=game.player.y+a.distance*a.side;
     game.aim={x:target.x,y:target.y};
     if(a.kind==='revive'){ally.dead=true;ally.paused=true;ally.player.hp=0;}
     if(a.kind==='bargain')game.player.mana=game.stats().mana*.4;
@@ -72,8 +73,9 @@ test('every learned skill pays mana once, animates and has a real combat / suppo
     if(a.kind==='revive'){assert.equal(ally.dead,false);assert.equal(ally.player.hp,ally.stats().maxHp*.25);}
     if(a.kind==='bargain'){assert.equal(game.player.hp,hp*.85);assert.ok(game.player.mana>mana);}
     if(a.kind==='summon')assert.equal(game.summons.length,a.count);
+    if(a.kind==='retaliationWard'){assert.ok(game.player.shield>0,a.id);game.damagePlayer(game.stats().maxHp*.3,{ignoreInvulnerability:true});}
     advance(game,2.05);
-    if(['cone','execute','fan','projectile','trap','meteor','sanctum','storm','curse','summon'].includes(a.kind))assert.ok(target.hp<enemyHp,`${a.id}: actual damage`);
+    if(['cone','execute','fan','projectile','trap','meteor','sanctum','storm','curse','summon','channel','mark','stepStrike','retaliationWard'].includes(a.kind))assert.ok(target.hp<enemyHp,`${a.id}: actual damage`);
     if(a.kind==='regeneration')assert.ok(ally.player.hp>allyHp,a.id);
     if(a.kind==='sanctum')assert.ok(ally.player.hp>allyHp,a.id);
     if((a.kind==='storm'||a.kind==='trap')&&a.slow)assert.ok(target.slowFactor<1,a.id);

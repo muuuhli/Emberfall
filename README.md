@@ -2,7 +2,9 @@
 
 Ein eigenständiges, deutschsprachiges 2D-Action-RPG mit direkter Bewegung, gerichteten Angriffen, Ausweichrollen, Quests, Farming und instanzierter Beute. Die Erweiterung verbindet eine große offene Welt mit acht Klassen, Fortschritt bis Stufe 100 und kooperativen Dungeons auf einem lokalen Spielserver.
 
-**Aktueller Stand – Version 6.0:** fünf geprüfte Inhaltsrunden ergänzen 24 Nebenquests in acht Geschichten, sechs eigenständige Bossjagden, vier neue fünfstufige Expeditionen, drei Wellenprüfungen, sechs Jagdrouten, vier gezielte Beutebelohnungen, zwei originale Reisegefährten und vier Errungenschaften. Die Welt bietet damit 16 Regionen, 96 Quests, acht Dungeons, 80 regionale Gegnerarten samt Bossformen, 64 aktive Fähigkeiten und 164 Klassentalente. 16 regionale Ereignisse, sechs neue Bossjagden, acht Expeditionen und drei Prüfungen ergeben 33 Weltaktivitäten; 17 Jagdrouten, 20 Errungenschaften und zwölf Reisegefährten verbinden sie mit bleibenden Zielen. Mobile Hinweise bleiben auf einen sichtbaren Hinweis begrenzt; kompakte Köpfe halten auch auf kurzen Displays die Spielfigur frei. Alte Reisen, Weltorte und einmalige Belohnungen werden weitergeführt. Die [fünf Inhaltsrunden](docs/content-loops.md) dokumentieren Umsetzung, native Prüfungen und ihre Grenzen.
+**Aktueller Stand – Version 7.0:** angelegte Waffen, Rüstungen, Helme, Handschuhe, Schuhe, Ringe und Amulette prägen jetzt die tatsächliche Pixelfigur in der Welt und in einer drehbaren Charaktervorschau. 24 neue Klassenfähigkeiten ergänzen Kanalisieren, bedingte Markierungen, offensive Schritte und begrenzte Gegenangriffe; 32 neue Talente verändern Reichweite, Flächen, Kontrolle und Ressourcen mit bewussten Nachteilen und exklusiven Schlüsseltalenten. Insgesamt stehen 88 erlernbare aktive Fähigkeiten und 196 Klassentalente zur Wahl. Gerichtete Kampfposen, Treffer und die neuen Technik-Effekte folgen den echten Aktionen und respektieren reduzierte Bewegung. Die [Prüfungen zu Ausrüstung und Builds](docs/character-builds-v7.md) dokumentieren Umsetzung und Grenzen.
+
+Die [fünf Inhaltsrunden aus Version 6.0](docs/content-loops.md) bleiben enthalten: 24 Nebenquests in acht Geschichten, sechs eigenständige Bossjagden, vier neue fünfstufige Expeditionen und drei Wellenprüfungen. Insgesamt gibt es 16 Regionen, 96 Quests, acht Dungeons, 80 regionale Gegnerarten samt Bossformen, 33 Weltaktivitäten, 17 Jagdrouten, 20 Errungenschaften und zwölf Reisegefährten. Mobile Hinweise bleiben auf einen sichtbaren Hinweis begrenzt; kompakte Köpfe halten auf den geprüften kurzen Displays die Spielfigur frei. Alte Reisen, Weltorte und einmalige Belohnungen werden weitergeführt.
 
 ## Aschenjagd: mobiles HUD und wechselnde Gefahr
 
@@ -241,7 +243,7 @@ npm run build
 | `src/catalog.js` | Zusammengeführte Inhaltsdaten |
 | `src/expansion.js` | Zusätzliche Regionen, Gegner, Reiseführer und Questketten |
 | `src/classes.js` / `src/progression.js` | Klassen, Talentpfade und Fortschritt bis Stufe 100 |
-| `src/abilities.js` | 64 erlernbare aktive Fähigkeiten, Voraussetzungen und gespeicherte Belegung |
+| `src/abilities.js` | 88 erlernbare aktive Fähigkeiten, Voraussetzungen und gespeicherte Belegung |
 | `src/bestiary.js`, `src/enemy-ai.js` | 80 regionale Arten, Bossvarianten, Kampfbudgets und tatsächliche Angriffsmuster |
 | `src/arsenal.js` | Neue Waffen, Rüstung, Talismane, Vorräte, Rezepte und Händlersortimente |
 | `src/interactions.js` | Zwölf Weltinteraktionsarten, Chroniken und gespeicherter Zustand |

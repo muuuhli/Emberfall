@@ -3,6 +3,7 @@
  * Data contains costs and effects; Game resolves them on the authority only.
  */
 import { classPowerMultiplier } from './balance.js';
+import { MASTERY_ABILITIES } from './mastery-abilities.js';
 
 const coreBranches={guardian:{cone:'Vergeltung',taunt:'Wächter',shield:'Bastion'},paladin:{mend:'Licht',sanctum:'Licht',partyShield:'Schutz'},ranger:{fan:'Jagd',trap:'Wildnis',summon:'Bestien'},nightblade:{cone:'Assassine',escape:'Schatten',execute:'Assassine'},flamecaller:{projectile:'Feuer',meteor:'Feuer',summon:'Äther'},frostweaver:{fan:'Winter',shield:'Eiswall',storm:'Winter'},druid:{cone:'Wildnis',partyShield:'Blüte',revive:'Blüte'},shadowbinder:{curse:'Seele',summon:'Pakt',bargain:'Seele'}};
 const active=(classId,suffix,name,description,level,kind,options={})=>{
@@ -108,7 +109,7 @@ const ADVANCED_ABILITIES=[
   active('shadowbinder','abyss_eye','Auge des Abgrunds','Ein ferner Geist greift 18 Sekunden aus großer Entfernung mit {damage} % Zauberkraft an. Sein langer Pakt ersetzt häufiges Nachbeschwören.',70,'summon',{requires:'shadowbinder_legion',branch:'Pakt',cost:44,cooldown:36,duration:18,count:1,ranged:true,range:420,attackCooldown:1.3,damageMultiplier:.65,icon:'◈',color:'#a994bd'}),
 ];
 
-export const ABILITIES=Object.freeze([...CORE_ABILITIES,...ADVANCED_ABILITIES]);
+export const ABILITIES=Object.freeze([...CORE_ABILITIES,...ADVANCED_ABILITIES,...MASTERY_ABILITIES]);
 
 export function getAbility(id) {return ABILITIES.find(a=>a.id===id)||null;}
 export function getLearnedAbilities(game) {return ABILITIES.filter(a=>a.classId===game.player?.classId&&game.learnedAbilities?.[a.id]===true);}

@@ -6,12 +6,12 @@ import { ABILITIES, getAbility, validateAbilityState } from '../src/abilities.js
 import { basePlayerStats, capCombatStats, classStatModifiers } from '../src/balance.js';
 
 const clone=value=>JSON.parse(JSON.stringify(value));
-const mastered=(cls,branch)=>Object.fromEntries(cls.talents.filter(t=>t.mastery&&t.branch===branch).map(t=>[t.id,t.maxRank]));
+const mastered=(cls,branch)=>Object.fromEntries(cls.talents.filter(t=>t.mastery&&!t.combatDepth&&t.branch===branch).map(t=>[t.id,t.maxRank]));
 
 test('every class has three specialization paths, rank gates and three costly keystones',()=>{
-  assert.equal(CLASS_TALENTS.length,164);
+  assert.equal(CLASS_TALENTS.filter(t=>!t.combatDepth).length,164);assert.equal(CLASS_TALENTS.filter(t=>t.combatDepth).length,32);
   for(const cls of CLASSES) {
-    const talents=cls.talents.filter(t=>t.mastery),branches=[...new Set(talents.map(t=>t.branch))];
+    const talents=cls.talents.filter(t=>t.mastery&&!t.combatDepth),branches=[...new Set(talents.map(t=>t.branch))];
     assert.equal(talents.length,12);assert.equal(branches.length,3);
     for(const branch of branches) {
       const path=talents.filter(t=>t.branch===branch);

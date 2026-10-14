@@ -1,7 +1,7 @@
 import { ITEMS, SKILLS, QUESTS, RECIPES, ENEMY_TYPES, NPCS, REGIONS, RESOURCES } from './catalog.js';
 import { makeWorld } from './world.js';
 import { expandWorld } from './expansion.js';
-import { CLASSES, getClass, getTalentModifiers, canLearnTalent } from './classes.js';
+import { CLASSES, getClass, getTalentModifiers, canLearnTalent, validateCombatTalentState } from './classes.js';
 import { MAX_LEVEL, xpToNext } from './progression.js';
 import { basePlayerStats, classStatModifiers, capCombatStats, incomingDamage, classPowerMultiplier, normalEnemyStats, enemyXpReward } from './balance.js';
 import { generateLoot, computeItemStats, validateLootItem, salvageYield, computeSetBonuses, GEM_TYPES, ITEM_BASES } from './loot.js';
@@ -23,6 +23,10 @@ import { createEndgameState, validateEndgameState, restoreEndgameState, advanceH
 import { getRelic, resolveRelicProc } from './relics.js';
 import { createEncounterDirector, updateEncounterDirector, captureEncounterDirector, validateEncounterDirectorSave, restoreEncounterDirector, encounterSummary, ordinaryRespawnDelay, encounterSpawnBlocked } from './encounter-director.js';
 import { updateEncounterBoss } from './encounter-boss-ai.js';
+import { createCharacterPresentation } from './character-animation.js';
+import { getTalentCombatModifiers, applyTalentAttackProfile, applyTalentAbilityProfile } from './talent-combat.js';
+import { preflightMasteryAbility, executeMasteryAbility, updateMasteryAbilities, cancelMasteryChannel,
+  clearMasteryAbilities, onMasteryHit, onMasteryDamaged } from './ability-runtime.js';
 
 export const SAVE_KEY = 'emberfall.save.v1';
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -56,6 +60,7 @@ export class Game {
     try { this.hasSave = !!storage?.getItem(SAVE_KEY); if(this.hasSave) this.load(); } catch { this.hasSave=false; }
   }
   initialize() {
+    clearMasteryAbilities(this);
     this.world = addWorldEvents(addWorldInteractions(expandWorld(makeWorld()))); this.overworld=this.world;this.dungeonInstance=null;this.dungeonRecords={};this.npcs = NPCS; this.time = 0;
     this.world.encounterDirector=createEncounterDirector();this.networkEncounterDirectorSave=null;
     for(const enemy of this.world.enemies)if(!BESTIARY_ENEMIES[enemy.type]&&!ENEMY_TYPES[enemy.type]?.boss&&enemy.level>=12){const tuned=normalEnemyStats(enemy.level);Object.assign(enemy,{hp:tuned.hp,maxHp:tuned.hp,damage:tuned.damage,xp:tuned.xp,attackPeriod:tuned.attackPeriod});}
@@ -85,6 +90,14 @@ export class Game {
   }
   change() { this.dirty = true; this.onChange(); }
   notice(text,tone='info') { this.onNotice(text,tone); }
+  presentAction(kind,profile={}) {
+    this.player.presentation=createCharacterPresentation(kind,this.time,{angle:this.player.face,
+      duration:profile.presentationDuration||(profile.windup?profile.windup+(profile.kind==='channel'?(profile.ticks-1)*profile.interval:0)+.3:undefined),
+      windup:profile.windup||0,skillId:profile.id,color:profile.color});
+  }
+  combatTalentModifiers() {
+    return this.worldMode==='pvp'?{}:getTalentCombatModifiers(this.skills,this.player.classId);
+  }
   stats(equipmentOverride=this.equipment) {
     if(this.worldMode==='pvp'&&this.pvpStats)return {...this.pvpStats};
     const p=this.player;
@@ -295,6 +308,7 @@ export class Game {
     const cost=20+this.player.level*5;
     if(this.dead||!this.inSettlement()||this.inCombat()||!refund||this.player.gold<cost)return false;
     this.player.gold-=cost;this.player.skillPoints+=refund;this.skills={};
+    clearMasteryAbilities(this);
     const stats=this.stats();this.player.hp=Math.min(this.player.hp,stats.maxHp);this.player.mana=Math.min(this.player.mana,stats.mana);
     this.notice(`Talente neu verteilt · ${refund} Punkte zurück · ${cost} Gold`);this.change();this.save(false);return true;
   }
@@ -611,6 +625,7 @@ export class Game {
     if(this.dungeonInstance) {this.notice('Verlasse zuerst den Dungeon.');return false;}
     const shrine=this.world.shrines.find(s=>s.id===id);
     if(!shrine || !this.unlockedShrines.includes(id)) return false;
+    clearMasteryAbilities(this);
     this.player.x=shrine.x; this.player.y=shrine.y+48; this.player.invulnerable=2;
     this.player.hp=this.stats().maxHp; this.player.mana=this.stats().mana;
     this.notice(`Schnellreise: ${shrine.name}`); this.change(); this.save(false); return true;
@@ -626,6 +641,7 @@ export class Game {
     if(tier>prior+1) {this.notice('Meistere zuerst die vorherige Dungeontiefe.');return false;}
     const instance=createDungeon(id,{tier,partySize:party.length,seed:826404+tier*131});instance.tier=tier;
     for(const ally of party) {
+      clearMasteryAbilities(ally);
       ally.returnPoint={x:ally.player.x,y:ally.player.y};ally.overworld=ally.world;
       ally.world=instance.world;ally.dungeonInstance=instance;ally.npcs=[];ally.player.x=instance.spawn.x+(party.indexOf(ally)%4)*32;ally.player.y=instance.spawn.y+Math.floor(party.indexOf(ally)/4)*32;
       ally.player.invulnerable=3;ally.projectiles=[];ally.effects=[];ally.drops=[];ally.hazards=[];ally.summons=[];ally.change();
@@ -637,6 +653,7 @@ export class Game {
     if(!this.dungeonInstance)return false;
     for(const ally of this.partyGames||[this]) {
       if(!ally.dungeonInstance)continue;
+      clearMasteryAbilities(ally);
       ally.world=ally.overworld;ally.dungeonInstance=null;ally.npcs=NPCS;
       ally.player.x=ally.returnPoint?.x||520;ally.player.y=ally.returnPoint?.y||1250;
       ally.projectiles=[];ally.effects=[];ally.drops=[];ally.hazards=[];ally.summons=[];ally.player.invulnerable=3;ally.change();ally.save(false);
@@ -677,11 +694,14 @@ export class Game {
   }
   useLearnedAbility(slot) {
     if(!Number.isInteger(slot)||slot<0||slot>1||!this.started||this.paused||this.dead||this.player.hp<=0)return false;
-    const id=this.abilityLoadout[slot],a=getAbility(id),p=this.player;
-    if(!a||a.classId!==p.classId||p.level<a.level||this.learnedAbilities[id]!==true)return false;
+    const id=this.abilityLoadout[slot],definition=getAbility(id),p=this.player;
+    if(!definition||definition.classId!==p.classId||p.level<definition.level||this.learnedAbilities[id]!==true)return false;
+    const a=applyTalentAbilityProfile(definition,this.combatTalentModifiers(),{action:'learned'});
     for(let prerequisite=a.requires;prerequisite;prerequisite=getAbility(prerequisite)?.requires)if(this.learnedAbilities[prerequisite]!==true)return false;
     const key=`ability:${id}`;if((this.cooldowns[key]||0)>0)return false;
     const s=this.stats();if(p.mana<a.cost){this.notice('Nicht genug Mana.');return false;}
+    const preflight=preflightMasteryAbility(this,a);
+    if(preflight&&!preflight.ok){this.notice(preflight.reason);return false;}
     const party=(this.partyGames||[this]).filter(g=>g.world===this.world),allies=party.filter(g=>!g.dead&&g.player.hp>0&&dist(p,g.player)<(a.radius||1));
     const targets=this.world.enemies.filter(e=>e.alive&&dist(p,e)<(a.range||a.radius||150));
     let target=null;
@@ -690,9 +710,17 @@ export class Game {
     if(a.kind==='curse')target=targets.filter(e=>Math.abs(angleDiff(Math.atan2(e.y-p.y,e.x-p.x),p.face))<1.25).sort((x,y)=>dist(p,x)-dist(p,y))[0];
     if(['revive','execute','curse'].includes(a.kind)&&!target){this.notice(a.kind==='revive'?'Kein gefallener Gefährte in Reichweite.':'Kein Gegner in Reichweite.');return false;}
     if(a.kind==='bargain'&&(p.hp<=s.maxHp*a.minHealth||p.mana>=s.mana)){this.notice('Du brauchst genügend Leben und fehlendes Mana.');return false;}
+    cancelMasteryChannel(this);
     p.mana-=a.cost;this.cooldowns[key]=a.cooldown*(1-s.cooldown);p.castUntil=this.time+.35;p.attackUntil=this.time+.25;
+    this.presentAction(['shield','partyShield','taunt','retaliationWard'].includes(a.kind)?'shield':
+      ['mend','regeneration','revive'].includes(a.kind)?'heal':
+      ['cone','execute','stepStrike'].includes(a.kind)?'melee':['projectile','fan'].includes(a.kind)?'projectile':'cast',a);
     const powerFactor=classPowerMultiplier(p.classId,a.powerKind),healFactor=classPowerMultiplier(p.classId,'heal');
     const damage=(s[a.stat]||0)*a.damageMultiplier*powerFactor,actorId=p.id||'local';
+    if(preflight){
+      executeMasteryAbility(this,a,{stats:s,powerFactor,healFactor,damage,actorId});
+      this.onSound(a.kind==='stepStrike'?'attack':'spell');this.change();return true;
+    }
     const applySlow=e=>{if(a.slow){const factor=e.slowUntil>this.time?e.slowFactor??1:1;e.slowUntil=Math.max(e.slowUntil||0,this.time+(a.duration||3));e.slowFactor=Math.min(factor,1-a.slow);}};
     this.effect('ring',p.x,p.y,{radius:a.kind==='meteor'?35:a.radius||55,color:a.color,life:.45});
     if(a.kind==='shield')this._abilityShield(this,a.shieldFraction,a.duration);
@@ -707,7 +735,7 @@ export class Game {
       if(ally)this._healAbilityAlly(ally,(s.spellDamage*a.healMultiplier+ally.stats().maxHp*a.healFraction)*healFactor);
     }
     if(a.kind==='cone') {
-      this.effect('slash',p.x,p.y,{radius:a.range,angle:p.face,color:a.color,life:.25});
+      this.effect('slash',p.x,p.y,{radius:a.range,arc:a.arc,angle:p.face,color:a.color,life:.25});
       for(const enemy of targets)if(Math.abs(angleDiff(Math.atan2(enemy.y-p.y,enemy.x-p.x),p.face))<=a.arc/2){this.hitEnemy(enemy,damage,a.knockback||0);applySlow(enemy);}
     }
     if(a.kind==='execute') {
@@ -732,7 +760,7 @@ export class Game {
     if(a.kind==='meteor')this.hazards.push({id:`ability-meteor-${++this.lootSerial}`,kind:'meteor',...this._abilityPoint(a.range),radius:a.radius,damage,knockback:a.knockback,
       life:a.windup+.1,timer:a.windup,windup:true,actorId,color:a.color});
     if(['regeneration','sanctum','storm'].includes(a.kind))this.hazards.push({id:`ability-zone-${++this.lootSerial}`,kind:a.kind,x:a.kind==='storm'?this._abilityPoint(a.range).x:p.x,y:a.kind==='storm'?this._abilityPoint(a.range).y:p.y,
-      radius:a.radius,damage,heal:s.spellDamage*(a.healMultiplier||0)*healFactor,healFraction:(a.healFraction||0)*healFactor,slow:a.slow||0,life:a.duration,actorId,color:a.color,tick:1});
+      radius:a.radius,damage,heal:s.spellDamage*(a.healMultiplier||0)*healFactor,healFraction:(a.healFraction||0)*healFactor,slow:a.slow||0,slowDuration:a.slowDuration||1.6,life:a.duration,actorId,color:a.color,tick:1});
     if(a.kind==='curse')this.hazards.push({id:`ability-curse-${++this.lootSerial}`,kind:'curse',targetId:target.id,x:target.x,y:target.y,radius:24,damage,drain:a.drain*healFactor,life:a.duration,actorId,color:a.color,tick:1});
     if(a.kind==='summon') {
       const present=this.summons.filter(summon=>summon.actorId===actorId&&!summon.companion).length,count=Math.min(a.count,Math.max(0,8-present));
@@ -757,29 +785,37 @@ export class Game {
     if((this.cooldowns[name]||0)>0) return false;
     const p=this.player,s=this.stats(),cls=getClass(p.classId);
     if(name==='attack') {
+      cancelMasteryChannel(this);
       this.combo=this.time-this.comboTime<1.1?(this.combo+1)%3:0; this.comboTime=this.time;
-      const profile=cls.abilities.attack,heavy=this.combo===2,arc=heavy?Math.PI:profile.arc,range=profile.range+(heavy?18:0);
+      const profile=applyTalentAttackProfile(cls.abilities.attack,this.combatTalentModifiers()),heavy=this.combo===2,
+        arc=heavy&&cls.abilities.attack.arc>0?Math.min(Math.PI*2,Math.PI*profile.arc/cls.abilities.attack.arc):profile.arc,
+        range=profile.range+(heavy?18:0);
+      this.presentAction(profile.kind==='projectile'?'projectile':'melee',profile);
       const damage=(s[profile.stat||'damage']||s.damage)*profile.damageMultiplier*(heavy?1.55:1)*classPowerMultiplier(p.classId,'attack');
       this.cooldowns.attack=profile.cooldown; p.attackUntil=this.time+.22;
       if(profile.kind==='projectile') {
-        this.projectiles.push({x:p.x+Math.cos(p.face)*24,y:p.y+Math.sin(p.face)*24,angle:p.face,type:'bolt',speed:profile.projectileSpeed||430,damage,life:range/(profile.projectileSpeed||430),owner:'player',actorId:p.id||'local',radius:6,color:cls.color,slow:profile.slow||0,slowDuration:profile.duration||3});
+        this.projectiles.push({x:p.x+Math.cos(p.face)*24,y:p.y+Math.sin(p.face)*24,angle:p.face,type:'bolt',speed:profile.projectileSpeed||430,damage,life:range/(profile.projectileSpeed||430),owner:'player',actorId:p.id||'local',radius:6,color:cls.color,slow:profile.slow||0,slowDuration:profile.duration||3,piercing:profile.piercing||0,hitIds:[]});
         this.onSound('attack');this.change();return true;
       }
-      this.effect('slash',p.x,p.y,{angle:p.face,radius:range,color:heavy?'#ffda82':profile.color||cls.color,life:.23});
+      this.effect('slash',p.x,p.y,{angle:p.face,arc,radius:range,color:heavy?'#ffda82':profile.color||cls.color,life:.23});
       for(const e of this.world.enemies) {
         if(!e.alive || dist(p,e)>range || Math.abs(angleDiff(Math.atan2(e.y-p.y,e.x-p.x),p.face))>arc/2) continue;
         this.hitEnemy(e,damage,heavy?28:18);
       }
       this.onSound('attack');
     } else if(name==='dash') {
+      cancelMasteryChannel(this);
       this.cooldowns.dash=Math.max(.4,1.35*(1-s.dodgeCooldown)); p.dashUntil=this.time+.18; p.invulnerable=.3;
       const dx=(this.keys.has('d')||this.keys.has('arrowright')?1:0)-(this.keys.has('a')||this.keys.has('arrowleft')?1:0);
       const dy=(this.keys.has('s')||this.keys.has('arrowdown')?1:0)-(this.keys.has('w')||this.keys.has('arrowup')?1:0);
       p.dashAngle=dx||dy?Math.atan2(dy,dx):p.face;
       this.effect('burst',p.x,p.y,{color:'#c6dfd5',radius:22,life:.3}); this.onSound('dash');
     } else if(name==='bolt'||name==='nova') {
-      const skill=cls.abilities[name];if(p.mana<skill.cost) {this.notice('Nicht genug Mana.');return false;}
+      const skill=applyTalentAbilityProfile(cls.abilities[name],this.combatTalentModifiers(),{action:name});if(p.mana<skill.cost) {this.notice('Nicht genug Mana.');return false;}
+      cancelMasteryChannel(this);
       p.mana-=skill.cost;this.cooldowns[name]=skill.cooldown*(1-s.cooldown);p.castUntil=this.time+.3;
+      this.presentAction(skill.kind==='shield'?'shield':skill.kind==='heal'?'heal':skill.kind==='dashstrike'?'melee':
+        ['projectile','drain'].includes(skill.kind)?'projectile':'cast',skill);
       const radius=skill.radius||100,damage=(s[skill.stat||'spellDamage']||s.spellDamage)*skill.damageMultiplier*classPowerMultiplier(p.classId,skill.kind==='summon'?'summon':'spell');
       const allies=(this.partyGames||[this]).filter(g=>!g.dead&&(skill.allies?dist(p,g.player)<radius:g===this));
       this.effect('ring',p.x,p.y,{color:skill.color,radius,life:.6});
@@ -790,10 +826,10 @@ export class Game {
         for(const e of this.world.enemies) if(e.alive&&dist(p,e)<(skill.tauntRadius||radius)) {
           if(skill.tauntRadius) {e.targetId=p.id||'local';e.tauntUntil=this.time+5;e.aggro=true;}
           if(dist(p,e)<radius&&damage>0)this.hitEnemy(e,damage,12);
-          if(skill.slow){e.slowUntil=this.time+(skill.duration||3);e.slowFactor=1-skill.slow;}
+          if(skill.slow){e.slowUntil=this.time+(skill.slowDuration||skill.duration||3);e.slowFactor=1-skill.slow;}
         }
       }
-      if(skill.kind==='trap') this.hazards.push({id:`trap-${++this.lootSerial}`,kind:'trap',x:p.x+Math.cos(p.face)*80,y:p.y+Math.sin(p.face)*80,radius,damage,slow:skill.slow||3,life:skill.duration||8,actorId:p.id||'local',color:skill.color});
+      if(skill.kind==='trap') this.hazards.push({id:`trap-${++this.lootSerial}`,kind:'trap',x:p.x+Math.cos(p.face)*80,y:p.y+Math.sin(p.face)*80,radius,damage,slow:skill.slow||.5,slowDuration:skill.slowDuration,life:skill.duration||8,actorId:p.id||'local',color:skill.color});
       if(skill.regenerationMultiplier)this.hazards.push({id:`regen-${++this.lootSerial}`,kind:'regeneration',x:p.x,y:p.y,radius,heal:s.spellDamage*skill.regenerationMultiplier*classPowerMultiplier(p.classId,'heal'),life:skill.duration||6,actorId:p.id||'local',color:skill.color,tick:1});
       if(skill.burnDamageMultiplier)this.hazards.push({id:`burn-${++this.lootSerial}`,kind:'burn',x:p.x,y:p.y,radius,damage:s.spellDamage*skill.burnDamageMultiplier*classPowerMultiplier(p.classId,'spell'),life:skill.duration||4,actorId:p.id||'local',color:skill.color,tick:1});
       if(skill.kind==='summon')for(let i=0;i<(skill.summonCount||2);i++)this.summons.push({id:`summon-${++this.lootSerial}`,x:p.x+(i-.5)*32,y:p.y+32,life:skill.duration||12,attackTimer:0,damage,actorId:p.id||'local',color:skill.color,range:skill.summonRange||350,attackCooldown:skill.summonAttackCooldown||1});
@@ -812,12 +848,14 @@ export class Game {
         .sort((a,b)=>this.item(b).stats.hpRestore-this.item(a).stats.hpRestore)[0];
       if(!id) { this.notice('Keine Heiltränke mehr. Braue neue im Handwerk.'); return false; }
       if(!this.consume(id))return false;
+      cancelMasteryChannel(this);
+      this.presentAction('heal');
       this.effect('ring',p.x,p.y,{color:'#a1e29f',radius:55,life:.6});
     } else return false;
     this.change(); return true;
   }
   hitEnemy(e,damage,knockback=20) {
-    if(!e.alive)return 0;
+    if(!e.alive||!Number.isFinite(damage)||damage<=0)return 0;
     const required=ENEMY_TYPES[e.type]?.minPlayers||1;
     const living=new Set((this.partyGames||[this]).filter(g=>!g.dead&&g.player.hp>0).map(g=>g.player.id||g));
     if(required>1&&living.size<required) {this.text(e.x,e.y-24,'Gruppe unvollständig','#b9acda');return 0;}
@@ -847,6 +885,7 @@ export class Game {
       }
     }
     this.onSound('hit'); if(e.hp<=0) this.killEnemy(e);
+    if(applied>0)onMasteryHit(this,e,applied);
     return applied;
   }
   killEnemy(e) {
@@ -878,9 +917,12 @@ export class Game {
     this.text(p.x,p.y-30,`−${hit}`,'#f39786'); this.onSound('hurt');
     if(this.settings.shake) this.shake=Math.min(1,this.shake+.35);
     this.change(); if(p.hp<=0) { this.dead=true; this.paused=true; this.keys.clear(); this.onDeath(); }
-    return before-p.hp;
+    const applied=before-p.hp;
+    if(applied>0)onMasteryDamaged(this,applied);
+    return applied;
   }
   respawn() {
+    clearMasteryAbilities(this);
     this.player.x=this.dungeonInstance?.spawn.x||520; this.player.y=this.dungeonInstance?.spawn.y||1250; this.player.hp=this.stats().maxHp; this.player.mana=this.stats().mana;
     this.player.gold=Math.max(0,Math.floor(this.player.gold*.9)); this.player.invulnerable=3;
     this.player.afflictions=[];this.player.slowUntil=0;
@@ -907,6 +949,7 @@ export class Game {
     p.velocityX=dt>0?(p.x-previousPosition.x)/dt:0;p.velocityY=dt>0?(p.y-previousPosition.y)/dt:0;
     for(const affliction of p.afflictions||[])if(affliction.expiresAt>this.time&&affliction.nextTick<=this.time){affliction.nextTick+=1;this.damagePlayer(affliction.damage,{attackerLevel:affliction.attackerLevel});}
     p.afflictions=(p.afflictions||[]).filter(a=>a.expiresAt>this.time);
+    updateMasteryAbilities(this,dt);
     const region=this.regionAt();
     if(!this.dungeonInstance&&!this.discovered.includes(region.id)) { this.discovered.push(region.id); this.event('explore',region.id); this.notice(`${region.name} entdeckt`,'quest'); this.save(false); }
     if(region.id!==this.lastRegion) { this.lastRegion=region.id; this.change(); }
@@ -997,7 +1040,7 @@ export class Game {
           for(const enemy of this.world.enemies)if(enemy.alive&&(marked?enemy===marked:dist(enemy,trap)<trap.radius)) {
             const applied=caster.hitEnemy(enemy,trap.damage,0);
             if(trap.drain&&applied)caster._healAbilityAlly(caster,applied*trap.drain);
-            if(trap.slow){const factor=enemy.slowUntil>this.time?enemy.slowFactor??1:1;enemy.slowUntil=this.time+1.6;enemy.slowFactor=Math.min(factor,1-trap.slow);}
+            if(trap.slow){const factor=enemy.slowUntil>this.time?enemy.slowFactor??1:1;enemy.slowUntil=this.time+(trap.slowDuration||1.6);enemy.slowFactor=Math.min(factor,1-trap.slow);}
           }
           if(trap.heal)for(const ally of living)if(dist(ally.player,trap)<trap.radius)caster._healAbilityAlly(ally,trap.heal);
         }continue;
@@ -1111,7 +1154,8 @@ export class Game {
       enemies:this.world.enemies.map(e=>({id:e.id,x:e.x,y:e.y,hp:e.hp,alive:e.alive,affixEcho:e.affixEcho,type:e.type,level:e.level})),openedChests:this.world.chests.filter(c=>c.opened).map(c=>c.id)
     }:null;
     const abilityCooldowns=Object.fromEntries(ABILITIES.filter(a=>this.learnedAbilities[a.id]===true).map(a=>[a.id,this.cooldowns[`ability:${a.id}`]||0]));
-    return {version:2,savedAt:Date.now(),player:{...this.player,walking:false},inventory:this.inventory,resources:this.resources,equipment:this.equipment,generatedItems:this.generatedItems,lootPity:this.lootPity,lootSerial:this.lootSerial,dungeonRecords:this.dungeonRecords,dungeon,contracts:this.contracts,skills:this.skills,
+    const {presentation,...persistentPlayer}=this.player;
+    return {version:2,savedAt:Date.now(),player:{...persistentPlayer,walking:false},inventory:this.inventory,resources:this.resources,equipment:this.equipment,generatedItems:this.generatedItems,lootPity:this.lootPity,lootSerial:this.lootSerial,dungeonRecords:this.dungeonRecords,dungeon,contracts:this.contracts,skills:this.skills,
       stash:{...this.stash},itemFlags:this.itemFlags,loadouts:this.loadouts,trackedQuestId:this.trackedQuestId,waypoint:this.waypoint?{kind:this.waypoint.kind,id:this.waypoint.id}:null,journey:this.journey,endgame:this.endgame,relicCooldown:this.cooldowns.relic||0,
       learnedAbilities:{...this.learnedAbilities},abilityLoadout:[...this.abilityLoadout],abilityCooldowns,
       consumableCooldowns:{potion:this.cooldowns.potion||0,food:this.cooldowns.food||0},
@@ -1140,6 +1184,7 @@ export class Game {
     if(!validateInventoryExtensions(data)||data.trackedQuestId!==undefined&&typeof data.trackedQuestId!=='string'||data.waypoint!==undefined&&data.waypoint!==null&&(!record(data.waypoint)||!['npc','shrine','quest','event','interaction','dungeon','region'].includes(data.waypoint.kind)||typeof data.waypoint.id!=='string'))throw new Error('Ungültige Inventar- oder Reisedaten.');
     if(data.player.afflictions!==undefined&&(!Array.isArray(data.player.afflictions)||data.player.afflictions.length>3||new Set(data.player.afflictions.map(a=>a?.kind)).size!==data.player.afflictions.length||data.player.afflictions.some(a=>!record(a)||!['venom','burn','bleed'].includes(a.kind)||!Number.isFinite(a.damage)||a.damage<0||a.damage>500||!Number.isFinite(a.expiresAt)||a.expiresAt<0||!Number.isFinite(a.nextTick)||a.nextTick<0||!Number.isInteger(a.attackerLevel)||a.attackerLevel<1||a.attackerLevel>MAX_LEVEL)))throw new Error('Ungültige Wunddaten.');
     const abilityState=validateAbilityState(data);
+    if(!validateCombatTalentState(data))throw new Error('Ungültige neue Talententscheidung.');
     for(const key of ['inventory','resources','equipment','skills','questState','flags','ledger','settings']) {
       if(data[key]!==undefined&&!record(data[key])) throw new Error(`Ungültiges Feld: ${key}`);
     }
