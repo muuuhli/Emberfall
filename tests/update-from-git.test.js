@@ -99,7 +99,7 @@ fail('Unknown peer')
 
 async function fixture({failure='',alteredRelease=false,privateSource=false,customMarkers=false}={}) {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'emberfall-git-update-')),source=path.join(root,'source'),releases=path.join(root,'releases'),repo=path.join(root,'repo'),bin=path.join(root,'bin'),backup=path.join(root,'backups'),envFile=path.join(root,'operator.env');
-  const files={'index.html':'<html>Emberfall</html>\n','package.json':'{"name":"emberfall","type":"module"}\n','server.mjs':'export const server=true;\n','server/accounts.mjs':'export const accounts=true;\n','src/main.js':'console.log("Emberfall");\n','src/style.css':'body{color:#fff}\n','assets/pixel.png':'pixeldata','deploy/compose.ip.yaml':'services: {}\n','deploy/compose.account.yaml':'services: {}\n','Dockerfile':'FROM node:24\n'};
+  const files={'index.html':'<html>Emberfall</html>\n','package.json':'{"name":"emberfall","type":"module"}\n','server.mjs':'export const server=true;\n','server/accounts.mjs':'export const accounts=true;\n','server/validate-storage.mjs':'// Validator implementation has separate real integration tests.\n','src/main.js':'console.log("Emberfall");\n','src/style.css':'body{color:#fff}\n','assets/pixel.png':'pixeldata','deploy/compose.ip.yaml':'services: {}\n','deploy/compose.account.yaml':'services: {}\n','Dockerfile':'FROM node:24\n'};
   for(const [relative,text] of Object.entries(files)){const file=path.join(source,relative);await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,text);}
   if(privateSource)await fs.writeFile(path.join(source,'.env.private'),'PRIVATE_VALUE=must-not-be-released\n');
   await fs.mkdir(releases,{recursive:true});await fs.cp(source,path.join(releases,old),{recursive:true});
@@ -123,7 +123,7 @@ test('Git updater pins main, builds before stop, retains foreign checkout work a
   assert.equal(await fs.readFile(path.join(f.repo,'foreign-work.txt'),'utf8'),'keep my uncommitted work\n');assert.equal(await fs.readFile(f.envFile,'utf8'),f.config.replace(old,next));assert.equal((await fs.stat(f.envFile)).mode&0o777,0o600);
   assert.equal(await fs.readlink(f.currentLink),path.join(f.releases,next));assert.equal(await fs.readFile(f.sourceMarker,'utf8'),next+'\n');assert.equal((await fs.stat(f.sourceMarker)).mode&0o777,0o600);
   const events=await f.events(),build=events.findIndex(e=>e.tool==='docker'&&e.args[0]==='build'),stop=events.findIndex(e=>e.tool==='docker'&&e.args.includes('stop'));assert.ok(build>=0&&stop>build);
-  assert.ok(events.some(e=>e.tool==='docker'&&e.args[0]==='run'&&e.args.includes('none')&&!e.args.some(a=>a.includes('emberfall_data'))));assert.ok(events.some(e=>e.tool==='curl'&&e.args.includes('=https')));
+  assert.ok(events.some(e=>e.tool==='docker'&&e.args[0]==='run'&&e.args.includes('none')&&e.args.includes('server/validate-storage.mjs')&&!e.args.some(a=>a.includes('emberfall_data'))));assert.ok(events.some(e=>e.tool==='curl'&&e.args.includes('=https')));
   assert.ok(!events.some(e=>e.args.some(a=>['reset','clean','prune','down','--force'].includes(a))));const state=await f.state();assert.equal(state.commit,next);assert.equal(state.running,true);
   const dirs=(await fs.readdir(f.backup)).filter(name=>!name.startsWith('.'));assert.equal(dirs.length,1);const saved=path.join(f.backup,dirs[0],'rooms.json');assert.deepEqual(JSON.parse(await fs.readFile(saved,'utf8')),f.original);assert.equal((await fs.stat(saved)).mode&0o777,0o600);
 }));

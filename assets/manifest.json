@@ -399,7 +399,7 @@
       "sha256": "e35bd4769065bcf0fd5e8ade49e90af37779001a3d1d2eb6c92b1ad2ed26264d"
     }
   ],
-  "version": "13.0.0",
+  "version": "13.0.1",
   "updated": "2026-10-14",
   "developmentStatus": {
     "releaseState": "playable development build",

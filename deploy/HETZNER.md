@@ -336,3 +336,14 @@ Shellskript mit isolierten Git-/Docker-/HTTP-Gegenstellen aus und prüfen auch
 Fehler bei Build, Backup, Speicherkompatibilität, Dienststart, TLS und
 Quellvergleich. Diese Gegenstellen ersetzen keine tatsächliche Docker- und
 HTTPS-Abnahme auf dem Server.
+
+Die Kompatibilitätsprüfung verwendet [validate-storage.mjs](../server/validate-storage.mjs)
+mit dem echten privaten Dateispeicher und der strikten Spielserver-Wiederherstellung.
+Dabei wird die äußere Datei mit ihrem Schlüssel `emberfall.multiplayer.v1`
+gelesen; dessen Wert ist wiederum der gespeicherte JSON-Stand. Fehlender Schlüssel,
+ungültige Hülle und unbekannte innere Version brechen die Prüfung ab. Die
+[separate native Prüfung](../tests/validate-storage.test.js) erstellt wirkliche
+Testkonten, eine Gruppe, eine persönliche Welt und legal erworbene Ausrüstung,
+prüft dieselbe Node-CLI und bestätigt den unveränderten Quell-Spielstand.
+Die Daten dieser Probe und die kurzlebige Prüfkopie liegen nur in privaten
+temporären Verzeichnissen; Konto- und Sitzungsdaten werden nicht ausgegeben.

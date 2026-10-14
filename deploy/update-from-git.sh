@@ -220,7 +220,7 @@ git -C "$repo_dir" merge-base --is-ancestor "$old_release" "$target"||die 'Only 
 git -C "$repo_dir" ls-tree -r "$target" | awk '$1 != "100644" && $1 != "100755" {bad=1} END {exit bad}'||die 'Submodules and symbolic links are not supported in releases.'
 stage=$(mktemp -d "$release_root/.prepare-XXXXXXXX")
 git -C "$repo_dir" archive --format=tar "$target" | tar -xf - -C "$stage"
-[[ -f "$stage/server/accounts.mjs" && -f "$stage/deploy/compose.account.yaml" ]]||die 'The release must retain account support. Older schemas need an explicit backup restore.'
+[[ -f "$stage/server/accounts.mjs" && -f "$stage/server/validate-storage.mjs" && -f "$stage/deploy/compose.account.yaml" ]]||die 'The release must retain account support and its strict backup validator. Older schemas need an explicit backup restore.'
 python3 - "$stage" "$release_root/$target" <<'PY'
 import hashlib,pathlib,sys
 source,target=map(pathlib.Path,sys.argv[1:])
@@ -269,11 +269,7 @@ chmod 600 "$backup_dir/rooms.json"
 # Strict restore in a disposable, networkless process; no production volume.
 docker run --rm -i --network none --read-only --tmpfs /tmp --memory 768m --cpus 0.5 \
   --cap-drop ALL --security-opt no-new-privileges:true -e NODE_OPTIONS=--max-old-space-size=384 \
-  --entrypoint node "emberfall:$target" --input-type=module -e '
-    import fs from "node:fs";import {Game} from "./src/game.js";import {MultiplayerHub} from "./server/multiplayer.mjs";
-    const data=JSON.parse(fs.readFileSync(0,"utf8"));
-    new MultiplayerHub({createGame:()=>new Game({storage:null}),storage:{load:()=>data,save:()=>{}},autoStart:false,strictRestore:true});
-  ' < "$backup_dir/rooms.json"
+  --entrypoint node "emberfall:$target" server/validate-storage.mjs < "$backup_dir/rooms.json"
 switched=1
 atomic_env "$target"
 compose "$target" up -d --no-build --wait --wait-timeout 90 emberfall emberfall-https
