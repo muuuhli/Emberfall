@@ -4,7 +4,8 @@ import { makeWorld } from '../src/world.js';
 import { expandWorld } from '../src/expansion.js';
 import { Game } from '../src/game.js';
 import { addWorldEvents, WORLD_EVENT_DEFINITIONS, EXPEDITIONS, WORLD_EVENT_ENEMIES, interactWorldEvent, updateWorldEvents,
-  claimWorldEventReward, captureWorldEvents, restoreWorldEvents, validateWorldEventSave, summarizeWorldEvents, recordWorldEventContribution } from '../src/world-events.js';
+  claimWorldEventReward, captureWorldEvents, restoreWorldEvents, validateWorldEventSave, summarizeWorldEvents, recordWorldEventContribution, worldEventRewardPreview } from '../src/world-events.js';
+import { NAMED_BOSS_HUNTS } from '../src/encounter-content.js';
 
 const world = () => addWorldEvents(expandWorld(makeWorld()));
 const hero = (event, changes={}) => ({id:'tester',level:100,hp:1000,x:event.x,y:event.y,...changes});
@@ -38,14 +39,14 @@ function solve(w,id,{risky=false,player,clock=0}={}) {
   return {event,player:p,clock,effects};
 }
 
-test('sixteen regional events and four solo expeditions have distinct rules, visible objects and deterministic placement',()=>{
-  assert.equal(WORLD_EVENT_DEFINITIONS.length,16);assert.equal(EXPEDITIONS.length,4);
+test('regional events, curated hunts and solo expeditions have distinct rules, visible objects and deterministic placement',()=>{
+  assert.equal(WORLD_EVENT_DEFINITIONS.filter(e=>!NAMED_BOSS_HUNTS.includes(e)).length,16);assert.ok(EXPEDITIONS.length>=4);
   assert.equal(new Set(WORLD_EVENT_DEFINITIONS.map(e=>e.region)).size,16);
   assert.equal(new Set(WORLD_EVENT_DEFINITIONS.map(e=>e.mode)).size,6);
-  assert.equal(Object.keys(WORLD_EVENT_ENEMIES).length,4);
+  assert.equal(Object.keys(WORLD_EVENT_ENEMIES).length,4+NAMED_BOSS_HUNTS.length);
   const a=world(),b=world();assert.deepEqual(a,b);
   const before=JSON.stringify(a);addWorldEvents(a);assert.equal(JSON.stringify(a),before);
-  assert.equal(a.worldEvents.length,20);assert.equal(a.eventObjects.length,40);
+  assert.equal(a.worldEvents.length,WORLD_EVENT_DEFINITIONS.length+EXPEDITIONS.length);assert.equal(a.eventObjects.length,a.worldEvents.length*2);
   for(const event of a.worldEvents) {
     assert.ok(event.description.length>90);
     assert.equal(event.state,'idle');
@@ -159,7 +160,7 @@ test('save restoration cancels active combat, preserves claimed rewards and reje
   claimWorldEventReward(completed,result.event.id,result.player,result.clock);
   const target=world();restoreWorldEvents(target,captureWorldEvents(completed),result.clock);
   assert.equal(claimWorldEventReward(target,result.event.id,result.player,result.clock),null);
-  assert.equal(summarizeWorldEvents(target).length,20);
+  assert.equal(summarizeWorldEvents(target).length,WORLD_EVENT_DEFINITIONS.length+EXPEDITIONS.length);
   const forged=structuredClone(save);forged[0].id='event-imaginary';assert.equal(validateWorldEventSave(forged),false);
   assert.throws(()=>restoreWorldEvents(target,forged,0),TypeError);
 });
@@ -186,4 +187,20 @@ test('the real Game damage hook records an ally only after an applied hit, and a
   game.bagUsed=originalBagUsed;
   assert.equal(game.claimWorldEvent(completed.event.id),true);assert.ok(game.player.gold>gold);
   assert.equal(game.claimWorldEvent(completed.event.id),false);
+});
+
+test('personal previews match real payouts and distinguish an open party claim from the next diminished run',()=>{
+  const w=world(),event=getEvent(w,'event-aschenmoor'),p=hero(event,{level:8}),ally=hero(event,{id:'ally',level:8});
+  const result=solve(w,event.id,{player:p});event.participants.push('ally');event.bonus=1.25;
+  p.x=event.x;p.y=event.y;ally.x=event.x;ally.y=event.y;
+  const before=summarizeWorldEvents(w,p).find(e=>e.id===event.id);
+  assert.equal(before.claimable,true);assert.deepEqual(claimWorldEventReward(w,event.id,p,result.clock),{...before.reward,eventId:event.id});
+  const other=summarizeWorldEvents(w,ally).find(e=>e.id===event.id);
+  assert.equal(other.state,'rewarded');assert.equal(other.claimable,true);assert.equal(other.reward.repeatFactor,1);
+  assert.equal(summarizeWorldEvents(w,p).find(e=>e.id===event.id).claimable,false);
+  assert.deepEqual(claimWorldEventReward(w,event.id,ally,result.clock),{...other.reward,eventId:event.id});
+  updateWorldEvents(w,.1,[p],event.readyAt+1);
+  assert.equal(worldEventRewardPreview(event,p).repeatFactor,.5);
+  assert.equal(worldEventRewardPreview(event,p).gold,Math.round((18+event.level*5)*.5),'idle preview does not inherit the old risk bonus');
+  assert.equal(worldEventRewardPreview(event,{level:event.level+20}).xp,0);
 });

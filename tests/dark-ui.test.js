@@ -99,9 +99,9 @@ test('journey tabs render requirement-based allies and permanent rewards without
   ui.journeyTab='companions';assert.match(ui.journey(),/data-command="select-companion"[^>]*disabled/);
 });
 
-test('adventures show real event objective text, expedition stages, and supported event waypoints',()=>{
-  const ui=view(),game=ui.game,events=game.worldEventSummary();assert.equal(events.length,20);
-  const html=ui.adventures();assert.ok(!/undefined|NaN|\[object Object\]/.test(html));assert.match(html,/EXPEDITION 1\/4/);assert.match(html,/data-kind="event"/);
-  for(const event of events)assert.ok(html.includes(event.name));
-  ui.adventureFilter='nearby';const near=ui.adventures();assert.ok(near.includes(events.find(event=>event.region===game.regionAt().id).name));assert.ok(!near.includes('Drei Narben der Quelle'));
+test('adventures paginate real objectives and expeditions while retaining supported waypoints',()=>{
+  const ui=view(),game=ui.game,events=game.worldEventSummary();assert.ok(events.length>=20);
+  let all='';for(let page=0;page<Math.ceil(events.length/6);page++){ui.adventurePage=page;const html=ui.adventures();assert.ok(!/undefined|NaN|\[object Object\]/.test(html));assert.ok((html.match(/data-adventure-id=/g)||[]).length<=6);all+=html;}
+  assert.match(all,/EXPEDITION/);assert.match(all,/data-kind="event"/);for(const event of events)assert.ok(all.includes(event.name));
+  ui.adventureFilter='nearby';ui.adventurePage=0;const near=ui.adventures();assert.ok(near.includes(events.find(event=>event.region===game.regionAt().id).name));assert.ok(!near.includes('Drei Narben der Quelle'));
 });

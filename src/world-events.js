@@ -1,4 +1,5 @@
 import { BESTIARY_ENEMIES, REGION_ENEMY_POOLS, bestiaryCombatStats } from './bestiary.js';
+import { NAMED_BOSS_ENEMIES, NAMED_BOSS_HUNTS } from './encounter-content.js';
 
 const alive = value => value && value.hp !== 0 && !value.dead && !value.downed && value.alive !== false;
 const body = value => value?.player || value;
@@ -14,7 +15,7 @@ const namedBosses = [
   ['furnace_widow', 'Sereva, Witwe des Ofens', 'furnace_acolyte_boss', 'fan', 5, '#bd816c'],
   ['sleep_judge', 'Der Richter ohne Augen', 'veiled_witch_boss', 'hex', 1, '#aa92b2'],
 ];
-export const WORLD_EVENT_ENEMIES = Object.freeze(Object.fromEntries(namedBosses.map(([id, name, source, pattern, count, color]) => {
+export const WORLD_EVENT_ENEMIES = Object.freeze({...Object.fromEntries(namedBosses.map(([id, name, source, pattern, count, color]) => {
   const parent = BESTIARY_ENEMIES[source];
   const def = { ...parent, id, name, color, species: false, speciesId: id, baseType: parent.baseType,
     questTarget: undefined, hpScale: parent.hpScale * 1.15, damageScale: parent.damageScale * .9,
@@ -23,11 +24,11 @@ export const WORLD_EVENT_ENEMIES = Object.freeze(Object.fromEntries(namedBosses.
       chargeDistance: 230, preferredRange: pattern === 'ring' ? 170 : 190, telegraphRadius: pattern === 'hex' ? 90 : 105 },
     description: 'Ein benannter Expeditionsboss. Seine Warnungen bleiben auch in der zweiten Phase vollständig sichtbar.' };
   return [id, { ...def, ...bestiaryCombatStats(def, parent.level) }];
-})));
+})),...NAMED_BOSS_ENEMIES});
 
 // The rules are deliberately authored, not one arena copied sixteen times.
 // Locations are fractions of the owning biome; placement adds a clear route.
-export const WORLD_EVENT_DEFINITIONS = Object.freeze([
+const REGIONAL_EVENT_DEFINITIONS = Object.freeze([
   { id:'event-daemmerhain',region:'daemmerhain',name:'Das letzte Begräbnis',mode:'defend',at:[.34,.78],duration:42,waves:[2,2,1],targetName:'Wagen der Namenlosen',description:'Halte 42 Sekunden beim Leichenwagen aus. Drei Rudel kommen aus dem Hain. Tote dürfen nicht noch einmal verschwinden.' },
   { id:'event-frostgrat',region:'frostgrat',name:'Eine Laterne gegen den Winter',mode:'escort',at:[.32,.58],targetName:'Fährmann Osvik',speed:22,description:'Begleite Osvik zur Felslaterne. Er wartet bei Feinden und an zwei Wegmarken; bleibe bei ihm und beseitige die Frostwölfe.' },
   { id:'event-aschenmoor',region:'aschenmoor',name:'Namen unter dem Moor',mode:'ritual',rule:'sequence',symbols:['asche','knochen','name'],at:[.58,.7],description:'Die Grabtafel nennt die Reihenfolge: Asche, Knochen, Name. Berühre die drei Zeichen, während die Toten ihre Namen zurückfordern.' },
@@ -45,6 +46,7 @@ export const WORLD_EVENT_DEFINITIONS = Object.freeze([
   { id:'event-sternensund',region:'sternensund',name:'Die Karte aus kaltem Licht',mode:'ritual',rule:'alignment',rotations:[1,2,3],at:[.56,.8],description:'Richte die drei Sternlinsen nach Osten, Süden und Westen. Jede Linse dreht sich im Uhrzeigersinn. Besiege danach die Wächter der zerbrochenen Karte.' },
   { id:'event-nexusriss',region:'nexusriss',name:'Drei Narben der Quelle',mode:'boss_hunt',at:[.52,.68],boss:'abyss_beholder_boss',tracks:3,description:'Schließe die drei Quellnarben nacheinander. Jede Narbe ruft einen Risshetzer. Das Abgrundauge tritt erst hervor, wenn du die dritte bindest.' },
 ]);
+export const WORLD_EVENT_DEFINITIONS = Object.freeze([...REGIONAL_EVENT_DEFINITIONS,...NAMED_BOSS_HUNTS]);
 
 export const EXPEDITIONS = Object.freeze([
   {id:'expedition-trauerweg',region:'daemmerhain',name:'Der Weg der Trauerglocke',level:3,minLevel:3,at:[.19,.52],mode:'expedition',description:'Ein kurzer Weg durch die Gräber: Wähle, wessen Asche du trägst, durchbrich den Hinterhalt und ordne die drei letzten Namen vor der Trauerglocke.',stages:[{type:'choice',safe:'Die Namen bewahren',risk:'Das Grab plündern'},{type:'ambush',pack:2,traps:2},{type:'ritual',rule:'sequence',symbols:['mond','asche','name']},{type:'boss_hunt',boss:'mourning_bell',tracks:1}]},
@@ -52,7 +54,9 @@ export const EXPEDITIONS = Object.freeze([
   {id:'expedition-ofenpfad',region:'obsidianpass',name:'Der Pfad der Ofenwitwe',level:46,minLevel:44,at:[.3,.79],mode:'expedition',description:'Stiehl den Glasschmieden ihr letztes Feuer. Ein Eid oder eine Opfergabe öffnet den Weg; halte den Ofen, richte seine Linsen aus und brich Serevas Herrschaft.',stages:[{type:'choice',safe:'Den alten Eid halten',risk:'Eine Opfergabe nehmen'},{type:'defend',duration:25,waves:[2,2],targetName:'Ofen der vergessenen Wacht',repairs:2},{type:'ritual',rule:'alignment',rotations:[3,1,2]},{type:'boss_hunt',boss:'furnace_widow',tracks:1}]},
   {id:'expedition-schlafgericht',region:'traumsenke',name:'Das Gericht der Schlaflosen',level:78,minLevel:76,at:[.28,.77],mode:'expedition',description:'Ein Gericht urteilt über fremde Träume. Wähle Erinnerung oder Beute, halte das einzelne Wachlicht, zerreiße die Albtraumknoten und stelle dich dem Richter ohne Augen.',stages:[{type:'choice',safe:'Die Erinnerung zurückgeben',risk:'Den fremden Traum nehmen'},{type:'ritual',rule:'hold',duration:5},{type:'ambush',pack:3,traps:2},{type:'boss_hunt',boss:'sleep_judge',tracks:1}]},
 ]);
-const allDefinitions = [...WORLD_EVENT_DEFINITIONS, ...EXPEDITIONS];
+// Preserve the placement order of the original twenty activities. New hunts
+// append after them, so saved routes and one-use evidence do not move.
+const allDefinitions = [...REGIONAL_EVENT_DEFINITIONS,...EXPEDITIONS,...NAMED_BOSS_HUNTS];
 const definitionOf = event => allDefinitions.find(def => def.id === event.id);
 
 function addObject(world,event,role,x,y,changes={}) {
@@ -315,18 +319,31 @@ export function recordWorldEventContribution(world,eventId,value) {
 export function claimWorldEventReward(world,eventId,value,time=0) {
   const player=body(value),event=world.worldEvents?.find(e=>e.id===eventId);
   if(!event||!alive(player)||!['success','rewarded'].includes(event.state)||distance(player,event)>110||!event.participants.includes(playerId(player))||event.claimedBy.includes(playerId(player))||(player.level??1)<event.minLevel)return null;
-  const gap=(player.level??1)-event.level,xpFactor=gap>=20?0:gap>=10?.25:1;
-  const factor=(event.runRewardFactor||.25)*(event.bonus||1),xp=Math.round((70+event.level**2*3)*factor*xpFactor);
-  const reward={xp,gold:Math.round((18+event.level*5)*factor),dust:Math.max(1,Math.round((2+event.level/12)*factor)),lootLevel:event.level,lootTier:event.mode==='expedition'?2:1,boss:event.mode==='expedition'||event.mode==='boss_hunt',eventId};
+  const reward={...worldEventRewardPreview(event,player),eventId};
   event.claimedBy.push(playerId(player));
   if(event.state==='success')event.rewardedRuns++;
   event.state='rewarded';event.phase='claimed';event.readyAt=Math.max(event.readyAt,time+360);
   return reward;
 }
 
-export function summarizeWorldEvents(world) {
-  return (world.worldEvents||[]).map(({id,name,description,region,level,minLevel,x,y,mode,state,phase,objective,readyAt,stageIndex})=>
-    ({id,name,description,region,level,minLevel,x,y,mode,state,status:statusNames[state],phase,objective:{...objective},readyAt,stageIndex,stages:mode==='expedition'?definitionOf({id}).stages.length:1}));
+export function worldEventRewardPreview(event,value) {
+  const player=body(value)||{},gap=(player.level??event.level)-event.level,xpFactor=gap>=20?0:gap>=10?.25:1;
+  const ongoing=['active','success','rewarded'].includes(event.state),completed=['success','rewarded'].includes(event.state);
+  const ordinal=event.rewardedRuns||0,repeatFactor=completed&&event.runRewardFactor?event.runRewardFactor:ordinal===0?1:ordinal===1?.5:.25;
+  const factor=repeatFactor*(ongoing?event.bonus||1:1);
+  return {xp:Math.round((70+event.level**2*3)*factor*xpFactor),gold:Math.round((18+event.level*5)*factor),
+    dust:Math.max(1,Math.round((2+event.level/12)*factor)),lootLevel:event.level,lootTier:event.mode==='expedition'?2:1,
+    boss:event.mode==='expedition'||event.mode==='boss_hunt',repeatFactor};
+}
+
+export function summarizeWorldEvents(world,value) {
+  return (world.worldEvents||[]).map(event=>{
+    const {id,name,description,region,level,minLevel,x,y,mode,state,phase,objective,readyAt,stageIndex}=event,def=definitionOf(event),player=body(value);
+    return {id,name,description,region,level,minLevel,x,y,mode,state,status:statusNames[state],phase,objective:{...objective},readyAt,stageIndex,
+      stages:mode==='expedition'?def.stages.length:1,contentType:def.contentType||(mode==='expedition'?'expedition':mode==='boss_hunt'?'boss':'event'),
+      partyRequired:def.partyRequired||1,repeatable:def.repeatable!==false,hint:def.hint||'',reward:worldEventRewardPreview(event,player),
+      claimable:!!player&&['success','rewarded'].includes(state)&&event.participants.includes(playerId(player))&&!event.claimedBy.includes(playerId(player))};
+  });
 }
 
 export function captureWorldEvents(world) {

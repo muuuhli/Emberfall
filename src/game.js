@@ -22,6 +22,7 @@ import { addWorldEvents, interactWorldEvent as interactEvent, updateWorldEvents,
 import { createEndgameState, validateEndgameState, restoreEndgameState, advanceHunts, endgameSummary, startHunt, abandonHunt, claimHunt, redeemHuntReward } from './endgame.js';
 import { getRelic, resolveRelicProc } from './relics.js';
 import { createEncounterDirector, updateEncounterDirector, captureEncounterDirector, validateEncounterDirectorSave, restoreEncounterDirector, encounterSummary, ordinaryRespawnDelay, encounterSpawnBlocked } from './encounter-director.js';
+import { updateEncounterBoss } from './encounter-boss-ai.js';
 
 export const SAVE_KEY = 'emberfall.save.v1';
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -336,7 +337,7 @@ export class Game {
   }
   worldEventSummary() {
     if(this.networkActive&&this.networkWorldEventSummary)return this.networkWorldEventSummary;
-    return summarizeWorldEvents(this.overworld||this.world);
+    return summarizeWorldEvents(this.overworld||this.world,this.player);
   }
   handleWorldEventEffects(effects) {
     for(const effect of effects) {
@@ -824,7 +825,10 @@ export class Game {
     const applied=Math.min(e.hp,result);e.hp-=result; e.hitUntil=this.time+.12; e.aggro=true;
     if(applied>0&&e.eventId)recordWorldEventContribution(this.world,e.eventId,this.player);
     const a=Math.atan2(e.y-this.player.y,e.x-this.player.x);
-    this.move(e,Math.cos(a)*knockback,Math.sin(a)*knockback,ENEMY_TYPES[e.type]?.boss?22:10);
+    // Authored bosses keep their frozen attack origin and cannot be pushed
+    // into a protected village by repeated basic attacks.
+    const displacement=ENEMY_TYPES[e.type]?.encounterProfile?knockback*(e.phase==='windup'?0:.08):knockback;
+    this.move(e,Math.cos(a)*displacement,Math.sin(a)*displacement,ENEMY_TYPES[e.type]?.boss?22:10);
     this.text(e.x,e.y-24,crit?`${result}!`:result,crit?'#ffd37b':'#f4edd7');
     this.effect('burst',e.x,e.y,{color:crit?'#f7c460':'#c7d39b',radius:24,life:.3});
     if(this.settings.shake) this.shake=Math.min(1,this.shake+(crit?.25:.12));
@@ -942,7 +946,10 @@ export class Game {
     if(this.world.worldEvents)this.handleWorldEventEffects(updateWorldEvents(this.world,dt,partyGames,this.time));
     this.updateWorldInteractions();
     for(const projectile of this.projectiles) {
-      projectile.x+=Math.cos(projectile.angle)*projectile.speed*dt; projectile.y+=Math.sin(projectile.angle)*projectile.speed*dt; projectile.life-=dt;
+      const boundedFlight=Number.isFinite(projectile.maxDistance)&&projectile.maxDistance>=0;
+      const movement=boundedFlight?Math.min(projectile.speed*dt,Math.max(0,projectile.maxDistance-(projectile.travelled||0))):projectile.speed*dt;
+      projectile.x+=Math.cos(projectile.angle)*movement; projectile.y+=Math.sin(projectile.angle)*movement; projectile.life-=dt;
+      if(boundedFlight){projectile.travelled=(projectile.travelled||0)+movement;if(projectile.travelled>=projectile.maxDistance)projectile.life=0;}
       if(this.collides(projectile.x,projectile.y,3)) { projectile.life=0; continue; }
       if(projectile.owner==='player') {
         const caster=partyGames.find(g=>(g.player.id||'local')===(projectile.actorId||'local'))||this;
@@ -955,8 +962,9 @@ export class Game {
           if(projectile.splash)for(const e of this.world.enemies)if(e!==target&&e.alive&&dist(e,target)<projectile.splash)caster.hitEnemy(e,projectile.damage*.6,0);
           if(projectile.burnDamage&&applied)this.hazards.push({id:`ability-burn-${++caster.lootSerial}`,kind:'burn',x:target.x,y:target.y,radius:38,damage:projectile.burnDamage,life:projectile.burnDuration,actorId:projectile.actorId,color:projectile.color,tick:1});
         }
-      } else {const target=living.find(g=>dist(projectile,g.player)<23);if(target){const applied=target.damagePlayer(projectile.damage,{attackerLevel:projectile.attackerLevel||target.player.level});
-        const attacker=this.world.enemies.find(e=>e.id===projectile.attackerId);if(attacker)applyEnemyTraits(this,attacker,ENEMY_TYPES[attacker.type],target,applied);projectile.life=0;}}
+      } else {const attacker=this.world.enemies.find(e=>e.id===projectile.attackerId),curated=ENEMY_TYPES[attacker?.type]?.encounterProfile;
+        const target=living.find(g=>(!curated||!g.inSettlement())&&dist(projectile,g.player)<23);if(target){const applied=target.damagePlayer(projectile.damage,{attackerLevel:projectile.attackerLevel||target.player.level});
+        if(attacker)applyEnemyTraits(this,attacker,ENEMY_TYPES[attacker.type],target,applied);projectile.life=0;}}
     }
     this.projectiles=this.projectiles.filter(p=>p.life>0);
     for(const fx of this.effects) { fx.life-=dt; if(fx.kind==='text') fx.y-=18*dt; }
@@ -1019,6 +1027,7 @@ export class Game {
     const living=partyGames.filter(g=>!g.dead);if(!living.length)return;
     for(const e of this.world.enemies) {
       const d=ENEMY_TYPES[e.type]; if(!d) continue;
+      if(updateEncounterBoss(this,e,d,dt,living))continue;
       if(updateBestiaryEnemy(this,e,d,dt,living))continue;
       const taunted=e.tauntUntil>this.time?living.find(g=>(g.player.id||'local')===e.targetId):null;
       const targetGame=taunted||living.reduce((a,b)=>dist(a.player,e)<dist(b.player,e)?a:b),p=targetGame.player;

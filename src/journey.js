@@ -19,7 +19,7 @@ const DUNGEON_IDS=DUNGEONS.map(d=>d.id);
 const RAID_IDS=DUNGEONS.filter(d=>d.raid).map(d=>d.id);
 const EVENT_IDS=[...WORLD_EVENT_DEFINITIONS,...EXPEDITIONS].map(event=>event.id);
 const BOSS_IDS=[...BESTIARY_SPECIES,...Object.entries(STORY_ENEMIES).filter(([,definition])=>definition.boss).map(([id])=>id),...DUNGEONS.map(d=>d.boss),...Object.keys(WORLD_EVENT_ENEMIES)];
-const RECORD_LIMITS={explored:16,rescued:16,lore:16,bosses:BOSS_IDS.length,dungeons:8,puzzles:8,crafted:256,contracts:16,revives:32,coopDungeons:8,encounters:48,events:20};
+const RECORD_LIMITS={explored:16,rescued:16,lore:16,bosses:BOSS_IDS.length,dungeons:8,puzzles:8,crafted:256,contracts:16,revives:32,coopDungeons:8,encounters:48,events:EVENT_IDS.length};
 
 export const FACTION_RANKS=Object.freeze([
   {rank:0,name:'Unbekannt',reputation:0},{rank:1,name:'Vertraut',reputation:80},
@@ -205,7 +205,11 @@ export function advanceJourney(game,kind,target,amount=1,context={}) {
   const add=(key,id)=>{if(validRecordId(key,id)&&!state.records[key].includes(id)&&state.records[key].length<RECORD_LIMITS[key]){state.records[key].push(id);result.changed=true;}};
   const map={explore:'explored',rescue:'rescued',boss:'bosses',dungeon:'dungeons',puzzle:'puzzles',craft:'crafted',contract:'contracts',revive:'revives',world_event:'events'};
   if(map[kind])add(map[kind],kind==='boss'&&typeof target==='string'&&target.endsWith('_boss')?target.slice(0,-5):target);
-  if(kind==='world_event')for(const stage of EXPEDITIONS.find(expedition=>expedition.id===target)?.stages||[])if(stage.boss)add('bosses',stage.boss);
+  if(kind==='world_event'){
+    const definition=WORLD_EVENT_DEFINITIONS.find(event=>event.id===target);
+    if(definition?.boss)add('bosses',definition.boss.endsWith('_boss')?definition.boss.slice(0,-5):definition.boss);
+    for(const stage of EXPEDITIONS.find(expedition=>expedition.id===target)?.stages||[])if(stage.boss)add('bosses',stage.boss);
+  }
   if(kind==='dungeon'&&(context.coop===true||context.partySize>=2||DUNGEONS.some(d=>d.id===target&&d.raid)))add('coopDungeons',target);
   if(kind==='interact') {
     const object=resolveWorldObject(game,target,context);

@@ -223,7 +223,7 @@ export class MultiplayerHub {
       const leader=room.members.values().next().value?.game;
       if(!leader){this.rooms.delete(room.code);continue;}
       // Dungeon parties return safely to their persistent overworld on restart.
-      if(saved.worldMode==='overworld')for(const key of MUTABLE_WORLD)if(saved.world?.[key]!==undefined&&leader.world[key]!==undefined)leader.world[key]=saved.world[key];
+      if(saved.worldMode==='overworld')for(const key of MUTABLE_WORLD)if(!['worldEvents','eventObjects'].includes(key)&&saved.world?.[key]!==undefined&&leader.world[key]!==undefined)leader.world[key]=saved.world[key];
       // Creating the first restore member initializes a fresh room at zero.
       // Restore the shared clock too, so absolute crop and resource deadlines
       // keep their remaining duration after a server restart.
@@ -236,9 +236,11 @@ export class MultiplayerHub {
         const remaining=leaderSave?.world?.championRespawns?.find(rest=>rest.id===enemy.id)?.remaining;
         enemy.respawnAt=room.time+(Number.isFinite(remaining)?Math.max(0,Math.min(360,remaining)):360);
       }
-      // Canonical event restoration also applies after the shared-world overlay:
-      // an interrupted run fails safely and its combat actors cannot revive.
-      if(Array.isArray(leader.world.worldEvents))restoreWorldEvents(leader.world,captureWorldEvents(leader.world),room.time);
+      // Keep generated definitions and prop layouts when old rooms acquire new
+      // content. Only portable progress overlays canonical events; interrupted
+      // runs fail safely and their saved guards cannot revive on restart.
+      const eventProgress=leaderSave?.world?.worldEvents??(Array.isArray(saved.world?.worldEvents)?captureWorldEvents({worldEvents:saved.world.worldEvents}):undefined);
+      if(Array.isArray(leader.world.worldEvents))restoreWorldEvents(leader.world,eventProgress,room.time);
       // Rebuild director enemies from canonical plans, including their spent
       // rewards and relative wilderness timers. Raw room actors never decide
       // difficulty, HP budgets, ownership or whether a dead spawn can revive.

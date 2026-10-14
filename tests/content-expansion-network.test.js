@@ -7,12 +7,31 @@ import { QUESTS, NPCS, ENEMY_TYPES, RECIPES } from '../src/catalog.js';
 import { QUESTS as STARTING_QUESTS } from '../src/content.js';
 import { EXPANSION_QUESTS } from '../src/expansion.js';
 import { createBestiaryEnemy } from '../src/bestiary.js';
-import { WORLD_EVENT_DEFINITIONS, EXPEDITIONS } from '../src/world-events.js';
+import { WORLD_EVENT_DEFINITIONS, EXPEDITIONS, WORLD_EVENT_ENEMIES } from '../src/world-events.js';
 import { SIDE_STORY_CHAINS } from '../src/side-stories.js';
+import { getContractOffers } from '../src/contracts.js';
+import { advanceJourney, validateJourneyState } from '../src/journey.js';
 
 const LEGACY_QUESTS=[...STARTING_QUESTS,...EXPANSION_QUESTS];
 const legacyIds=new Set(LEGACY_QUESTS.map(quest=>quest.id));
 const SIDE_QUESTS=QUESTS.filter(quest=>!legacyIds.has(quest.id));
+// Captured from the native v5.1 seeded Game before new boss-hunt definitions
+// were appended. Compatibility checks do not derive old coordinates from the
+// new layout, which could otherwise disguise a placement-order regression.
+const LEGACY_EVENT_LAYOUT=[
+  ['event-daemmerhain',552,1883],['event-frostgrat',394,644],['event-aschenmoor',2486,770],['event-glutoede',2202,2037],
+  ['event-sonnensteppe',5024,1968],['event-jadeauen',8433,1810],['event-sturmkueste',11904,1680],['event-dornwildnis',14752,1920],
+  ['event-obsidianpass',17824,1872],['event-mondbruch',16384,5280],['event-permafrost',10240,5360],['event-sandsenke',3520,5320],
+  ['event-traumsenke',3520,9480],['event-blutmark',9984,9600],['event-sternensund',16384,9600],['event-nexusriss',9984,13120],
+  ['expedition-trauerweg',285,1680],['expedition-salzzug',10631,1967],['expedition-ofenpfad',16960,1896],['expedition-schlafgericht',1792,9480],
+];
+const legacyEventIds=new Set(LEGACY_EVENT_LAYOUT.map(([id])=>id));
+const LOOP2_EVENT_LAYOUT=[...LEGACY_EVENT_LAYOUT,
+  ['event-sivra',975,684],['event-irdan',4064,1320],['event-orsa',10906,706],
+  ['event-vey',14592,4960],['event-nera',4608,8360],['event-asterion',15552,12520],
+];
+const loop2EventIds=new Set(LOOP2_EVENT_LAYOUT.map(([id])=>id));
+const namedBossEvents=()=>WORLD_EVENT_DEFINITIONS.filter(definition=>definition.mode==='boss_hunt'&&WORLD_EVENT_ENEMIES[definition.boss]);
 const clone=value=>JSON.parse(JSON.stringify(value));
 function memoryStorage(){const data=new Map();return {getItem:key=>data.get(key)||null,setItem:(key,value)=>data.set(key,value)};}
 function sparseGame(){
@@ -21,8 +40,8 @@ function sparseGame(){
   game.initialize=()=>{initialize();clear();};clear();return game;
 }
 async function fixture(){
-  const storage=memoryStorage();let hub,server,base;
-  const open=async()=>{hub=new MultiplayerHub({createGame:sparseGame,storage,autoStart:false});server=http.createServer(async(req,res)=>{if(!await hub.handle(req,res))res.writeHead(404).end();});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));base=`http://127.0.0.1:${server.address().port}`;};
+  const storage=memoryStorage();let hub,server,base,now=Date.now();
+  const open=async()=>{hub=new MultiplayerHub({createGame:sparseGame,storage,clock:()=>now,autoStart:false});server=http.createServer(async(req,res)=>{if(!await hub.handle(req,res))res.writeHead(404).end();});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));base=`http://127.0.0.1:${server.address().port}`;};
   const close=async()=>{hub.dispose();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));};await open();
   const post=async(route,body)=>{const response=await fetch(base+route,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});return {status:response.status,data:await response.json()};};
   const get=async session=>{const response=await fetch(`${base}/api/session/${session.token}`);assert.equal(response.status,200);return response.json();};
@@ -31,7 +50,9 @@ async function fixture(){
   const method=(session,name,...args)=>post(`/api/session/${session.token}/command`,{type:'method',name,args});
   return {first,second,post,get,method,close,get hub(){return hub;},game:session=>hub.sessions.get(session.token).game,
     action:(session,name)=>post(`/api/session/${session.token}/command`,{type:'action',name}),
-    step(seconds){for(let frame=0;frame<Math.ceil(seconds/.04);frame++)hub.tick(.04);},
+    // Advance rate-limit/presence time together with simulated gameplay, so
+    // accelerated native encounters do not masquerade as a command flood.
+    step(seconds){for(let frame=0;frame<Math.ceil(seconds/.04);frame++){now+=40;hub.tick(.04);}},
     async restart(mutate){await close();if(mutate){const data=JSON.parse(storage.getItem('emberfall.multiplayer.v1'));mutate(data);storage.setItem('emberfall.multiplayer.v1',JSON.stringify(data));}await open();},
   };
 }
@@ -62,7 +83,7 @@ async function completeWorldEvent(f,id){
     if(stage.type==='ritual'&&stage.rule==='sequence')clickable=props.find(object=>object.role==='rune'&&!object.active&&object.symbol===stage.symbols[event.objective.progress]);
     if(stage.type==='ritual'&&stage.rule==='switches')clickable=props.find(object=>object.role==='rune'&&object.active!==stage.pattern[object.index]);
     if(stage.type==='ritual'&&stage.rule==='alignment')clickable=props.find(object=>object.role==='rune'&&object.rotation!==stage.rotations[object.index]);
-    if(clickable){Object.assign(game.player,{x:clickable.x,y:clickable.y});assert.equal((await f.method(f.first,'interactWorldEvent',clickable.id)).data.accepted,true);}
+    if(clickable){Object.assign(game.player,{x:clickable.x,y:clickable.y});const interacted=await f.method(f.first,'interactWorldEvent',clickable.id);assert.equal(interacted.status,200,interacted.data.error);assert.equal(interacted.data.accepted,true);}
     for(const enemy of game.world.enemies.filter(actor=>actor.eventId===id&&actor.alive)){
       enemy.hp=1;Object.assign(game.player,{x:enemy.x-35,y:enemy.y,face:0});game.cooldowns.attack=0;assert.equal((await f.action(f.first,'attack')).data.accepted,true);assert.equal(enemy.alive,false);serial++;
     }
@@ -154,4 +175,61 @@ test('a three-chapter side story gates each phase, follows native objects and cr
     await f.restart();const completed=await f.get(f.first);for(const quest of quests)assert.equal(completed.questState[quest.id].status,'done');
     assert.equal((await f.get(f.second)).questState[quests[2].id],undefined,'Shared battles do not implicitly accept another character’s personal narrative');
   }finally{await f.close();}
+});
+
+test('starting-region contracts retain canonical Rowan proximity after side stories add Mira as a regional giver',async()=>{
+  const f=await fixture();try {
+    const game=f.game(f.first),rowan=NPCS.find(npc=>npc.id==='rowan'),mira=NPCS.find(npc=>npc.id==='mira');game.player.level=8;
+    assert.ok(SIDE_QUESTS.some(quest=>quest.region==='daemmerhain'&&quest.giver==='mira'));
+    assert.equal(game.contractGiver('daemmerhain').id,'rowan');const offer=getContractOffers({regionId:'daemmerhain',level:8,completed:0})[0];
+    Object.assign(game.player,{x:mira.x,y:mira.y});assert.equal((await f.method(f.first,'acceptContract',offer.id)).data.accepted,false,'Mira cannot replace the original contract giver');
+    Object.assign(game.player,{x:rowan.x,y:rowan.y});assert.equal((await f.method(f.first,'acceptContract',offer.id)).data.accepted,true);assert.equal(game.contracts.active[0].id,offer.id);
+    await f.restart();assert.equal(f.game(f.first).contractGiver('daemmerhain').id,'rowan');assert.equal((await f.get(f.first)).contracts.active[0].id,offer.id);
+  }finally{await f.close();}
+});
+
+test('a legacy room keeps original event coordinates and reward history while acquiring every new canonical event and prop',async()=>{
+  const f=await fixture();try {
+    const game=f.game(f.first);establishLegacyProgress(game);await completeWorldEvent(f,'event-aschenmoor');assert.equal((await f.method(f.first,'claimWorldEvent','event-aschenmoor')).data.accepted,true);
+    const paidGold=game.player.gold,paidLoot=clone(game.inventory),claimed=clone(game.world.worldEvents.find(event=>event.id==='event-aschenmoor').claimedBy);
+    const pending=game.world.worldEvents.find(event=>event.id==='event-jadeauen'),start=game.world.eventObjects.find(object=>object.id===`${pending.id}:start`);Object.assign(game.player,{x:start.x,y:start.y});assert.equal((await f.method(f.first,'interactWorldEvent',start.id)).data.accepted,true);f.step(8.04);
+    assert.equal(pending.state,'active');assert.ok(game.world.enemies.some(enemy=>enemy.eventId===pending.id&&enemy.alive));
+    await f.restart(data=>{
+      const room=data.rooms[0];room.world.worldEvents=room.world.worldEvents.filter(event=>legacyEventIds.has(event.id));room.world.eventObjects=room.world.eventObjects.filter(object=>legacyEventIds.has(object.eventId));
+      for(const member of room.members)member.save.world.worldEvents=member.save.world.worldEvents.filter(event=>legacyEventIds.has(event.id));
+    });
+    const restored=f.game(f.first),world=restored.world,snapshot=await f.get(f.first);assert.equal(world.worldEvents.length,WORLD_EVENT_DEFINITIONS.length+EXPEDITIONS.length);assert.equal(snapshot.authoritativeWorldEventSummary.length,world.worldEvents.length);
+    for(const [id,x,y] of LEGACY_EVENT_LAYOUT){const event=world.worldEvents.find(value=>value.id===id);assert.ok(event);assert.equal(event.x,x);assert.equal(event.y,y);}
+    for(const definition of [...WORLD_EVENT_DEFINITIONS,...EXPEDITIONS].filter(value=>!legacyEventIds.has(value.id))){const event=world.worldEvents.find(value=>value.id===definition.id);assert.equal(event.state,'idle');assert.ok(world.eventObjects.some(object=>object.id===`${event.id}:start`&&!object.hidden));assert.ok(world.eventObjects.some(object=>object.id===`${event.id}:reward`&&object.hidden));}
+    const oldPaid=world.worldEvents.find(event=>event.id==='event-aschenmoor');assert.equal(oldPaid.state,'rewarded');assert.deepEqual(oldPaid.claimedBy,claimed);assert.equal(restored.player.gold,paidGold);assert.deepEqual(restored.inventory,paidLoot);Object.assign(restored.player,{x:oldPaid.x,y:oldPaid.y});assert.equal((await f.method(f.first,'claimWorldEvent',oldPaid.id)).data.accepted,false);
+    const oldActive=world.worldEvents.find(event=>event.id===pending.id);assert.equal(oldActive.state,'failure');assert.ok(oldActive.readyAt>restored.time);assert.equal(world.enemies.some(enemy=>enemy.eventId===pending.id&&enemy.alive),false,'An interrupted old run cannot revive its guards');
+    assert.equal(namedBossEvents().length,6);
+  }finally{await f.close();}
+});
+
+test('all six named regional bosses require actual HTTP traces, opposition and participation before paying each completion once',async()=>{
+  const f=await fixture();try {
+    const game=f.game(f.first),other=f.game(f.second);establishLegacyProgress(game);assert.equal(namedBossEvents().length,6);
+    for(const definition of namedBossEvents()){
+      const event=game.world.worldEvents.find(value=>value.id===definition.id);assert.ok(event);assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,false);
+      const forged=await f.post(`/api/session/${f.first.token}/command`,{type:'method',name:'interactWorldEvent',args:[`${event.id}:start`],state:'success',participants:[f.first.playerId],reward:{gold:999999}});assert.equal(forged.status,400);
+      assert.equal((await f.method(f.first,'claimWorldEvent',event.id,999999)).status,400);assert.equal((await f.method(f.first,'event','world_event',event.id)).status,400);
+      await completeWorldEvent(f,event.id);assert.ok(game.world.enemies.some(enemy=>enemy.eventId===event.id&&enemy.type===definition.boss&&!enemy.alive));
+      assert.ok(game.journey.records.events.includes(event.id));assert.ok(game.journey.records.bosses.includes(definition.boss),'A rewardless named boss is recorded through its canonical completed world event');
+      Object.assign(other.player,{x:event.x,y:event.y,level:100});const unearned=other.player.gold;assert.equal((await f.method(f.second,'claimWorldEvent',event.id)).data.accepted,false);assert.equal(other.player.gold,unearned,'An arriving spectator cannot collect a completed encounter');
+      Object.assign(game.player,{x:event.x,y:event.y});const gold=game.player.gold;assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,true);assert.ok(game.player.gold>gold);const paid=game.player.gold;
+      assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,false);assert.equal(game.player.gold,paid);
+      Object.assign(other.player,{x:520,y:1250,level:1});
+    }
+    const before=clone(game.journey),gold=game.player.gold;await f.restart();const resumed=await f.get(f.first);assert.deepEqual(resumed.journey,before);assert.equal(resumed.player.gold,gold);
+    for(const definition of namedBossEvents()){const event=f.game(f.first).world.worldEvents.find(value=>value.id===definition.id);assert.equal(event.state,'rewarded');Object.assign(f.game(f.first).player,{x:event.x,y:event.y});assert.equal((await f.method(f.first,'claimWorldEvent',event.id)).data.accepted,false);}
+  }finally{await f.close();}
+});
+
+test('the permanent event chronicle accepts the complete expanded registry without truncating at the former cap',()=>{
+  const game=sparseGame();game.player.level=100;const definitions=[...WORLD_EVENT_DEFINITIONS,...EXPEDITIONS];
+  for(const definition of definitions)advanceJourney(game,'world_event',definition.id);
+  assert.equal(game.journey.records.events.length,definitions.length);assert.equal(validateJourneyState(game.journey,{level:100}),true);
+  const before=clone(game.journey);for(const definition of definitions)advanceJourney(game,'world_event',definition.id);assert.deepEqual(game.journey,before,'Repeated completions do not mint permanent reputation twice');
+  const loaded=sparseGame();loaded.applySave(clone(game.capture()));assert.deepEqual(loaded.journey,game.journey);
 });

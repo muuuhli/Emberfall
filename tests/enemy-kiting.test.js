@@ -18,7 +18,9 @@ function arena(type='mourning_bell',range=210,{damaged=true}={}) {
 const tick=(game,seconds)=>{for(let elapsed=0;elapsed<seconds;elapsed+=.04)game.update(.04);};
 
 test('all named expedition bosses warn and execute attacks at a ranger opening beyond preferred spacing',()=>{
-  for(const type of Object.keys(WORLD_EVENT_ENEMIES)) {
+  const original=Object.entries(WORLD_EVENT_ENEMIES).filter(([,def])=>!def.encounterProfile);
+  assert.equal(original.length,4);
+  for(const [type] of original) {
     const {game,enemy}=arena(type,210),hp=game.player.hp;
     game.update(.04);
     assert.equal(enemy.phase,'windup',`${type} must answer a ranged attack at 210 pixels`);

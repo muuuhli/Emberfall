@@ -1,6 +1,7 @@
 import { ENEMY_TYPES, QUESTS } from './catalog.js';
 import { CLASSES, getClass } from './classes.js';
 import { getRelic } from './relics.js';
+import { shapeBounds } from './encounter-geometry.js';
 import { drawPixelTree, drawPixelRock, drawPixelEnemy, drawPixelCompanion, drawPixelProp, drawPixelClassAccent, drawPixelImpact, drawPixelProjectile, pixelEnemyHeight } from './pixel-world.js';
 
 export const TERRAIN_CHUNK_SIZE = 512;
@@ -244,7 +245,12 @@ export class Renderer {
     for(const plot of w.plots||[])if(this.visible(plot.x,plot.y))this.plot(c,plot,game.time);
     for(const s of w.shrines||[])if(this.visible(s.x,s.y))this.shrine(c,s,game);
     for(const object of w.puzzleObjects||[])if(this.visible(object.x,object.y,150))this.puzzleObject(c,object,game);
-    for(const e of w.enemies||[])if(e.alive&&e.phase==='windup'&&this.visible(e.telegraphX??e.x,e.telegraphY??e.y,Math.max(100,e.telegraphRange||0,e.telegraphChargeDistance||0,e.telegraphExtraFan?.range||0)))this.telegraph(c,e,game);
+    for(const e of w.enemies||[])if(e.alive){
+      if(ENEMY_TYPES[e.type]?.encounterProfile){
+        if(e.phase==='windup')this.telegraph(c,e,game);
+        this.encounterShapes(c,e,game,true);
+      }else if(e.phase==='windup'&&this.visible(e.telegraphX??e.x,e.telegraphY??e.y,Math.max(100,e.telegraphRange||0,e.telegraphChargeDistance||0,e.telegraphExtraFan?.range||0)))this.telegraph(c,e,game);
+    }
     for(const d of game.drops||[])if(this.visible(d.x,d.y))this.drop(c,d,game);
     const actors=[];
     this.interactionFocusGame=game;this.interactionFocus=typeof game.nearby==='function'?game.nearby()?.object?.id:null;
@@ -759,8 +765,47 @@ export class Renderer {
     line(c,[[center.x+dx*start,center.y+dy*start],[tx,ty]],`${color}95`,3);
     poly(c,[[tx,ty],[tx-dx*11-dy*5,ty-dy*11+dx*5],[tx-dx*11+dy*5,ty-dy*11-dx*5]],`${color}dd`);
   }
+  encounterShapes(c,e,game,active=false) {
+    const shapes=active?e.activeShapes:e.telegraphShapes;if(!Array.isArray(shapes))return;
+    const color=ENEMY_TYPES[e.type]?.color||'#fa8064',progress=clamp(1-(e.attackTimer||0)/(e.telegraphDuration||1.4),0,1);
+    for(const shape of shapes){const box=shapeBounds(shape);if(box&&this.intersects(box,4))this.encounterShape(c,shape,{active,progress,color});}
+  }
+  encounterShape(c,s,{active=false,progress=0,color='#fa8064'}={}) {
+    const safe=s.safe===true; color=s.color||(safe?'#8dbbb9':color);const projectile=s.delivery==='projectile';
+    c.save();c.lineCap='round';c.lineJoin='round';c.beginPath();
+    if(s.kind==='circle')c.arc(s.x,s.y,s.radius,0,TAU);
+    else if(s.kind==='annulus'){
+      const gap=clamp(s.gapWidth||0,0,TAU);if(gap>=TAU){c.restore();return;}
+      const start=(s.gapAngle||0)+gap/2,end=start+TAU-gap;
+      c.moveTo(s.x+Math.cos(start)*s.outerRadius,s.y+Math.sin(start)*s.outerRadius);c.arc(s.x,s.y,s.outerRadius,start,end);
+      if(gap){c.lineTo(s.x+Math.cos(end)*s.innerRadius,s.y+Math.sin(end)*s.innerRadius);c.arc(s.x,s.y,s.innerRadius,end,start,true);c.closePath();}
+      else {c.closePath();c.moveTo(s.x+s.innerRadius,s.y);c.arc(s.x,s.y,s.innerRadius,TAU,0,true);c.closePath();}
+    }else if(s.kind==='cone'){
+      c.moveTo(s.x,s.y);c.arc(s.x,s.y,s.length,s.angle-s.halfAngle,s.angle+s.halfAngle);c.closePath();
+    }else if(s.kind==='segment'){
+      const angle=Math.atan2(s.y2-s.y1,s.x2-s.x1),nx=-Math.sin(angle)*s.width,ny=Math.cos(angle)*s.width;
+      c.moveTo(s.x1+nx,s.y1+ny);c.lineTo(s.x2+nx,s.y2+ny);c.arc(s.x2,s.y2,s.width,angle+Math.PI/2,angle-Math.PI/2,true);
+      c.lineTo(s.x1-nx,s.y1-ny);c.arc(s.x1,s.y1,s.width,angle-Math.PI/2,angle+Math.PI/2,true);c.closePath();
+    }else {c.restore();return;}
+    if(!projectile){c.fillStyle=`${color}${safe?'20':active?'55':'2c'}`;c.fill('evenodd');}
+    c.strokeStyle=`${color}${active||safe?'ee':'cc'}`;c.lineWidth=active||safe?3:2;c.stroke();
+    if(!active&&progress>0&&!projectile){
+      c.beginPath();
+      if(s.kind==='circle')c.arc(s.x,s.y,s.radius,-Math.PI/2,-Math.PI/2+TAU*progress);
+      else if(s.kind==='annulus'){const gap=clamp(s.gapWidth||0,0,TAU),start=(s.gapAngle||0)+gap/2;c.arc(s.x,s.y,s.outerRadius,start,start+(TAU-gap)*progress);}
+      else if(s.kind==='cone')c.arc(s.x,s.y,s.length,s.angle-s.halfAngle,s.angle-s.halfAngle+2*s.halfAngle*progress);
+      else if(s.kind==='segment'){c.moveTo(s.x1,s.y1);c.lineTo(s.x1+(s.x2-s.x1)*progress,s.y1+(s.y2-s.y1)*progress);}
+      c.strokeStyle=safe?'#b5e4de':'#f4d5b0';c.lineWidth=3;c.stroke();
+    }
+    if(projectile&&s.kind==='segment'){
+      const angle=Math.atan2(s.y2-s.y1,s.x2-s.x1),dx=Math.cos(angle),dy=Math.sin(angle),head=Math.min(10,Math.hypot(s.x2-s.x1,s.y2-s.y1)*.3),half=Math.min(4,s.width*.65);line(c,[[s.x1,s.y1],[s.x2,s.y2]],`${color}b0`,2);
+      poly(c,[[s.x2,s.y2],[s.x2-dx*head-dy*half,s.y2-dy*head+dx*half],[s.x2-dx*head+dy*half,s.y2-dy*head-dx*half]],`${color}dd`);
+    }
+    c.restore();
+  }
   telegraph(c,e,game) {
-    const def=ENEMY_TYPES[e.type]||{},boss=!!(e.boss||e.bossVariant||def.boss),r=e.telegraphRadius||(boss?105:62),progress=clamp(1-e.attackTimer/(e.telegraphDuration||(boss?1.1:.55)),0,1);
+    const def=ENEMY_TYPES[e.type]||{};if(def.encounterProfile){this.encounterShapes(c,e,game);return;}
+    const boss=!!(e.boss||e.bossVariant||def.boss),r=e.telegraphRadius||(boss?105:62),progress=clamp(1-e.attackTimer/(e.telegraphDuration||(boss?1.1:.55)),0,1);
     const centers=e.telegraphMechanic==='spread'?(e.spreadTargets||[]):[{x:e.telegraphX??e.x,y:e.telegraphY??e.y}];
     const radius=e.telegraphMechanic==='spread'?75:r,color=e.telegraphMechanic==='stack'?'#8fdae4':'#fa8064';
     for(const center of centers){

@@ -9,6 +9,7 @@ import { EQUIPMENT_SLOT_IDS, getEquipmentShopStock, equipmentSlot } from '../src
 import { generateLoot } from '../src/loot.js';
 import { CLASSES } from '../src/classes.js';
 import { PROFESSION_RECIPES, makeCraftedEquipment } from '../src/professions.js';
+import { WORLD_EVENT_DEFINITIONS, EXPEDITIONS } from '../src/world-events.js';
 
 const memoryStorage=()=>{const values=new Map();return {getItem:key=>values.get(key)||null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)};};
 function sparseGame() {
@@ -185,7 +186,7 @@ test('two HTTP players solve one shared ritual, kill its spawned guards and each
     }
     assert.equal(event.state,'success');assert.ok(f.game.world.enemies.filter(actor=>actor.eventId===event.id).length>0,'The ritual spawned real guarded opposition');
     const snap=await f.get(f.session.token),other=await f.get(joined.data.token);
-    assert.equal(other.world.worldEvents.find(candidate=>candidate.id===event.id).state,'success');assert.equal(snap.authoritativeWorldEventSummary.length,20);
+    assert.equal(other.world.worldEvents.find(candidate=>candidate.id===event.id).state,'success');assert.equal(snap.authoritativeWorldEventSummary.length,WORLD_EVENT_DEFINITIONS.length+EXPEDITIONS.length);
     approach(f.game,event);approach(second,event);const firstGold=f.game.player.gold,secondGold=second.player.gold;
     assert.equal((await f.method('claimWorldEvent',event.id)).data.accepted,true);assert.ok(f.game.player.gold>firstGold);assert.equal(second.player.gold,secondGold);
     const secondClaim=await f.post(`/api/session/${joined.data.token}/command`,{type:'method',name:'claimWorldEvent',args:[event.id]});assert.equal(secondClaim.data.accepted,true);assert.ok(second.player.gold>secondGold);
@@ -222,8 +223,8 @@ test('browser expansion methods use HTTP authority and global adventure summarie
     await network._actionQueue;assert.equal(f.game.itemFlags[id].favorite,true);
     network.applySnapshot(await f.get(f.session.token));
     for(const field of ['itemFlags','stash','loadouts','trackedQuestId','waypoint','journey'])assert.deepEqual(local[field],f.game[field],`${field} follows server truth`);
-    assert.deepEqual(local.worldEventSummary(),f.game.worldEventSummary());assert.equal(local.worldEventSummary().length,20);
-    assert.ok(local.world.worldEvents.length<20,'Nearby simulation objects are still spatially filtered');
+    assert.deepEqual(local.worldEventSummary(),f.game.worldEventSummary());assert.equal(local.worldEventSummary().length,WORLD_EVENT_DEFINITIONS.length+EXPEDITIONS.length);
+    assert.ok(local.world.worldEvents.length<WORLD_EVENT_DEFINITIONS.length+EXPEDITIONS.length,'Nearby simulation objects are still spatially filtered');
     assert.equal(local.selectCompanion(null),true);await network._actionQueue;
     await network.disconnect();assert.equal(local.networkWorldEventSummary,null);assert.equal(local.networkActive,false);
   } finally{await f.close();}
