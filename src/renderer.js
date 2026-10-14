@@ -1,10 +1,11 @@
 import { ENEMY_TYPES, QUESTS } from './catalog.js';
 import { CLASSES, getClass } from './classes.js';
 import { getRelic } from './relics.js';
-import { shapeBounds } from './encounter-geometry.js';
+import { shapeBounds, annulusDangerArcs } from './encounter-geometry.js';
 import { sampleCharacterAnimation } from './character-animation.js';
 import { deriveCharacterAppearance, drawCharacterAppearance } from './character-appearance.js';
 import { drawPixelTree, drawPixelRock, drawPixelEnemy, drawPixelCompanion, drawPixelProp, drawPixelClassAccent, drawPixelImpact, drawPixelProjectile, pixelEnemyHeight } from './pixel-world.js';
+import { drawRaidObjective, RAID_OBJECTIVE_HEIGHT, RAID_WARNING_COLOR, RAID_SAFE_COLOR } from './raid-visuals.js';
 
 export const TERRAIN_CHUNK_SIZE = 512;
 export const TERRAIN_CACHE_LIMIT = 64;
@@ -297,14 +298,23 @@ export class Renderer {
     c.translate(shakeX-this.camera.x,shakeY-this.camera.y);
     this.drawTerrain(c);this.waterDetails(c,game);
     if(this.activeWaypoint&&this.activeWaypoint.kind!=='pvpOpponent'&&this.visible(this.activeWaypoint.x,this.activeWaypoint.y,60))this.waypointBeacon(c,this.activeWaypoint,game);
-    for(const hazard of game.hazards||[])if(this.visible(hazard.x,hazard.y,(hazard.radius||80)+20))this.hazard(c,hazard,game);
+    for(const hazard of game.hazards||[]){
+      // A raid cone/ring can reach into view while its center is offscreen.
+      const box=hazard.raidEncounter&&shapeBounds(hazard.shape);
+      if(box?this.intersects(box,4):this.visible(hazard.x,hazard.y,(hazard.radius||80)+20))this.hazard(c,hazard,game);
+    }
     for(const portal of w.dungeonEntrances||[])if(this.visible(portal.x,portal.y,150))this.portal(c,portal,game);
     if(w.dungeonExit&&this.visible(w.dungeonExit.x,w.dungeonExit.y,140))this.portal(c,{...w.dungeonExit,exit:true},game);
     for(const plot of w.plots||[])if(this.visible(plot.x,plot.y))this.plot(c,plot,game.time);
     for(const s of w.shrines||[])if(this.visible(s.x,s.y))this.shrine(c,s,game);
     for(const object of w.puzzleObjects||[])if(this.visible(object.x,object.y,150))this.puzzleObject(c,object,game);
     for(const e of w.enemies||[])if(e.alive){
-      if(ENEMY_TYPES[e.type]?.encounterProfile){
+      if(game.dungeonInstance?.raidEncounter?.type===e.type){
+        // The raid controller publishes every live warning as a hazard. Do not
+        // duplicate it with the old generic boss circle or a second timer rim.
+        if(e.phase==='windup'&&e.telegraphMechanic!=='raid')this.telegraph(c,e,game);
+        this.encounterShapes(c,e,game,true);
+      }else if(ENEMY_TYPES[e.type]?.encounterProfile){
         if(e.phase==='windup')this.telegraph(c,e,game);
         this.encounterShapes(c,e,game,true);
       }else if(e.phase==='windup'&&this.visible(e.telegraphX??e.x,e.telegraphY??e.y,Math.max(100,e.telegraphRange||0,e.telegraphChargeDistance||0,e.telegraphExtraFan?.range||0)))this.telegraph(c,e,game);
@@ -614,6 +624,15 @@ export class Renderer {
   }
   hazard(c,h,game) {
     const radius=h.radius||100,color=h.color||'#df7568',pending=(h.windup||0)>0||h.pending;
+    if(h.raidEncounter){
+      const shape=h.shape,box=shapeBounds(shape);if(!box)return;
+      const cast=game.dungeonInstance?.raidEncounter?.pending;
+      const duration=cast&&cast.mechanicId===h.mechanicId?cast.resolveAt-cast.time:h.maxLife||h.life||1;
+      const progress=clamp(1-(h.life||0)/(duration||1),0,1);
+      this.encounterShape(c,{...shape,color:RAID_WARNING_COLOR},{active:!pending,progress,color:RAID_WARNING_COLOR});
+      this.raidRefuges(c,shape);
+      return;
+    }
     if(h.directorId&&h.kind==='warning'){
       const progress=clamp(1-Math.max(0,h.life||0)/(h.maxLife||8),0,1);
       ellipse(c,h.x,h.y,radius,radius,`${color}26`);c.beginPath();c.arc(h.x,h.y,radius,0,TAU);c.strokeStyle=`${color}c0`;c.lineWidth=2;c.stroke();
@@ -805,6 +824,7 @@ export class Renderer {
     rounded(c,x-width/2,y-8,width,17,4,'#11131be8');text(c,value,x,y,size,color);
   }
   enemy(c,e,game) {
+    if(e.bossObjectiveId){this.raidObjective(c,e,game);return;}
     const def=ENEMY_TYPES[e.type]||{},boss=!!(e.boss||e.bossVariant||def.boss),elite=!!e.elite&&!boss;
     if(boss){ellipse(c,e.x,e.y+2,39,15,'#240c1880');c.beginPath();c.ellipse(e.x,e.y+2,35,13,0,0,TAU);c.strokeStyle='#d0784d88';c.lineWidth=2;c.stroke();}
     else if(elite){c.beginPath();c.ellipse(e.x,e.y+2,27,10,0,0,TAU);c.strokeStyle='#d67f8dba';c.lineWidth=2;c.stroke();}
@@ -817,10 +837,37 @@ export class Renderer {
       const width=boss?94:elite?62:43,top=e.y-this.enemyPixelHeights.get(e.type)-12;rounded(c,e.x-width/2,top,width,5,2,'#1d2c29');rounded(c,e.x-width/2,top,width*clamp(e.hp/e.maxHp,0,1),5,2,boss?'#cf7456':elite?'#d77f8d':'#af706b');
       if(elite){const x=e.x-width/2-11,y=top+3;poly(c,[[x-5,y+2],[x-6,y-5],[x-2,y-2],[x,y-7],[x+2,y-2],[x+6,y-5],[x+5,y+2]],'#f0a1ad','#341c29',1.5);}
       if(boss||elite&&dist<360||dist<170)this.label(c,`${elite?'Elite · ':''}${e.name||def.name||e.type}${boss?'':' · '+(e.level||def.level||1)}`,e.x,top-15,boss?'#efc08c':elite?'#efb0b9':'#c9beb4',boss?11:9);
-      if(boss&&e.shielded)this.label(c,`Schild · ${def.mechanics?.shield?.plates||3} Quellsiegel gemeinsam halten`,e.x,e.y+30,'#cebbea',10);
-      else if(boss&&e.mechanicCycle)this.label(c,e.mechanicCycle==='stack'?`Sternfall · ${e.stackRequired||2} zusammen`:'Nova · Abstand halten',e.x,e.y+30,e.mechanicCycle==='stack'?'#afd7d8':'#e0aa90',10);
+      const raid=game.dungeonInstance?.raidEncounter?.type===e.type;
+      if(boss&&e.shielded&&!raid)this.label(c,`Schild · ${def.mechanics?.shield?.plates||3} Quellsiegel gemeinsam halten`,e.x,e.y+30,'#cebbea',10);
+      else if(boss&&e.mechanicCycle&&!raid)this.label(c,e.mechanicCycle==='stack'?`Sternfall · ${e.stackRequired||2} zusammen`:'Nova · Abstand halten',e.x,e.y+30,e.mechanicCycle==='stack'?'#afd7d8':'#e0aa90',10);
       if(e.enraged)this.label(c,'RASEREI',e.x,e.y+51,'#ef9788',11);
     }
+  }
+  raidRefuges(c,shape) {
+    if(shape.kind!=='annulus')return;
+    const arcs=annulusDangerArcs(shape);if(!arcs.length)return;
+    c.save();c.beginPath();
+    // This cool boundary marks the exact inner refuge; no filled safe area
+    // covers, dims or narrows the actual dangerous annulus.
+    if(shape.innerRadius>0){c.arc(shape.x,shape.y,shape.innerRadius,0,TAU);c.strokeStyle=RAID_SAFE_COLOR;c.lineWidth=2;c.stroke();}
+    if(shape.gapWidth){
+      const gaps=shape.gapAngles??[shape.gapAngle??0];
+      for(const center of gaps){
+        const half=Math.min(shape.gapWidth,TAU)/2;c.beginPath();
+        for(const angle of [center-half,center+half]){c.moveTo(shape.x+Math.cos(angle)*shape.innerRadius,shape.y+Math.sin(angle)*shape.innerRadius);c.lineTo(shape.x+Math.cos(angle)*shape.outerRadius,shape.y+Math.sin(angle)*shape.outerRadius);}
+        c.strokeStyle=RAID_SAFE_COLOR;c.lineWidth=2;c.stroke();
+      }
+    }
+    c.restore();
+  }
+  raidObjective(c,e,game) {
+    const objective=game.dungeonInstance?.raidEncounter?.objectives?.[e.bossObjectiveId],exploding=!!objective?.exploding;
+    drawRaidObjective(c,e,{time:game.time,reducedMotion:!!game.settings?.reducedMotion,exploding});
+    if((e.hitUntil||0)>game.time)drawPixelImpact(c,{x:e.x,y:e.y-30,variant:'physical',impactFrame:game.settings?.reducedMotion?0:1});
+    const width=66,top=e.y-RAID_OBJECTIVE_HEIGHT-10;
+    rounded(c,e.x-width/2,top,width,5,2,'#211b2d');rounded(c,e.x-width/2,top,width*clamp(e.hp/(e.maxHp||1),0,1),5,2,exploding?'#e98d69':'#bd93d4');
+    const remaining=objective?Math.max(0,Math.ceil(objective.expiresAt-(game.dungeonInstance?.bossTime||0)-1e-6)):null;
+    this.label(c,`${e.name||'Raidziel'}${remaining!==null?` · ${exploding?'ÜBERLADEN':`${remaining}s`}`:''}`,e.x,top-12,exploding?'#ffbd9e':'#d8bfeb',10);
   }
   projectileTelegraph(c,center,angle,range,color) {
     const dx=Math.cos(angle),dy=Math.sin(angle),tx=center.x+dx*range,ty=center.y+dy*range,start=Math.min(25,range*.25);
@@ -837,11 +884,12 @@ export class Renderer {
     c.save();c.lineCap='round';c.lineJoin='round';c.beginPath();
     if(s.kind==='circle')c.arc(s.x,s.y,s.radius,0,TAU);
     else if(s.kind==='annulus'){
-      const gap=clamp(s.gapWidth||0,0,TAU);if(gap>=TAU){c.restore();return;}
-      const start=(s.gapAngle||0)+gap/2,end=start+TAU-gap;
-      c.moveTo(s.x+Math.cos(start)*s.outerRadius,s.y+Math.sin(start)*s.outerRadius);c.arc(s.x,s.y,s.outerRadius,start,end);
-      if(gap){c.lineTo(s.x+Math.cos(end)*s.innerRadius,s.y+Math.sin(end)*s.innerRadius);c.arc(s.x,s.y,s.innerRadius,end,start,true);c.closePath();}
-      else {c.closePath();c.moveTo(s.x+s.innerRadius,s.y);c.arc(s.x,s.y,s.innerRadius,TAU,0,true);c.closePath();}
+      const arcs=annulusDangerArcs(s);if(!arcs.length){c.restore();return;}
+      for(const [start,end] of arcs){
+        c.moveTo(s.x+Math.cos(start)*s.outerRadius,s.y+Math.sin(start)*s.outerRadius);c.arc(s.x,s.y,s.outerRadius,start,end);
+        if(s.gapWidth){c.lineTo(s.x+Math.cos(end)*s.innerRadius,s.y+Math.sin(end)*s.innerRadius);c.arc(s.x,s.y,s.innerRadius,end,start,true);c.closePath();}
+        else {c.closePath();c.moveTo(s.x+s.innerRadius,s.y);c.arc(s.x,s.y,s.innerRadius,TAU,0,true);c.closePath();}
+      }
     }else if(s.kind==='cone'){
       c.moveTo(s.x,s.y);c.arc(s.x,s.y,s.length,s.angle-s.halfAngle,s.angle+s.halfAngle);c.closePath();
     }else if(s.kind==='segment'){
@@ -854,7 +902,10 @@ export class Renderer {
     if(!active&&progress>0&&!projectile){
       c.beginPath();
       if(s.kind==='circle')c.arc(s.x,s.y,s.radius,-Math.PI/2,-Math.PI/2+TAU*progress);
-      else if(s.kind==='annulus'){const gap=clamp(s.gapWidth||0,0,TAU),start=(s.gapAngle||0)+gap/2;c.arc(s.x,s.y,s.outerRadius,start,start+(TAU-gap)*progress);}
+      else if(s.kind==='annulus'){
+        const arcs=annulusDangerArcs(s);let remaining=arcs.reduce((sum,[start,end])=>sum+end-start,0)*progress;
+        for(const [start,end] of arcs){if(remaining<=0)break;const sweep=Math.min(remaining,end-start);c.moveTo(s.x+Math.cos(start)*s.outerRadius,s.y+Math.sin(start)*s.outerRadius);c.arc(s.x,s.y,s.outerRadius,start,start+sweep);remaining-=sweep;}
+      }
       else if(s.kind==='cone')c.arc(s.x,s.y,s.length,s.angle-s.halfAngle,s.angle-s.halfAngle+2*s.halfAngle*progress);
       else if(s.kind==='segment'){c.moveTo(s.x1,s.y1);c.lineTo(s.x1+(s.x2-s.x1)*progress,s.y1+(s.y2-s.y1)*progress);}
       c.strokeStyle=safe?'#b5e4de':'#f4d5b0';c.lineWidth=3;c.stroke();
@@ -900,7 +951,7 @@ export class Renderer {
         const fan=e.telegraphExtraFan,count=Math.max(1,Math.min(12,Math.floor(fan.count||3))),spread=fan.spread??.8,angle=fan.angle??aim,range=fan.range||e.telegraphRange||440;
         for(let i=0;i<count;i++)this.projectileTelegraph(c,center,angle+(count>1?(i/(count-1)-.5)*spread:0),range,'#eac08a');
       }
-      if(e.telegraphMechanic)this.label(c,e.telegraphMechanic==='stack'?`Zusammen · mindestens ${e.stackRequired||2}`:'Auseinander · Fläche verlassen',center.x,center.y-radius-18,color,10);
+      if(e.telegraphMechanic&&!game.dungeonInstance?.raidEncounter)this.label(c,e.telegraphMechanic==='stack'?`Zusammen · mindestens ${e.stackRequired||2}`:'Auseinander · Fläche verlassen',center.x,center.y-radius-18,color,10);
     }
   }
   drop(c,d,game) {

@@ -112,13 +112,15 @@ export class NetworkClient {
     for(const key of PERSONAL_FIELDS)if(snapshot[key]!==undefined)game[key]=snapshot[key];
     game.time=snapshot.time;game.effects=snapshot.effects||[];game.projectiles=snapshot.projectiles||[];game.drops=snapshot.drops||[];game.hazards=snapshot.hazards||[];game.summons=snapshot.summons||[];
     game.dungeonInstance=snapshot.dungeonInstance?{...snapshot.dungeonInstance,world:game.world}:null;
+    game.networkDungeonCheckpoint=isPvp?null:snapshot.authoritativeDungeonCheckpoint||null;
+    game.networkRaidResume=isPvp?null:snapshot.raidResume||null;
     if(!game.dungeonInstance&&!isPvp)game.overworld=game.world;
     game.pvp=snapshot.pvp||null;game.pvpStats=isPvp?snapshot.pvpStats||null:null;
     if(!isPvp&&snapshot.leechCredit!==undefined)game.restoreLeechCredit(snapshot.leechCredit);
     game.networkInteractionSummary=snapshot.authoritativeInteractionSummary||null;
     game.networkWorldEventSummary=snapshot.authoritativeWorldEventSummary||null;
     game.networkEncounterDirectorSave=isPvp?null:snapshot.authoritativeEncounterDirectorSave||null;
-    game.worldMode=snapshot.worldMode;game.activeDungeon=snapshot.activeDungeon;game.paused=!!game.dead;
+    game.worldMode=snapshot.worldMode;game.activeDungeon=snapshot.activeDungeon;game.paused=!!game.dead||!!game.networkRaidResume?.waiting;
     if(snapshot.npcs)game.npcs=snapshot.npcs;
     const previousParty=new Map(this.players.map(p=>[p.id,p]));this._targets.clear();
     this.players=(snapshot.party||[]).map(player=>{

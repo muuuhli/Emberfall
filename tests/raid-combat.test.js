@@ -43,6 +43,7 @@ function resetPlayers(fixture,positions) {
 function armMechanic(fixture,kind) {
   const {boss,instance}=fixture;
   instance.bossEngaged=true;instance.bossTime=kind==='spread'?13:1;
+  instance.raidEncounter=null; // This fixture deliberately rewinds the combat clock.
   Object.assign(boss,{phase:'idle',attackTimer:0,aggro:true,telegraphMechanic:null,enraged:false});
   fixture.hub.tick(.04);
   assert.equal(boss.phase,'windup');assert.equal(boss.telegraphMechanic,kind);

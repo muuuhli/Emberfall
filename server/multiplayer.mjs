@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Game } from '../src/game.js';
 import * as Catalog from '../src/catalog.js';
 import { CLASSES } from '../src/classes.js';
+import { DUNGEONS } from '../src/dungeons.js';
 import { getArsenalShopStock } from '../src/arsenal.js';
 import { EQUIPMENT_SLOT_IDS, getEquipmentShopStock } from '../src/equipment-system.js';
 import { captureWorldEvents, restoreWorldEvents } from '../src/world-events.js';
@@ -28,6 +29,11 @@ const STORE_KEY = 'emberfall.multiplayer.v1';
 const distance = (a,b) => Math.hypot(a.x-b.x,a.y-b.y);
 const cleanName = (value,fallback) => typeof value==='string' ? value.trim().replace(/[^\p{L}\p{N} _'\-]/gu,'').slice(0,24)||fallback : fallback;
 const clone = value => JSON.parse(JSON.stringify(value));
+function roomResumeSummary(room){
+  const instance=[...room.members.values()].find(member=>member.game.dungeonInstance)?.game.dungeonInstance;
+  if(!room.waitingForRaidResume||!instance?.definition.raid)return null;
+  return {waiting:true,required:instance.definition.partyRequired,ready:[...room.members.values()].filter(member=>member.active).length};
+}
 const classIds = () => (Array.isArray(CLASSES)?CLASSES:Object.values(CLASSES)).map(c=>c.id);
 
 /** Atomic local server saves. Keep this file outside the static web root. */
@@ -133,6 +139,17 @@ export class MultiplayerHub {
       room.lastActive=now;
       const games=active.filter(m=>!this.pvp.occupied(m)).map(m=>m.game);
       if(!games.length){if(this.frames%2===0)for(const member of room.members.values())this._broadcast(member);continue;}
+      if(room.waitingForRaidResume){
+        const required=games[0].dungeonInstance?.definition.partyRequired||1;
+        if(games.length<required){
+          for(const game of games)game.keys.clear();
+          const boss=games[0].world.enemies.find(enemy=>enemy.id===`${games[0].dungeonInstance?.id}:boss`);
+          if(boss){boss.insufficientParty=true;boss.shielded=true;boss.shieldDamageMultiplier=0;}
+          if(this.frames%2===0)for(const member of room.members.values())this._broadcast(member);
+          continue;
+        }
+        room.waitingForRaidResume=false;
+      }
       const authority=games.find(g=>!g.dead)||games[0];this._syncRoom(room,authority);
       for(const game of games) {
         // Menus are client UI only. One player's pause or defeat cannot freeze a group.
@@ -145,7 +162,9 @@ export class MultiplayerHub {
       }
       room.time+=dt;
       if(typeof authority.updateWorld!=='function')throw new Error('Game.updateWorld(dt, partyGames) is required for authoritative multiplayer.');
+      const raidWipesBefore=authority.dungeonInstance?.raidWipes||0;
       authority.updateWorld(dt,games);this._syncRoom(room,authority);
+      if((authority.dungeonInstance?.raidWipes||0)>raidWipesBefore)this.persist();
       if(this.frames%2===0)for(const member of room.members.values())this._broadcast(member);
     }
     if(now-this.lastPersist>10000){this.persist();this.lastPersist=now;}
@@ -156,7 +175,11 @@ export class MultiplayerHub {
     const data={protocol:1,roomCode:member.room.code,roomName:member.room.name,playerId:member.id,sequence:this.frames,time:member.room.time,player:{...p},world:{},npcs:game.npcs,effects:game.effects.filter(near),projectiles:game.projectiles.filter(near),drops:game.drops.filter(near),hazards:(game.hazards||[]).filter(near),summons:(game.summons||[]).filter(near),worldMode:game.dungeonInstance?'dungeon':'overworld',activeDungeon:game.dungeonInstance?{id:game.dungeonInstance.id,tier:game.dungeonInstance.tier,name:game.dungeonInstance.definition.name}:null,party:[...member.room.members.values()].filter(m=>m.active).map(m=>({id:m.id,name:m.game.player.name,classId:m.game.classId,level:m.game.player.level,hp:m.game.player.hp,maxHp:m.game.stats().maxHp,x:m.game.player.x,y:m.game.player.y,face:m.game.player.face,walking:m.game.player.walking,dead:m.game.dead,attackUntil:m.game.player.attackUntil,castUntil:m.game.player.castUntil,dashUntil:m.game.player.dashUntil,dashAngle:m.game.player.dashAngle,hitUntil:m.game.player.hitUntil,presentation:m.game.player.presentation||null,appearance:deriveCharacterAppearance(m.game),connected:m.streams.size>0})),events:member.events};
     data.authoritativeInteractionSummary=game.interactionSummary();
     data.authoritativeWorldEventSummary=game.worldEventSummary?.()||[];
-    data.dungeonInstance=game.dungeonInstance?Object.fromEntries(['id','definition','tier','seed','partySize','spawn','exit','puzzles','elapsed','bossDefeated','gateOpened','shieldHold','vulnerabilityUntil'].map(key=>[key,game.dungeonInstance[key]])):null;
+    data.dungeonInstance=game.dungeonInstance?Object.fromEntries(['id','definition','tier','seed','partySize','spawn','exit','puzzles','elapsed','bossTime','bossEngaged','bossDefeated','gateOpened','shieldHold','vulnerabilityUntil','raidEncounter','raidRevivesUsed'].map(key=>[key,game.dungeonInstance[key]])):null;
+    // Portable dungeon progress must not depend on the client's view culling.
+    // This carries boss HP, all objectives and pending deadlines, without room tokens.
+    data.authoritativeDungeonCheckpoint=game.captureDungeonCheckpoint?.()||null;
+    data.raidResume=roomResumeSummary(member.room);
     for(const key of PERSONAL_FIELDS)if(game[key]!==undefined)data[key]=game[key];
     data.leechCredit=game.currentLeechCredit();
     data.pvp=this.pvp.summary(member);data.pvpStats=null;
@@ -196,7 +219,7 @@ export class MultiplayerHub {
     return {version:1,savedAt:this.clock(),rooms:[...this.rooms.values()].map(room=>{
       const leader=room.members.values().next().value?.game;
       const persistentWorld=leader?.dungeonInstance?leader.overworld:room.world;
-      return {code:room.code,name:room.name,createdAt:room.createdAt,lastActive:room.lastActive,time:room.time,worldMode:'overworld',world:clone(Object.fromEntries([...MUTABLE_WORLD,'structures'].filter(key=>persistentWorld[key]!==undefined).map(key=>[key,persistentWorld[key]]))),members:[...room.members.values()].map(m=>({id:m.id,token:m.token,classId:m.game.classId,eventSequence:m.eventSequence,save:m.game.capture()}))};
+      return {code:room.code,name:room.name,createdAt:room.createdAt,lastActive:room.lastActive,time:room.time,worldMode:leader?.dungeonInstance?'dungeon':'overworld',dungeonCheckpoint:leader?.captureDungeonCheckpoint?.()||null,world:clone(Object.fromEntries([...MUTABLE_WORLD,'structures'].filter(key=>persistentWorld[key]!==undefined).map(key=>[key,persistentWorld[key]]))),members:[...room.members.values()].map(m=>({id:m.id,token:m.token,classId:m.game.classId,eventSequence:m.eventSequence,save:m.game.capture()}))};
     })};
   }
   persist() {
@@ -212,20 +235,30 @@ export class MultiplayerHub {
       for(const entry of saved.members.slice(0,this.maxPlayers)) {
         try {
           const member=this._createMember(room,{playerName:entry.save?.player?.name,classId:entry.classId});
-          member.game.applySave(entry.save);
-          if(member.game.dungeonInstance)member.game.exitDungeon();
+          const resumeDungeon=saved.worldMode==='dungeon'&&saved.dungeonCheckpoint;
+          const portableSave=resumeDungeon?{...entry.save,dungeon:{...saved.dungeonCheckpoint,returnPoint:entry.save?.dungeon?.returnPoint||saved.dungeonCheckpoint.returnPoint}}:entry.save;
+          const resumeRaid=!!(resumeDungeon&&DUNGEONS.some(definition=>definition.id===saved.dungeonCheckpoint.id&&definition.raid));
+          member.game.applySave(portableSave,{preserveDowned:resumeRaid});
+          if(member.game.dungeonInstance&&!resumeDungeon)member.game.exitDungeon();
           member.game.player.name=cleanName(entry.save?.player?.name,'Reisender');
           member.eventSequence=Number.isSafeInteger(entry.eventSequence)?entry.eventSequence:0;member.events=[];
           this.sessions.delete(member.token);member.token=typeof entry.token==='string'&&/^[\w-]{43}$/.test(entry.token)?entry.token:randomBytes(32).toString('base64url');
           member.id=typeof entry.id==='string'?entry.id:member.id;member.game.player.id=member.id;
           member.active=false;
           room.members.delete([...room.members].find(([,m])=>m===member)?.[0]);room.members.set(member.id,member);this.sessions.set(member.token,member);
+          // applySave replaces the world and dungeon instance. Make this
+          // validated checkpoint the shared source before restoring another
+          // member, whose join would otherwise reuse the old overworld.
+          this._syncRoom(room,member.game);
         } catch {}
       }
       const leader=room.members.values().next().value?.game;
       if(!leader){this.rooms.delete(room.code);continue;}
-      // Dungeon parties return safely to their persistent overworld on restart.
-      if(saved.worldMode==='overworld')for(const key of MUTABLE_WORLD)if(!['worldEvents','eventObjects'].includes(key)&&saved.world?.[key]!==undefined&&leader.world[key]!==undefined)leader.world[key]=saved.world[key];
+      room.waitingForRaidResume=!!(saved.worldMode==='dungeon'&&leader.dungeonInstance?.definition.raid&&leader.dungeonInstance.bossEngaged&&!leader.dungeonInstance.bossDefeated);
+      // New rooms retain one canonical shared dungeon checkpoint. Older saves
+      // keep their safe return behavior. The overworld remains a separate world.
+      const persistentWorld=leader.dungeonInstance?leader.overworld:leader.world;
+      if(['overworld','dungeon'].includes(saved.worldMode))for(const key of MUTABLE_WORLD)if(!['worldEvents','eventObjects'].includes(key)&&saved.world?.[key]!==undefined&&persistentWorld[key]!==undefined)persistentWorld[key]=saved.world[key];
       // Creating the first restore member initializes a fresh room at zero.
       // Restore the shared clock too, so absolute crop and resource deadlines
       // keep their remaining duration after a server restart.
@@ -234,7 +267,7 @@ export class MultiplayerHub {
       // The raw shared-world overlay must not bypass the portable boss-rest
       // ledger or turn old JSON-null Infinity timers into immediate respawns.
       const leaderSave=saved.members.find(entry=>entry.id===leader.player.id)?.save;
-      for(const enemy of leader.world.enemies)if(!enemy.alive&&Catalog.ENEMY_TYPES[enemy.type]?.boss&&Catalog.ENEMY_TYPES[enemy.type]?.baseType&&!enemy.challengeId&&!enemy.eventId) {
+      for(const enemy of persistentWorld.enemies)if(!enemy.alive&&Catalog.ENEMY_TYPES[enemy.type]?.boss&&Catalog.ENEMY_TYPES[enemy.type]?.baseType&&!enemy.challengeId&&!enemy.eventId) {
         const remaining=leaderSave?.world?.championRespawns?.find(rest=>rest.id===enemy.id)?.remaining;
         enemy.respawnAt=room.time+(Number.isFinite(remaining)?Math.max(0,Math.min(360,remaining)):360);
       }
@@ -242,12 +275,15 @@ export class MultiplayerHub {
       // content. Only portable progress overlays canonical events; interrupted
       // runs fail safely and their saved guards cannot revive on restart.
       const eventProgress=leaderSave?.world?.worldEvents??(Array.isArray(saved.world?.worldEvents)?captureWorldEvents({worldEvents:saved.world.worldEvents}):undefined);
-      if(Array.isArray(leader.world.worldEvents))restoreWorldEvents(leader.world,eventProgress,room.time);
+      if(Array.isArray(persistentWorld.worldEvents))restoreWorldEvents(persistentWorld,eventProgress,room.time);
       // Rebuild director enemies from canonical plans, including their spent
       // rewards and relative wilderness timers. Raw room actors never decide
       // difficulty, HP budgets, ownership or whether a dead spawn can revive.
-      restoreEncounterDirector(leader.world,leaderSave?.world?.encounterDirector);
+      restoreEncounterDirector(persistentWorld,leaderSave?.world?.encounterDirector);
       this._syncRoom(room,leader);
+      // Restored members already belong to this exact checkpoint. Fresh object
+      // identities during reconstruction must not teleport them on activation.
+      for(const member of room.members.values())member.needsTeleport=false;
     }
   }
   _origin(req,res) {
@@ -280,6 +316,7 @@ export class MultiplayerHub {
         const body=await readJson(req),room=this.rooms.get(join[1].toUpperCase());
         if(!room)throw new HttpError(404,'Diese Gruppe existiert nicht.');
         if([...room.members.values()].filter(m=>m.active).length>=this.maxPlayers)throw new HttpError(409,'Die Gruppe ist voll.');
+        if([...room.members.values()].some(member=>member.game.dungeonInstance))throw new HttpError(409,'Der Dungeon läuft bereits. Kehre mit deiner bestehenden Sitzung zurück oder warte, bis die Gruppe den Dungeon verlässt.');
         const member=this._createMember(room,body);this.persist();
         return this._json(res,201,{token:member.token,roomCode:room.code,playerId:member.id,snapshot:this.snapshot(member,{includeLayout:true})});
       }
@@ -318,6 +355,10 @@ export class MultiplayerHub {
   command(member,command) {
     const game=member.game;
     if(!command||typeof command!=='object'||Array.isArray(command))throw new HttpError(400,'Ungültiger Spielbefehl.');
+    // After a restart, a saved warning waits for the required humans to return.
+    // Joining late must not turn this pause into free attacks or movement.
+    if(member.room.waitingForRaidResume&&['action','input'].includes(command.type)){game.keys.clear();return false;}
+    if(member.room.waitingForRaidResume&&command.type==='method'&&!['setSetting','equip','unequip','learn','learnAbility','setAbilityLoadout','setItemFlag','trackQuest','setWaypoint','saveLoadout','applyLoadout','deleteLoadout','exitDungeon','leaveDungeon'].includes(command.name))return false;
     if(command.type==='input') {
       if(Object.keys(command).some(k=>!['type','keys','angle'].includes(k))||!Array.isArray(command.keys)||command.keys.length>8||command.keys.some(k=>!KEYS.has(k))||!Number.isFinite(command.angle))throw new HttpError(400,'Nur Bewegungstasten und Blickrichtung werden angenommen.');
       if(this.pvp.occupied(member)){member.lastInput=this.clock();return this.pvp.input(member,command.keys,command.angle);}

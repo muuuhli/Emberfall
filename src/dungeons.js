@@ -17,9 +17,9 @@ const bosses = [
   ['thorn_abbess', 'Äbtissin der Dornen', 42, '#b1c47f', 14600, 95, 1],
   ['chronar', 'Chronar, Hüter der falschen Stunde', 55, '#cbb2e9', 24000, 125, 1],
   ['skadi', 'Skadi, Herz des Winters', 65, '#bbe8f0', 35000, 151, 1],
-  ['storm_king', 'Azhur, König des leeren Himmels', 75, '#d9c994', 125000, 205, 3],
-  ['night_devourer', 'Velthra, der Nachtverschlinger', 90, '#d792a9', 245000, 255, 4],
-  ['world_heart', 'Eon, der gefallene Weltenkern', 100, '#ebafe9', 850000, 310, 8],
+  ['storm_king', 'Azhur, König des leeren Himmels', 75, '#d9c994', 500000, 205, 3],
+  ['night_devourer', 'Velthra, der Nachtverschlinger', 90, '#d792a9', 980000, 255, 4],
+  ['world_heart', 'Eon, der gefallene Weltenkern', 100, '#ebafe9', 1700000, 310, 8],
 ];
 export const DUNGEON_ENEMIES = Object.fromEntries(bosses.map(([id, name, level, color, hp, damage, minPlayers]) => [id, {
   name, level, color, hp, damage, speed: 40 + level * .35, range: 210, boss: true, minPlayers,

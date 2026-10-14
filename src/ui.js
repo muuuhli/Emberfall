@@ -17,6 +17,8 @@ import { EQUIPMENT_SLOTS, equipmentSlot, getEquipmentShopStock, scaleEquipmentSt
 import { applyTalentAbilityProfile, applyTalentAttackProfile, describeTalentCombatEffects } from './talent-combat.js';
 import { deriveCharacterAppearance } from './character-appearance.js';
 import { drawCharacterSprite, loadCharacterSpriteAssets } from './renderer.js';
+import { RAID_PROFILES, raidReviveSummary, raidReturnBlocked } from './raid-encounters.js';
+import { raidHudPresentation } from './raid-visuals.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const icon = (name, classes = '') => `<svg class="${classes}" aria-hidden="true"><use href="#i-${name}" /></svg>`;
@@ -224,7 +226,7 @@ export class GameUI {
     const game = this.game;
     this.updatePvp();
     if(this.activePanel==='death'&&!this.inPvp&&game.dead===false&&game.player?.hp>0)this.closePanel();
-    const deathState=JSON.stringify(game.deathSummary?.() || null);
+    const deathState=JSON.stringify([game.deathSummary?.() || null,raidReturnBlocked(game),raidReviveSummary(game.dungeonInstance)]);
     if(this.activePanel==='death'&&deathState!==this.lastDeathState)this.renderPanel();
     this.lastDeathState=deathState;
     const player = game.player || {};
@@ -287,9 +289,9 @@ export class GameUI {
     destination?.classList.toggle('waypoint-active',!!target || !!trial);
     if(destination){destination.dataset.adventurePhase=trial?trackedEvent.phase:'';destination.title=trial?`${trackedEvent.name} · ${trial.compact}`:nearby?.label || target?.label || '';}
     const eventState=eventSummary.filter(event=>event.state==='active'||this.adventureRewardReady(event)).map(event=>[event.id,event.state,event.phase,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]);
-    const trackerState = JSON.stringify([game.questState || {},game.contracts,game.trackedQuestId,game.endgame,eventState]);
+    const trackerState = JSON.stringify([game.questState || {},game.contracts,game.trackedQuestId,game.endgame,eventState,this.dungeonId()]);
     if (force || trackerState !== this.lastTracker) { this.lastTracker = trackerState; this.renderTracker(); }
-    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.deathPenalty,game.waypoint,game.trackedQuestId,eventSummary.map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]),game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,this.dungeonId()]);
+    const state = JSON.stringify([player.classId,player.level,player.skillPoints,player.gold,game.inventory,game.stash,game.itemFlags,game.loadouts,game.journey,game.endgame,game.deathPenalty,game.waypoint,game.trackedQuestId,eventSummary.map(event=>[event.id,event.state,event.phase,event.stageIndex,event.objective?.label,Math.floor(event.objective?.progress || 0),event.wave,this.adventureWarningSeconds(event)]),game.equipment,game.generatedItems,game.resources,game.skills,game.learnedAbilities,game.abilityLoadout,game.questState,game.contracts,game.discovered,game.dungeonRecords,game.dungeonProgress,game.ledger,game.interactionState,game.dungeonInstance?.raidRevivesUsed,game.networkRaidResume,this.dungeonId()]);
     if (force || state !== this.lastState) { this.lastState = state; if (this.activePanel && !['death','victory','reset','settings','party'].includes(this.activePanel)) this.renderPanel(); }
     this.updateParty();
     const now = performance.now();
@@ -429,8 +431,10 @@ export class GameUI {
     const quests = [...QUESTS.filter(quest => ['active','ready'].includes(this.game.questState?.[quest.id]?.status)),...(this.game.contracts?.active||[])].sort((a,b)=>Number(b.id===this.game.trackedQuestId)-Number(a.id===this.game.trackedQuestId));
     const event=this.trackedAdventure(),wave=event?this.adventureWave(event):null;
     const hunt=!event&&!this.game.trackedQuestId?this.game.endgameSummary?.()?.active?.[0]:null;
+    const emptyDungeon=!!this.dungeonId()&&!quests.length&&!event&&!hunt;
     const tracker=this.elements['quest-tracker']?.parentElement;
     tracker?.classList.toggle('tracker-expanded',!!this.trackerExpanded);
+    tracker?.classList.toggle('tracker-empty-dungeon',emptyDungeon);
     const toggle=document.getElementById('tracker-toggle');toggle?.setAttribute('aria-expanded',String(!!this.trackerExpanded));
     const eventLabel=event?`${wave?'Prüfung':'Ereignis'} · ${event.name}${wave?` · ${wave.compact}`:''}`:'';
     const toggleLabel=document.getElementById('tracker-toggle-label');if(toggleLabel)toggleLabel.textContent=eventLabel || (hunt?`Jagd · ${hunt.name}`:quests[0]?.title || 'Chronik der Asche');
@@ -440,7 +444,7 @@ export class GameUI {
       const isReady = state.status === 'ready' || quest.objectives.every((objective,index) => (state.counts?.[index] || 0) >= objective.count);
       const giver=quest.giver?NPCS.find(npc=>npc.id===quest.giver):this.game.contractGiver?.(quest.region);
       return `<div class="tracked-quest"><h3><span class="quest-diamond"></span>${escape(quest.title)}</h3>${isReady ? `<div class="quest-objective complete">${icon('check')}<span>Kehre zu ${escape(giver?.name||'deinem Auftraggeber')} zurück</span></div>` : quest.objectives.map((objective,index)=> `<div class="quest-objective ${(state.counts?.[index] || 0)>=objective.count?'complete':''}">${(state.counts?.[index] || 0)>=objective.count?icon('check'):'<span class="objective-dot"></span>'}<span>${escape(objective.label)} <b>${Math.min(state.counts?.[index] || 0,objective.count)}/${objective.count}</b></span></div>`).join('')}</div>`;
-    }).join('') : event||hunt?'':`<div class="tracker-empty">Deine Geschichte beginnt hier.<small>Sprich mit Mira in Glutwacht. Folge den goldenen Zeichen auf deiner Karte.</small></div>`);
+    }).join('') : event||hunt||emptyDungeon?'':`<div class="tracker-empty">Deine Geschichte beginnt hier.<small>Sprich mit Mira in Glutwacht. Folge den goldenen Zeichen auf deiner Karte.</small></div>`);
   }
 
   togglePanel(name) {
@@ -1007,7 +1011,7 @@ export class GameUI {
     const activeId=this.dungeonId();
     const current=DUNGEONS.find(dungeon=>dungeon.id===activeId);
     const party=this.network?.online?(this.game.party || []):[{...this.game.player,dead:this.game.dead}];
-    const active=current?`<div class="dungeon-active"><div><span class="eyebrow">AKTUELLE EXPEDITION</span><h3>${escape(current.name)} · Tiefe ${this.game.dungeonInstance?.tier || this.game.world?.tier || 1}</h3><p>${escape(current.subtitle)}</p></div><button class="small-button" data-command="leave-dungeon">Zur offenen Welt</button></div><details class="dungeon-journal"><summary>Inschrift und Rätselhinweis lesen</summary><p>${escape(this.game.dungeonJournal?.description || current.hint)}</p></details>`:'';
+    const active=current?`<div class="dungeon-active"><div><span class="eyebrow">AKTUELLE EXPEDITION</span><h3>${escape(current.name)} · Tiefe ${this.game.dungeonInstance?.tier || this.game.world?.tier || 1}</h3><p>${escape(current.subtitle)}</p></div><button class="small-button" data-command="leave-dungeon">Zur offenen Welt</button></div><details class="dungeon-journal"><summary>Inschrift und Rätselhinweis lesen</summary><p>${escape(this.game.dungeonJournal?.description || current.hint)}</p></details>${current.raid?this.raidJournal(current,{open:true}):''}`:'';
     return `${active}<p class="panel-note">Betritt Dungeons an ihrem Tor in der Welt. Nach einem Sieg öffnet sich die nächste Tiefe bis 30. Raids verlangen mehrere lebende Gefährten, die ihre Mechaniken gemeinsam lösen.</p><div class="dungeon-grid">${DUNGEONS.map(dungeon=>{
       const entrance=(this.game.world.dungeonEntrances || []).find(entry=>(entry.dungeonId || entry.id)===dungeon.id) || dungeon.entrance;
       const distance=entrance?Math.hypot(this.game.player.x-entrance.x,this.game.player.y-entrance.y):Infinity;
@@ -1018,8 +1022,15 @@ export class GameUI {
       const levelMet=this.game.player.level>=dungeon.minLevel && party.every(player=>player.level>=dungeon.minLevel);
       const partyMet=party.filter(player=>!player.dead&&!player.downed&&player.hp>0).length>=dungeon.partyRequired;
       const enabled=near && levelMet && partyMet;
-      return `<article class="dungeon-card ${dungeon.raid?'raid-card':''}"><div class="dungeon-card-heading">${icon(dungeon.raid?'group':'portal')}<span>${dungeon.raid?'RAID':'DUNGEON'} · STUFE ${dungeon.minLevel}</span></div><h3>${escape(dungeon.name)}</h3><p>${escape(dungeon.subtitle)}</p><div class="dungeon-facts"><span>${dungeon.partyRequired===1?'Allein oder in einer Gruppe':`${dungeon.partyRequired} Reisende benötigt`}</span><span>${best?`Beste Tiefe: ${best}`:'Noch nicht gemeistert'}</span><span>${near?'Du stehst am Tor':`Tor bei ${format(entrance?.x)}, ${format(entrance?.y)}`}</span></div><button class="small-button" data-command="enterDungeon" data-id="${dungeon.id}" data-tier="${tier}" ${enabled?'':'disabled'}>${!levelMet?`Benötigt Stufe ${dungeon.minLevel}`:!partyMet?`${dungeon.partyRequired} Gefährten benötigt`:!near?'Am Tor betreten':`Tiefe ${tier} betreten`}</button>${best>0 && tier>1 && near && levelMet && partyMet?`<button class="text-button" data-command="enterDungeon" data-id="${dungeon.id}" data-tier="1">Tiefe 1 wiederholen</button>`:''}</article>`;
+      return `<article class="dungeon-card ${dungeon.raid?'raid-card':''}"><div class="dungeon-card-heading">${icon(dungeon.raid?'group':'portal')}<span>${dungeon.raid?'RAID':'DUNGEON'} · STUFE ${dungeon.minLevel}</span></div><h3>${escape(dungeon.name)}</h3><p>${escape(dungeon.subtitle)}</p><div class="dungeon-facts"><span>${dungeon.partyRequired===1?'Allein oder in einer Gruppe':`${dungeon.partyRequired} Reisende benötigt`}</span><span>${best?`Beste Tiefe: ${best}`:'Noch nicht gemeistert'}</span><span>${near?'Du stehst am Tor':`Tor bei ${format(entrance?.x)}, ${format(entrance?.y)}`}</span></div>${dungeon.raid&&dungeon.id!==activeId?this.raidJournal(dungeon):''}<button class="small-button" data-command="enterDungeon" data-id="${dungeon.id}" data-tier="${tier}" ${enabled?'':'disabled'}>${!levelMet?`Benötigt Stufe ${dungeon.minLevel}`:!partyMet?`${dungeon.partyRequired} Gefährten benötigt`:!near?'Am Tor betreten':`Tiefe ${tier} betreten`}</button>${best>0 && tier>1 && near && levelMet && partyMet?`<button class="text-button" data-command="enterDungeon" data-id="${dungeon.id}" data-tier="1">Tiefe 1 wiederholen</button>`:''}</article>`;
     }).join('')}</div>${!this.network?.online?'<p class="panel-note"><button class="small-button" data-panel="party">Für Raids eine Gruppe bilden</button></p>':''}`;
+  }
+
+  raidJournal(dungeon,{open=false}={}) {
+    const profile=RAID_PROFILES[dungeon.boss];if(!profile)return '';
+    const revives=this.game?.dungeonInstance?.id===dungeon.id?raidReviveSummary(this.game.dungeonInstance):null;
+    const reviveNote=profile.combatRevives?`<p class="raid-revive-guide">${revives?.active?`<strong>Kampfbelebungen ${revives.remaining}/${revives.limit} übrig.</strong> `:''}${profile.combatRevives} gemeinsame Kampfbelebung${profile.combatRevives===1?'':'en'} pro Bossversuch. Wiederbelebung mit E und erlernten Fähigkeiten teilen diesen Vorrat. Ein vollständig gescheiterter Versuch erneuert ihn.</p>`:'';
+    return `<details class="raid-journal" data-raid-journal="${escape(dungeon.id)}" ${open?'open':''}><summary>${icon('book')}Bossstrategie lesen</summary><div class="raid-journal-content"><h4>${escape(profile.name)}</h4><p class="raid-coordination">${escape(profile.coordination)}</p>${reviveNote}<dl>${profile.abilities.map(ability=>`<div data-raid-mechanic="${escape(ability.id)}"><dt>${escape(ability.name)}</dt><dd>${escape(ability.counterplay)}</dd></div>`).join('')}${profile.pressure?`<div class="raid-pressure-guide" data-raid-pressure="raid_pressure"><dt>${icon('shield')}${escape(profile.pressure.name)}</dt><dd>${escape(profile.pressure.counterplay)}</dd></div>`:''}</dl><h5>Der Kampf verändert sich</h5><ol>${profile.phases.map(phase=>`<li>${escape(phase)}</li>`).join('')}</ol><p class="raid-safety-key"><span>Warme Flächen: Gefahr.</span><span>Blaue Ränder: sichere Wege im Sturm und Spektrum.</span></p></div></details>`;
   }
 
   settings() {
@@ -1091,7 +1102,9 @@ export class GameUI {
 
   death() {
     const summary=this.game.deathSummary?.(),target=summary?.returnLabel || 'deinem sicheren Glutherd';
-    return `<div class="death-state"><div class="death-intro">${icon('flame')}<div><h3>Dein Funke bleibt.</h3><p>Wiederbelebung oder Rückkehr kostet dich nichts zusätzlich.</p></div></div>${this.deathReceipt(summary)}<button class="primary-button" data-command="respawn" ${this.rescueBusy?'disabled aria-busy="true"':''}>${this.rescueBusy?'Die Glut trägt dich zurück …':`Zurückkehren · ${escape(target)}`} ${icon('arrow')}</button><p class="death-protected">${icon('shield')}Stufe, Erfahrung, Ausrüstung und Aufgaben bleiben erhalten.</p></div>`;
+    const raidBlocked=raidReturnBlocked(this.game),revives=raidReviveSummary(this.game.dungeonInstance);
+    const wait=raidBlocked?`<p id="raid-death-wait" class="raid-death-wait" role="status">${revives.remaining?`Warte auf eine Kampfbelebung durch deine Gruppe. Noch ${revives.remaining} von ${revives.limit} gemeinsamen Kampfbelebungen sind verfügbar.`:'Der Vorrat an Kampfbelebungen ist erschöpft. Warte, bis deine Gruppe den Boss besiegt oder der Versuch vollständig scheitert.'} Während des laufenden Raidkampfes kannst du nicht selbst zum Glutherd zurückkehren.</p>`:'';
+    return `<div class="death-state"><div class="death-intro">${icon('flame')}<div><h3>Dein Funke bleibt.</h3><p>Wiederbelebung oder Rückkehr kostet dich nichts zusätzlich.</p></div></div>${wait}${this.deathReceipt(summary)}<button class="primary-button" data-command="respawn" ${raidBlocked?'disabled aria-describedby="raid-death-wait"':this.rescueBusy?'disabled aria-busy="true"':''}>${raidBlocked?'Warte auf deine Gruppe':this.rescueBusy?'Die Glut trägt dich zurück …':`Zurückkehren · ${escape(target)}`} ${icon('arrow')}</button><p class="death-protected">${icon('shield')}Stufe, Erfahrung, Ausrüstung und Aufgaben bleiben erhalten.</p></div>`;
   }
   victory() { return `<div class="large-state">${icon('flame')}<h3>Glutwacht hat wieder ein Feuer.</h3><p>Veyr ist gefallen und dein erstes Kapitel ist vollendet. In den ${REGIONS.length} Regionen der freien Lande warten neue Bündnisse, Ereignisse und mächtige Gegner. Wähle am letzten Feuer deinen nächsten Weg.</p><button class="primary-button" data-command="resume">Deine Reise fortsetzen ${icon('arrow')}</button><div class="victory-next-paths"><button class="small-button" data-panel="adventures">${icon('portal')}Ereignisse & Expeditionen</button><button class="small-button" data-panel="journey">${icon('book')}Dein Vermächtnis</button></div><p class="panel-note">Sprich mit Mira, um die Belohnung für dieses Kapitel zu erhalten.</p></div>`; }
   resetConfirmation() { return `<div class="large-state">${icon('leaf')}<h3>Jede Geschichte beginnt mit einem Schritt.</h3><p>Deine aktuelle Reise wird ersetzt. Exportiere deinen Spielstand in den Einstellungen, wenn du sie für später behalten möchtest.</p>${this.classSelection(this.pendingClass,true)}<button class="primary-button" data-command="confirm-reset">Als ${escape(getClass(this.pendingClass).name)} beginnen ${icon('arrow')}</button><button class="text-button" data-command="resume">Zur aktuellen Reise zurück</button></div>`; }
@@ -1147,7 +1160,7 @@ export class GameUI {
     if(name==='enterDungeon') { const result=await this.game.enterDungeon(id,Number(button.dataset.tier) || 1);if(result!==false)this.closePanel();this.update(true);return; }
     if(name==='leave-dungeon') { const method=this.game.leaveDungeon || this.game.exitDungeon;if(method){await method.call(this.game);this.closePanel();this.update(true);}return; }
     if(name==='respawn') {
-      if(this.rescueBusy||!(this.game.dead||this.game.player?.hp<=0))return;
+      if(this.rescueBusy||raidReturnBlocked(this.game)||!(this.game.dead||this.game.player?.hp<=0))return;
       this.rescueBusy=true;this.renderPanel();
       try {const result=await this.game.respawn();if(result!==false&&this.game.dead===false&&this.game.player?.hp>0)this.closePanel();}
       catch(error){this.showNotice(error.message || 'Die Rückkehr konnte nicht ausgeführt werden. Versuche es erneut.','error');}
@@ -1224,8 +1237,19 @@ export class GameUI {
 
   updateEncounter() {
     const element=document.getElementById('encounter-pressure');if(!element)return;
+    const raid=raidHudPresentation(this.game);
+    const toolbar=element.parentElement;toolbar?.classList?.toggle('raid-active',!!raid&&!this.inPvp);
+    if(raid&&!this.inPvp){
+      element.hidden=false;const digest=JSON.stringify(['raid',raid]);if(digest===this.lastEncounterHud)return;this.lastEncounterHud=digest;
+      element.dataset.mode='raid';element.dataset.stage=raid.waiting?'paused':raid.warning?'warning':'active';element.dataset.tier='raid';element.dataset.support=String(raid.pressure);
+      const name=raid.pressure?`${raid.name} · Phase ${raid.phase}`:raid.name;
+      element.innerHTML=`${icon(raid.waiting?'group':raid.pressure?'shield':raid.objectiveCount?'gem':'crown')}<div><strong>${escape(name)}</strong><small><span class="raid-cast-detail">${escape(raid.detail)}</span>${raid.revives?`<span class="raid-revive-budget" title="Noch ${raid.revives.remaining} von ${raid.revives.limit} gemeinsamen Kampfbelebungen">Kampfbelebungen ${raid.revives.remaining}/${raid.revives.limit}</span>`:''}</small></div>`;
+      element.setAttribute('aria-label',`${name}: ${raid.detail}${raid.pressure&&raid.objectiveCount?`, ${raid.objectiveCount} ${raid.objectiveLabel}`:''}${raid.revives?`, noch ${raid.revives.remaining} von ${raid.revives.limit} Kampfbelebungen`:''}`);element.title=element.getAttribute('aria-label');return;
+    }
+    element.dataset.mode='world';
+    element.dataset.support='false';
     const status=this.game.encounterSummary?.();element.hidden=this.inPvp||!status?.active;
-    if(element.hidden)return;
+    if(element.hidden){this.lastEncounterHud=null;return;}
     const warning=status.stage==='warning',remaining=Math.max(0,Math.ceil(status.remaining || 0));
     const digest=JSON.stringify([status.tier,status.label,warning,remaining,status.count]);if(digest===this.lastEncounterHud)return;this.lastEncounterHud=digest;
     element.dataset.tier=status.tier;element.dataset.stage=status.stage;

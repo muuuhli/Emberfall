@@ -102,8 +102,8 @@ test('ordinary melee, marked hex and stepped charge protect a village ally while
   }
 });
 
-test('all thirty dungeon depths retain their existing budgets and every raid keeps its group mechanics path',()=>{
-  for(const [id,hp,damage,required] of [['sturmzitadelle',125000,205,3],['nachtschlund',245000,255,4],['weltenkern',850000,310,8]]) {
+test('all thirty dungeon depths retain their scaling and every V9 raid keeps its group mechanics path',()=>{
+  for(const [id,hp,damage,required] of [['sturmzitadelle',500000,205,3],['nachtschlund',980000,255,4],['weltenkern',1700000,310,8]]) {
     const definition=DUNGEONS.find(d=>d.id===id),def=DUNGEON_ENEMIES[definition.boss];assert.equal(def.combat,undefined);assert.equal(def.combatPhases,undefined);
     assert.equal(def.minPlayers,required);assert.equal(def.mechanics.shield.vulnerableSeconds,9);assert.equal(def.mechanics.stack.minPlayers,required===8?4:2);
     for(let tier=1;tier<=30;tier++){

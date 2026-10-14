@@ -145,15 +145,17 @@
       "source": "Original code-native graphics and atlas animation",
       "published": true,
       "status": "Integrated with pixel-characters, pixel-npcs and native pixel-world sprites",
-      "bytes": 47720,
-      "sha256": "7e6e2fe6ed1ee5ccddd37235253f21c612c3bc4149e742d8975d48117f5d020a"
+      "bytes": 101477,
+      "sha256": "45207e5832e9ebb1e228e9f1123e11008a4f9642189a01e4a21a3f4feb217127"
     },
     {
       "file": "../src/audio.js",
       "role": "music and sound effects",
       "source": "Original Web Audio synthesis",
       "published": true,
-      "status": "Procedural"
+      "status": "Procedural",
+      "bytes": 21110,
+      "sha256": "725c171a748748962a309609e734deacfc439fc919912be7ae9cc99ecb08c343"
     },
     {
       "file": "pixel-characters.png",
@@ -347,8 +349,8 @@
       "source": "Original integer-grid artwork authored in project source; no third-party sprites or rasterized 3D input",
       "created": "2026-10-13",
       "published": true,
-      "bytes": 36011,
-      "sha256": "dd0b1cbbd0326a11e9914fee130d41b9dac7dcfb50ef96376f22c1496ea2962e",
+      "bytes": 72928,
+      "sha256": "d3af1db06ee300552e994dd774f1e600356eaebae2bafab1dec5ae0f08be3629",
       "license": "MIT / original project artwork"
     },
     {
@@ -397,17 +399,17 @@
       "sha256": "e35bd4769065bcf0fd5e8ade49e90af37779001a3d1d2eb6c92b1ad2ed26264d"
     }
   ],
-  "version": "2.2.0",
-  "updated": "2026-10-13",
+  "version": "9.0.0",
+  "updated": "2026-10-14",
   "developmentStatus": {
     "releaseState": "playable development build",
     "implementedContent": {
       "classes": 8,
       "maxLevel": 100,
       "regions": 16,
-      "quests": 72,
+      "quests": 96,
       "dungeons": 8,
-      "gearBases": 38,
+      "gearBases": 198,
       "normalAffixes": 12,
       "gearSets": 4,
       "maxDungeonTier": 30,
@@ -415,12 +417,21 @@
       "repeatableRegionalContracts": true,
       "eligibleOffersPerRegion": 3,
       "maxActiveContracts": 3,
-      "learnableActiveAbilities": 24,
+      "learnableActiveAbilities": 88,
       "learnedAbilitySlots": 2,
-      "equipmentSlots": 3,
+      "equipmentSlots": 7,
       "touchActions": 8,
       "mobilePortraitAndLandscape": true,
-      "gearBalanceVersion": 2
+      "gearBalanceVersion": 2,
+      "classTalents": 196,
+      "uniqueRaidBosses": 3,
+      "raidBalanceVersion": 2,
+      "raidCombatRevives": [
+        1,
+        2,
+        3
+      ],
+      "persistentRaidWarnings": true
     },
     "campaignHoursTarget": 200,
     "fullCampaignHoursVerified": 0,

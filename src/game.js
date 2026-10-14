@@ -23,6 +23,7 @@ import { createEndgameState, validateEndgameState, restoreEndgameState, advanceH
 import { getRelic, resolveRelicProc } from './relics.js';
 import { createEncounterDirector, updateEncounterDirector, captureEncounterDirector, validateEncounterDirectorSave, restoreEncounterDirector, encounterSummary, ordinaryRespawnDelay, encounterSpawnBlocked } from './encounter-director.js';
 import { updateEncounterBoss } from './encounter-boss-ai.js';
+import { updateRaidEncounter, captureRaidEncounter, validateRaidEncounterSave, restoreRaidEncounter, captureRaidDebuffs, validateRaidDebuffs, restoreRaidDebuffs, resetRaidAfterWipe, captureRaidGeneric, validateRaidGeneric, restoreRaidGeneric, RAID_BALANCE_VERSION, validateRaidHealthSave, restoreRaidBossHealth, raidReviveSummary, spendRaidRevive, raidReturnBlocked } from './raid-encounters.js';
 import { createDeathPenaltyState, validateDeathPenaltyState, restoreDeathPenaltyState, chargeDeathPenalty, completeDeathRescue, creditGold, deathSummary } from './death-penalty.js';
 import { createCharacterPresentation } from './character-animation.js';
 import { getTalentCombatModifiers, applyTalentAttackProfile, applyTalentAbilityProfile } from './talent-combat.js';
@@ -63,7 +64,7 @@ export class Game {
   initialize() {
     clearMasteryAbilities(this);
     this.world = addWorldEvents(addWorldInteractions(expandWorld(makeWorld()))); this.overworld=this.world;this.dungeonInstance=null;this.dungeonRecords={};this.npcs = NPCS; this.time = 0;
-    this.world.encounterDirector=createEncounterDirector();this.networkEncounterDirectorSave=null;
+    this.world.encounterDirector=createEncounterDirector();this.networkEncounterDirectorSave=null;this.networkDungeonCheckpoint=null;this.networkRaidResume=null;
     for(const enemy of this.world.enemies)if(!BESTIARY_ENEMIES[enemy.type]&&!ENEMY_TYPES[enemy.type]?.boss&&enemy.level>=12){const tuned=normalEnemyStats(enemy.level);Object.assign(enemy,{hp:tuned.hp,maxHp:tuned.hp,damage:tuned.damage,xp:tuned.xp,attackPeriod:tuned.attackPeriod});}
     this.player = { name:'Aren', x:520, y:1250, face:Math.PI/2, walking:false, hp:112, mana:85, level:1, xp:0, gold:45, skillPoints:2, invulnerable:0, attackUntil:0, dashUntil:0, hitUntil:0 };
     this.inventory = {}; this.resources = {wood:0,ore:0,herb:0,crystal:0,seed:6,wheat:0};
@@ -583,7 +584,7 @@ export class Game {
     if(n.kind==='worldObject'){this.interactWorldObject(o.id);return;}
     if(n.kind==='dungeon') {this.enterDungeon(o.dungeonId||o.id);return;}
     if(n.kind==='exit') {this.exitDungeon();return;}
-    if(n.kind==='revive') { const ally=this.partyGames.find(g=>g.player===o);if(ally) {ally.dead=false;ally.paused=false;completeDeathRescue(ally);ally.player.hp=ally.stats().maxHp*.4;ally.player.invulnerable=3;ally.onRevived?.();this.event('revive',o.id||o.name);this.notice(`${o.name} wiederbelebt`);this.change();}return;}
+    if(n.kind==='revive') { const ally=this.partyGames.find(g=>g.player===o);if(!ally?.dead||!spendRaidRevive(this))return false;ally.dead=false;ally.paused=false;completeDeathRescue(ally);ally.player.hp=ally.stats().maxHp*.4;ally.player.invulnerable=3;ally.onRevived?.();this.event('revive',o.id||o.name);this.notice(`${o.name} wiederbelebt`);for(const game of this.partyGames){game.change();game.save(false);}return true;}
     if(n.kind==='puzzle') {
       const result=interactPuzzle(this.dungeonInstance,o.id,this.partyGames.filter(g=>!g.dead).map(g=>g.player),this.time);
       this.notice(result.message||'Mechanismus betätigt');if(result.event)for(const ally of this.partyGames)ally.event(result.event,result.target||this.dungeonInstance.id);
@@ -731,6 +732,7 @@ export class Game {
     if(a.kind==='curse')target=targets.filter(e=>Math.abs(angleDiff(Math.atan2(e.y-p.y,e.x-p.x),p.face))<1.25).sort((x,y)=>dist(p,x)-dist(p,y))[0];
     if(['revive','execute','curse'].includes(a.kind)&&!target){this.notice(a.kind==='revive'?'Kein gefallener Gefährte in Reichweite.':'Kein Gegner in Reichweite.');return false;}
     if(a.kind==='bargain'&&(p.hp<=s.maxHp*a.minHealth||p.mana>=s.mana)){this.notice('Du brauchst genügend Leben und fehlendes Mana.');return false;}
+    if(a.kind==='revive'&&!spendRaidRevive(this))return false;
     cancelMasteryChannel(this);
     p.mana-=a.cost;this.cooldowns[key]=a.cooldown*(1-s.cooldown);p.castUntil=this.time+.35;p.attackUntil=this.time+.25;
     this.presentAction(['shield','partyShield','taunt','retaliationWard'].includes(a.kind)?'shield':
@@ -793,6 +795,7 @@ export class Game {
       target.notice(`${p.name} hat dich mit Neuer Frühling erweckt.`,'quest');target.change();target.save(false);
       this.event('revive',target.player.id||target.player.name);
       this.effect('ring',target.player.x,target.player.y,{radius:65,color:a.color,life:.7});
+      for(const game of party){game.change();game.save(false);}
     }
     if(a.kind==='bargain') {
       const sacrificed=p.hp*a.healthCost;p.hp=Math.max(1,p.hp-sacrificed);p.mana=Math.min(s.mana,p.mana+s.mana*a.manaFraction);
@@ -802,7 +805,7 @@ export class Game {
   }
   action(name) {
     if(!this.started || this.paused || this.dead) return false;
-    if(name==='interact') { this.interact(); return true; }
+    if(name==='interact')return this.interact()!==false;
     if((this.cooldowns[name]||0)>0) return false;
     const p=this.player,s=this.stats(),cls=getClass(p.classId);
     if(name==='attack') {
@@ -890,7 +893,7 @@ export class Game {
     const a=Math.atan2(e.y-this.player.y,e.x-this.player.x);
     // Authored bosses keep their frozen attack origin and cannot be pushed
     // into a protected village by repeated basic attacks.
-    const displacement=ENEMY_TYPES[e.type]?.boss?knockback*(e.phase==='windup'?0:.08):knockback;
+    const displacement=e.stationary?0:ENEMY_TYPES[e.type]?.boss?knockback*(e.phase==='windup'?0:.08):knockback;
     this.move(e,Math.cos(a)*displacement,Math.sin(a)*displacement,ENEMY_TYPES[e.type]?.boss?22:10);
     this.text(e.x,e.y-24,crit?`${result}!`:result,crit?'#ffd37b':'#f4edd7');
     this.effect('burst',e.x,e.y,{color:crit?'#f7c460':'#c7d39b',radius:24,life:.3});
@@ -929,9 +932,9 @@ export class Game {
     const bossTypes=['thorn_guardian','frost_sentinel','emberlord'];
     if(bossTypes.length && bossTypes.every(id=>this.flags[id]) && !this.flags.victory) { this.flags.victory=true; this.save(false); this.onVictory(); }
   }
-  damagePlayer(damage,{trueDamage=false,ignoreInvulnerability=false,attackerLevel=this.player.level,attackerId='environment'}={}) {
+  damagePlayer(damage,{trueDamage=false,ignoreInvulnerability=false,attackerLevel=this.player.level,attackerId='environment',armorPierce=0}={}) {
     const p=this.player; if((p.invulnerable>0&&!ignoreInvulnerability)||this.dead) return;
-    const hit=incomingDamage(damage,{armor:this.stats().armor,attackerLevel,trueDamage});if(!hit)return;
+    const hit=incomingDamage(damage,{armor:this.stats().armor*(1-clamp(armorPierce,0,1)),attackerLevel,trueDamage});if(!hit)return;
     const source=String(attackerId).slice(0,120);
     if(!ignoreInvulnerability&&(this.damageGrace.get(source)||0)>this.time)return;
     for(const [key,until] of this.damageGrace)if(until<=this.time)this.damageGrace.delete(key);
@@ -949,6 +952,7 @@ export class Game {
   }
   respawn() {
     if(!this.dead&&this.player.hp>0||this.worldMode==='pvp')return false;
+    if(raidReturnBlocked(this)) {this.notice('Im laufenden Raidkampf können nur Gefährten dich mit einer Kampfbelebung zurückholen. Nach einem vollständigen Wipe ist die Rückkehr wieder frei.','danger');return false;}
     chargeDeathPenalty(this);clearMasteryAbilities(this);
     this.player.x=this.dungeonInstance?.spawn.x||520; this.player.y=this.dungeonInstance?.spawn.y||1250; this.player.hp=this.stats().maxHp; this.player.mana=this.stats().mana;
     completeDeathRescue(this); this.player.invulnerable=3;
@@ -1017,6 +1021,7 @@ export class Game {
     for(const plot of this.world.plots) if(plot.state==='growing'&&plot.readyAt<=this.time) { plot.state='ripe'; this.change(); }
     updateEncounterDirector(this,dt,partyGames);
     this.updateEnemies(dt,partyGames);
+    if(this.dungeonInstance?.definition.raid)resetRaidAfterWipe(this,partyGames);
     if(this.world.worldEvents)this.handleWorldEventEffects(updateWorldEvents(this.world,dt,partyGames,this.time));
     this.updateWorldInteractions();
     for(const projectile of this.projectiles) {
@@ -1098,9 +1103,12 @@ export class Game {
     for(const ally of partyGames) {ally.effects=this.effects;ally.projectiles=this.projectiles;ally.drops=this.drops;ally.hazards=this.hazards;ally.summons=this.summons;}
   }
   updateEnemies(dt,partyGames=[this]) {
-    const living=partyGames.filter(g=>!g.dead);if(!living.length)return;
+    const living=partyGames.filter(g=>!g.dead&&g.player.hp>0);
     for(const e of this.world.enemies) {
       const d=ENEMY_TYPES[e.type]; if(!d) continue;
+      if(e.stationary&&e.rewardless)continue;
+      if(updateRaidEncounter(this,e,dt,living))continue;
+      if(!living.length)continue;
       if(updateEncounterBoss(this,e,d,dt,living))continue;
       if(updateBestiaryEnemy(this,e,d,dt,living))continue;
       const taunted=e.tauntUntil>this.time?living.find(g=>(g.player.id||'local')===e.targetId):null;
@@ -1168,21 +1176,30 @@ export class Game {
     }
     this.world.enemies=this.world.enemies.filter(e=>!e.summonedBy||e.alive);
   }
+  captureDungeonCheckpoint() {
+    if(!this.dungeonInstance)return null;
+    const instance=this.dungeonInstance;
+    return {
+      id:instance.id,tier:instance.tier,seed:instance.seed,returnPoint:this.returnPoint,
+      elapsed:instance.elapsed,bossTime:instance.bossTime,bossEngaged:instance.bossEngaged,affixState:instance.affixState,gateOpened:instance.gateOpened,bossDefeated:instance.bossDefeated,puzzles:instance.puzzles,
+      shieldHold:instance.shieldHold,vulnerabilityUntil:instance.vulnerabilityUntil,raidWipes:instance.raidWipes||0,raidRevivesUsed:instance.raidRevivesUsed||0,raidEncounter:captureRaidEncounter(instance),pendingGeneric:captureRaidGeneric(instance),
+      ...(instance.definition.raid?{raidBalanceVersion:RAID_BALANCE_VERSION}:{}),
+      objects:instance.world.puzzleObjects.map(o=>({id:o.id,x:o.x,y:o.y,rotation:o.rotation,active:o.active})),
+      enemies:instance.world.enemies.map(e=>({id:e.id,x:e.x,y:e.y,hp:e.hp,maxHp:e.maxHp,alive:e.alive,affixEcho:e.affixEcho,type:e.type,level:e.level,
+        ...(e.bossObjectiveId?{bossObjectiveId:e.bossObjectiveId,ownerBossId:e.ownerBossId,stationary:true,rewardless:true}:{})})),
+      openedChests:instance.world.chests.filter(c=>c.opened).map(c=>c.id),
+    };
+  }
   capture() {
     if(this.worldMode==='pvp'){
       if(!this._pvpTravelSave)throw new Error('Während des Duells ist noch keine Reise zum Exportieren verfügbar.');
       return JSON.parse(JSON.stringify(this._pvpTravelSave));
     }
     const w=this.overworld||this.world;
-    const dungeon=this.dungeonInstance?{
-      id:this.dungeonInstance.id,tier:this.dungeonInstance.tier,seed:this.dungeonInstance.seed,returnPoint:this.returnPoint,
-      elapsed:this.dungeonInstance.elapsed,bossTime:this.dungeonInstance.bossTime,bossEngaged:this.dungeonInstance.bossEngaged,affixState:this.dungeonInstance.affixState,gateOpened:this.dungeonInstance.gateOpened,bossDefeated:this.dungeonInstance.bossDefeated,puzzles:this.dungeonInstance.puzzles,
-      objects:this.world.puzzleObjects.map(o=>({id:o.id,x:o.x,y:o.y,rotation:o.rotation,active:o.active})),
-      enemies:this.world.enemies.map(e=>({id:e.id,x:e.x,y:e.y,hp:e.hp,alive:e.alive,affixEcho:e.affixEcho,type:e.type,level:e.level})),openedChests:this.world.chests.filter(c=>c.opened).map(c=>c.id)
-    }:null;
+    const dungeon=this.networkActive&&this.networkDungeonCheckpoint?JSON.parse(JSON.stringify(this.networkDungeonCheckpoint)):this.captureDungeonCheckpoint();
     const abilityCooldowns=Object.fromEntries(ABILITIES.filter(a=>this.learnedAbilities[a.id]===true).map(a=>[a.id,this.cooldowns[`ability:${a.id}`]||0]));
     const {presentation,...persistentPlayer}=this.player;
-    return {version:2,savedAt:Date.now(),player:{...persistentPlayer,walking:false},inventory:this.inventory,resources:this.resources,equipment:this.equipment,generatedItems:this.generatedItems,lootPity:this.lootPity,lootSerial:this.lootSerial,dungeonRecords:this.dungeonRecords,dungeon,contracts:this.contracts,skills:this.skills,
+    return {version:2,savedAt:Date.now(),player:{...persistentPlayer,walking:false,raidDebuffs:captureRaidDebuffs(this.player,this.time)},inventory:this.inventory,resources:this.resources,equipment:this.equipment,generatedItems:this.generatedItems,lootPity:this.lootPity,lootSerial:this.lootSerial,dungeonRecords:this.dungeonRecords,dungeon,contracts:this.contracts,skills:this.skills,
       stash:{...this.stash},itemFlags:this.itemFlags,loadouts:this.loadouts,trackedQuestId:this.trackedQuestId,waypoint:this.waypoint?{kind:this.waypoint.kind,id:this.waypoint.id}:null,journey:this.journey,endgame:this.endgame,relicCooldown:this.cooldowns.relic||0,
       learnedAbilities:{...this.learnedAbilities},abilityLoadout:[...this.abilityLoadout],abilityCooldowns,deathPenalty:restoreDeathPenaltyState(this.deathPenalty),
       combatCooldowns:Object.fromEntries(['attack','dash','bolt','nova'].map(key=>[key,this.cooldowns[key]||0])),
@@ -1203,7 +1220,7 @@ export class Game {
       return true;
     } catch { if(manual) this.notice('Speichern nicht möglich. Exportiere deine Reise unter Einstellungen.'); return false; }
   }
-  applySave(data) {
+  applySave(data,{preserveDowned=false}={}) {
     if(![1,2].includes(data?.version) || !data.player || !Number.isInteger(data.player.level) || data.player.level<1 || data.player.level>MAX_LEVEL || !Number.isFinite(data.player.x) || !Number.isFinite(data.player.y) || !data.world) throw new Error('Ungültiger Spielstand.');
     // Validate the full shape before touching the current adventure. An import
     // must either succeed completely or leave the running save unchanged.
@@ -1213,6 +1230,7 @@ export class Game {
     if(!validateInventoryExtensions(data)||data.trackedQuestId!==undefined&&typeof data.trackedQuestId!=='string'||data.waypoint!==undefined&&data.waypoint!==null&&(!record(data.waypoint)||!['npc','shrine','quest','event','interaction','dungeon','region'].includes(data.waypoint.kind)||typeof data.waypoint.id!=='string'))throw new Error('Ungültige Inventar- oder Reisedaten.');
     if(data.player.afflictions!==undefined&&(!Array.isArray(data.player.afflictions)||data.player.afflictions.length>3||new Set(data.player.afflictions.map(a=>a?.kind)).size!==data.player.afflictions.length||data.player.afflictions.some(a=>!record(a)||!['venom','burn','bleed'].includes(a.kind)||!Number.isFinite(a.damage)||a.damage<0||a.damage>500||!Number.isFinite(a.expiresAt)||a.expiresAt<0||!Number.isFinite(a.nextTick)||a.nextTick<0||!Number.isInteger(a.attackerLevel)||a.attackerLevel<1||a.attackerLevel>MAX_LEVEL)))throw new Error('Ungültige Wunddaten.');
     const abilityState=validateAbilityState(data);
+    if(!validateRaidDebuffs(data.player.raidDebuffs))throw new Error('Ungültige Raidwunde.');
     if(!validateDeathPenaltyState(data.deathPenalty))throw new Error('Ungültiger Rettungsbeleg.');
     if(data.leechCredit!==undefined&&(!Number.isFinite(data.leechCredit)||data.leechCredit<0||data.leechCredit>1))throw new Error('Ungültiges Lebensraubbudget.');
     const core=getClass(data.player.classId).abilities;
@@ -1248,11 +1266,18 @@ export class Game {
       if(d.bossTime!==undefined&&(!Number.isFinite(d.bossTime)||d.bossTime<0))throw new Error('Ungültige Kampfzeit.');
       if(d.affixState!==undefined&&(!record(d.affixState)||!Array.isArray(d.affixState.rifts)||d.affixState.rifts.some(r=>!record(r)||!Number.isFinite(r.x)||!Number.isFinite(r.y)||!Number.isFinite(r.explodeAt)||!Number.isFinite(r.radius)||!Number.isFinite(r.damage))))throw new Error('Ungültige Dungeonaffixe.');
       validateDungeonEchoes(d.enemies,d.id,d.tier);
+      if(!validateRaidHealthSave(d))throw new Error('Ungültiges Raid-Lebensbudget.');
+      if(!validateRaidEncounterSave(d.raidEncounter,{id:d.id,tier:d.tier,seed:d.seed,bossTime:d.bossTime||0,enemies:d.enemies}))throw new Error('Ungültige Raidchoreografie.');
+      if(!validateRaidGeneric(d.pendingGeneric,d.raidEncounter,{id:d.id}))throw new Error('Ungültiger gemeinsamer Raideinschlag.');
+      if(d.raidWipes!==undefined&&(!Number.isInteger(d.raidWipes)||d.raidWipes<0||d.raidWipes>1e6))throw new Error('Ungültiger Raidversuch.');
+      if(d.raidRevivesUsed!==undefined&&(!Number.isInteger(d.raidRevivesUsed)||d.raidRevivesUsed<0||d.raidRevivesUsed>raidReviveSummary({definition:DUNGEONS.find(def=>def.id===d.id)}).limit))throw new Error('Ungültige Kampfbelebungen.');
+      for(const [key,limit] of [['shieldHold',2.25],['vulnerabilityUntil',(d.elapsed||0)+9]])if(d[key]!==undefined&&(!Number.isFinite(d[key])||d[key]<0||d[key]>limit))throw new Error('Ungültiges Raidschild.');
     }
     this.initialize();
     const p=data.player;
     for(const key of ['x','y','hp','mana','level','xp','gold','skillPoints']) this.player[key]=validNum(p[key],this.player[key]);
     this.player.name=typeof p.name==='string'?p.name.slice(0,24):'Aren';this.player.classId=getClass(p.classId).id;
+    if(typeof p.id==='string'&&p.id.length>0&&p.id.length<=120)this.player.id=p.id;
     this.classId=this.player.classId;
     this.journey=restoreJourneyState(data.journey,{level:this.player.level,legacy:data});
     this.endgame=restoreEndgameState(data.endgame);this.cooldowns.relic=data.relicCooldown||0;this.deathPenalty=restoreDeathPenaltyState(data.deathPenalty);
@@ -1285,6 +1310,7 @@ export class Game {
     if(Number.isFinite(p.lastDamageAt)&&p.lastDamageAt>=0&&p.lastDamageAt<=this.time)this.player.lastDamageAt=p.lastDamageAt;
     this.player.afflictions=(p.afflictions||[]).filter(a=>a.expiresAt>this.time).map(a=>({...a,expiresAt:Math.min(a.expiresAt,this.time+3),nextTick:Math.min(a.nextTick,this.time+1)}));
     if(Number.isFinite(p.slowUntil)&&p.slowUntil>this.time){this.player.slowUntil=Math.min(p.slowUntil,this.time+1.4);this.player.slowFactor=.85;}
+    restoreRaidDebuffs(this.player,p.raidDebuffs,this.time);
     for(const boon of data.buffs||[])if(boon.expiresAt>this.time)this.addWorldBoon(boon.id,boon.expiresAt);
     restoreInteractions(this.world,data.world.interactions,this.time);
     restoreWorldEvents(this.world,data.world.worldEvents,this.time);
@@ -1308,6 +1334,7 @@ export class Game {
       const d=data.dungeon;const instance=createDungeon(d.id,{tier:d.tier,seed:d.seed,partySize:1});
       instance.elapsed=validNum(d.elapsed,0);instance.bossDefeated=!!d.bossDefeated;
       instance.bossTime=validNum(d.bossTime,0);instance.bossEngaged=!!d.bossEngaged;
+      instance.shieldHold=d.shieldHold||0;instance.vulnerabilityUntil=d.vulnerabilityUntil||0;instance.raidWipes=d.raidWipes||0;instance.raidRevivesUsed=d.raidRevivesUsed||0;
       if(d.affixState&&instance.affixState) {
         for(const key of ['nextRiftAt','nextEchoAt','wave','riftSerial'])instance.affixState[key]=validNum(d.affixState[key],instance.affixState[key]);
         instance.affixState.rifts=d.affixState.rifts.map(r=>({...r,x:clamp(r.x,32,1768),y:clamp(r.y,32,1468),radius:clamp(r.radius,20,150),damage:clamp(r.damage,0,5000)}));
@@ -1321,10 +1348,12 @@ export class Game {
       }
       for(const object of instance.world.puzzleObjects){const saved=d.objects?.find(o=>o.id===object.id);if(saved){object.active=!!saved.active;if(object.kind==='lens')object.rotation=Math.floor(validNum(saved.rotation,0,0,3));if(object.kind==='crate'){object.x=validNum(saved.x,object.x,40,1040);object.y=validNum(saved.y,object.y,40,1420);const body=instance.world.structures.find(s=>s.id===object.id);body.x=object.x-20;body.y=object.y-20;body.collision.x=body.x;body.collision.y=body.y;}}}
       restoreDungeonEchoes(instance,d.enemies);
-      for(const enemy of instance.world.enemies) {const saved=d.enemies.find(e=>e.id===enemy.id);if(saved){enemy.hp=clamp(saved.hp,0,enemy.maxHp);enemy.alive=saved.alive!==false&&enemy.hp>0;enemy.x=validNum(saved.x,enemy.x,30,1770);enemy.y=validNum(saved.y,enemy.y,30,1470);}}
+      for(const enemy of instance.world.enemies) {const saved=d.enemies.find(e=>e.id===enemy.id);if(saved){enemy.hp=clamp(restoreRaidBossHealth(instance,enemy,saved,d.raidBalanceVersion),0,enemy.maxHp);enemy.alive=saved.alive!==false&&enemy.hp>0;enemy.x=validNum(saved.x,enemy.x,30,1770);enemy.y=validNum(saved.y,enemy.y,30,1470);}}
       for(const chest of instance.world.chests){chest.opened=d.openedChests.includes(chest.id);if(instance.bossDefeated&&chest.requiresBoss)chest.locked=false;}
       if(instance.puzzles.every(p=>p.solved)){instance.gateOpened=true;const gate=instance.world.structures.find(s=>s.type==='dungeon_gate');gate.open=true;gate.blocking=false;}
       this.world=instance.world;this.dungeonInstance=instance;this.npcs=[];this.returnPoint=d.returnPoint||{...instance.definition.entrance};
+      restoreRaidEncounter(this,instance,d.raidEncounter);
+      restoreRaidGeneric(this,instance,d.pendingGeneric);
     }
     this.player.hp=clamp(this.player.hp,1,this.stats().maxHp); this.player.mana=clamp(this.player.mana,0,this.stats().mana);
     if(data.leechCredit!==undefined)this.restoreLeechCredit(data.leechCredit);
@@ -1332,14 +1361,18 @@ export class Game {
     if(data.waypoint){const point=resolveWaypoint(this,data.waypoint.kind,data.waypoint.id);if(point)this.waypoint={...data.waypoint,...point};}
     let rescued=false;
     if(p.hp<=0) {
-      this.player.hp=0;chargeDeathPenalty(this);rescued=true;
+      this.player.hp=0;
+      if(preserveDowned){this.dead=true;this.paused=true;this.keys.clear();}
+      else {
+      chargeDeathPenalty(this);rescued=true;
       // Reloading a journey at the defeat screen follows the same rescue rule
       // as the button, instead of trapping the player at one HP among enemies.
       this.player.x=this.dungeonInstance?.spawn.x||520;this.player.y=this.dungeonInstance?.spawn.y||1250;this.player.hp=this.stats().maxHp;this.player.mana=this.stats().mana;
       completeDeathRescue(this);this.player.invulnerable=3;
       this.player.afflictions=[];this.player.slowUntil=0;
+      }
     }
-    if(this.collides(this.player.x,this.player.y)) { this.player.x=this.dungeonInstance?.spawn.x||520;this.player.y=this.dungeonInstance?.spawn.y||1250; }
+    if(!(preserveDowned&&this.dead)&&this.collides(this.player.x,this.player.y)) { this.player.x=this.dungeonInstance?.spawn.x||520;this.player.y=this.dungeonInstance?.spawn.y||1250; }
     this.camera={x:this.player.x,y:this.player.y}; this.lastRegion=this.regionAt().id; this.change();if(rescued)this.save(false);
   }
   load() {

@@ -157,11 +157,12 @@ function cast(state, ability, frame, time) {
 }
 function objectiveWarning(state, objectives, time) {
   const id = `${state.type}:cast-${++state.serial}`, resolveAt = roundTime(time + 1.5);
+  const name = state.type === 'night_devourer' ? 'Ausbruch der hungrigen Seelen' : 'Überladener Anker';
   const zones = objectives.map(o => ({ shape: 'circle', x: o.x, y: o.y, radius: 86, damageFraction: .2, flatDamage: 0, armorPierce: 1, color: '#dfa18d' }));
-  state.pending = { id, mechanicId: 'neglected-objectives', name: 'Überladener Anker', zones, resolveAt, time, phase: state.phase, adds: null, failureIds: objectives.map(o => o.id) };
+  state.pending = { id, mechanicId: 'neglected-objectives', name, zones, resolveAt, time, phase: state.phase, adds: null, failureIds: objectives.map(o => o.id) };
   for (const objective of objectives) objective.exploding = true;
   state.nextCastAt = Math.max(state.nextCastAt, resolveAt + 2);
-  return { kind: 'warning', id, mechanicId: 'neglected-objectives', name: 'Überladener Anker', bossType: state.type, time, resolveAt, zones: clone(zones) };
+  return { kind: 'warning', id, mechanicId: 'neglected-objectives', name, bossType: state.type, time, resolveAt, zones: clone(zones) };
 }
 function spawnObjectives(state, pending, frame, time) {
   if (!pending.adds || pending.phase < pending.adds.fromPhase) return null;
@@ -173,15 +174,15 @@ function spawnObjectives(state, pending, frame, time) {
     const x = zone.shape === 'circle' ? zone.x : clamp(frame.boss.x + (i % 2 ? 170 : -170), 1150, 1710);
     const y = zone.shape === 'circle' ? zone.y : clamp(frame.boss.y + 150, 110, 1380);
     const id = `${state.type}:objective-${state.serial}-${i}`, hp = Math.round(pending.adds.hp * (1 + (state.tier - 1) * .065) * (1 + pending.phase * .18));
-    const objective = { id, x, y, hp, maxHp: hp, alive: true, expiresAt: roundTime(time + pending.adds.lifetime), exploding: false };
+    const objective = { id, x, y, hp, maxHp: hp, alive: true, phase: pending.phase, expiresAt: roundTime(time + pending.adds.lifetime), exploding: false };
     state.objectives[id] = objective;
     adds.push({ ...objective, type: 'echo_guard', name: pending.mechanicId === 'prismatic_anchors' ? 'Prismatischer Anker' : pending.mechanicId === 'hungry_souls' ? 'Hungrige Seele' : 'Dornenknospe', role: 'dps-check', bossObjectiveId: id, ownerBossId: frame.boss.id, stationary: true, rewardless: true, level: frame.boss.level || 1, damage: 0, xp: 0, gold: 0 });
   }
   return { kind: 'spawn-adds', bossType: state.type, mechanicId: pending.mechanicId, time, adds };
 }
 
-export function updateBossEncounter(state, { boss, players = [], time, dt = 0 }) {
-  if (!state || !Object.hasOwn(BOSS_ENCOUNTERS, state.type) || !boss || !Number.isFinite(time) || !Number.isFinite(dt) || dt < 0 || !Array.isArray(players) || !['x', 'y', 'hp', 'maxHp'].every(key => Number.isFinite(boss[key])) || boss.maxHp <= 0) throw new TypeError('Ungültiger Boss-Simulationsschritt.');
+export function updateBossEncounter(state, { boss, players = [], time, dt = 0, allowCasting = true }) {
+  if (!state || !Object.hasOwn(BOSS_ENCOUNTERS, state.type) || !boss || !Number.isFinite(time) || !Number.isFinite(dt) || dt < 0 || typeof allowCasting !== 'boolean' || !Array.isArray(players) || !['x', 'y', 'hp', 'maxHp'].every(key => Number.isFinite(boss[key])) || boss.maxHp <= 0) throw new TypeError('Ungültiger Boss-Simulationsschritt.');
   const now = roundTime(time), current = { time: now, boss: { ...boss }, players: normalizedPlayers(players) };
   if (state.lastFrame && now < state.lastFrame.time - EPSILON) throw new RangeError('Bosszeit darf nicht rückwärts laufen.');
   if (boss.alive === false || boss.hp <= 0 || !current.players.length) {
@@ -198,9 +199,9 @@ export function updateBossEncounter(state, { boss, players = [], time, dt = 0 })
   for (let iteration = 0; iteration < 128; iteration++) {
     for (const [id, objective] of Object.entries(state.objectives)) if (!objective.alive || objective.hp <= 0) { events.push({ kind: 'despawn-adds', bossType: state.type, time: now, ids: [id] }); delete state.objectives[id]; }
     const expired = Object.values(state.objectives).filter(o => !o.exploding && o.expiresAt <= now + EPSILON);
-    const objectiveAt = expired.length && !state.pending ? Math.max(Math.min(...expired.map(o => o.expiresAt)), state.lastFrame?.time ?? state.startedAt) : Infinity;
+    const objectiveAt = allowCasting && expired.length && !state.pending ? Math.max(Math.min(...expired.map(o => o.expiresAt)), state.lastFrame?.time ?? state.startedAt) : Infinity;
     const dotAt = state.dots.length ? Math.min(...state.dots.map(dot => dot.nextAt)) : Infinity;
-    const impactAt = state.pending?.resolveAt ?? Infinity, castAt = state.pending ? Infinity : state.nextCastAt;
+    const impactAt = state.pending?.resolveAt ?? Infinity, castAt = state.pending || !allowCasting ? Infinity : state.nextCastAt;
     const next = Math.min(objectiveAt, dotAt, impactAt, castAt);
     if (next > now + EPSILON || next === Infinity) break;
     const frame = frameAt(state, current, next);

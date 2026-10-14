@@ -2,6 +2,14 @@
 
 Ein großes kooperatives 2D-Action-RPG mit acht unterschiedlichen Klassen, Fortschritt bis Level 100, Rätseldungeons, schweren Gruppenbossen, tiefem Loot, mehr Quests, besserer Grafik/Animation und mindestens 200 Stunden sinnvoller Spielentwicklung. Das Ziel bleibt aktiv. Eine externe 5/5-Bewertung und 200 Stunden Spielqualität werden nicht behauptet.
 
+## Version 9.0: eigenständige Gruppenraids
+
+- Drei tatsächlich simulierte Bosschoreografien mit Phasen bei 65/30 % Leben: Frontkegel, innerer sicherer Bereich, Seelenmarken und zerstörbare Seelen, zwei Spektrumlücken und vier Anker. Alle Warnungen verwenden dieselben Formen wie die Trefferprüfung.
+- Bossleben von 500.000, 980.000 und 1.700.000 auf Tiefe 1. Angekündigte Gruppenimpulse erfordern Schutz, Heilung oder endliche Vorräte. Alte Raidstände behalten ihren Lebensanteil bei der Migration.
+- Gemeinsam begrenzte Kampfbelebungen von 1/2/3 pro Versuch statt unbegrenzter Sofortrettung. Vollständiger Wipe setzt Boss, Warnungen, Ziele und Vorrat zurück; Teilverluste heilen den Boss nicht. Selbst-Rückkehr kann den laufenden Bossversuch nicht umgehen.
+- Vollständiger Dungeoncheckpoint im Einzelspiel und auf dem Node-Gruppenserver: Bossleben, Zeit, einzigartige und gemeinsame Warnungen, Wunden, Schildfenster, Ziele und Belebungsvorrat. Neustarts warten auf die zurückkehrende Gruppe und erhalten gefallene Figuren sowie gespeicherte Positionen. Bildschirmbegrenzte Netzwerksnapshots verlieren keine portable Bossdaten.
+- Vorher-/Nachher-Kämpfe mit legalem Rare-Gepäck, Rollenvergleich und Versorgungstest: [Raidqualität und Messgrenzen](docs/raid-v9-quality.md). Browserprüfungen beziehen sich auf isolierte Desktop-/Mobilvorschauen; 200 Stunden abwechslungsreiches Spiel und menschliche Langzeitbalance bleiben offen.
+
 ## Version 5.1: Aschenjagd
 
 - Ein priorisierter Hinweis statt mehrerer überlagernder Meldungen, gebündelte Beute-/Questmeldungen und Meldungsverlauf in den Einstellungen.

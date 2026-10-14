@@ -1,6 +1,7 @@
 // These shapes are shared by encounter damage and telegraph rendering.
 // All dimensions are world units; angles are radians. A ring's gapWidth is
-// its full safe angle, while a segment's width is its capsule radius.
+// its full safe angle, while a segment's width is its capsule radius. The
+// optional gapAngles array names multiple safe gaps of that same full width.
 const TAU = Math.PI * 2;
 const ANGLE_EPSILON = Number.EPSILON * 16;
 const finite = value => typeof value === 'number' && Number.isFinite(value);
@@ -27,7 +28,8 @@ function validShape(shape) {
   if (shape.kind === 'circle') return nonnegative(shape.radius);
   if (shape.kind === 'annulus') return nonnegative(shape.innerRadius) && nonnegative(shape.outerRadius)
     && shape.innerRadius <= shape.outerRadius && (shape.gapWidth === undefined || nonnegative(shape.gapWidth))
-    && (shape.gapAngle === undefined || finite(shape.gapAngle));
+    && (shape.gapAngle === undefined || finite(shape.gapAngle))
+    && (shape.gapAngles === undefined || Array.isArray(shape.gapAngles) && shape.gapAngles.length > 0 && shape.gapAngles.length <= 8 && shape.gapAngles.every(finite));
   if (shape.kind === 'cone') return finite(shape.angle) && nonnegative(shape.length) && nonnegative(shape.halfAngle);
   return false;
 }
@@ -56,10 +58,42 @@ export function hitShape(shape, point) {
     const gapWidth = shape.gapWidth || 0;
     if (!gapWidth) return true;
     if (distanceSquared === 0 || gapWidth >= TAU) return false;
-    return !containsAngle(Math.atan2(dy, dx), shape.gapAngle ?? 0, gapWidth / 2);
+    return !(shape.gapAngles ?? [shape.gapAngle ?? 0]).some(angle => containsAngle(Math.atan2(dy, dx), angle, gapWidth / 2));
   }
   return atMost(distanceSquared, shape.length * shape.length)
     && (distanceSquared === 0 || containsAngle(Math.atan2(dy, dx), shape.angle, shape.halfAngle));
+}
+
+/** The dangerous angular spans of an annulus, for the real Canvas path. Gaps
+ * may wrap, overlap or cover the ring; no decorative bridge crosses a refuge.
+ * Single-gap spans preserve their original start/end angles.
+ */
+export function annulusDangerArcs(shape) {
+  if (shape?.kind !== 'annulus' || !validShape(shape)) return [];
+  const gap = Math.min(shape.gapWidth || 0, TAU);
+  if (!gap) return [[0, TAU]];
+  if (gap >= TAU) return [];
+  const angles = shape.gapAngles ?? [shape.gapAngle ?? 0];
+  if (angles.length === 1) return [[angles[0] + gap / 2, angles[0] + TAU - gap / 2]];
+  // Retain the authored single-gap origin. All other centers are made relative
+  // to it, keeping large equivalent angles out of the union calculation.
+  const first = wrapAngle(angles[0]), start = first + gap / 2, end = start + TAU;
+  const gaps = [];
+  for (const angle of angles) {
+    const center = first + wrapAngle(wrapAngle(angle) - first);
+    for (const turn of [-1, 0, 1, 2]) {
+      const left = Math.max(start, center + turn * TAU - gap / 2), right = Math.min(end, center + turn * TAU + gap / 2);
+      if (right > left) gaps.push([left, right]);
+    }
+  }
+  gaps.sort((a, b) => a[0] - b[0]);
+  const arcs = []; let cursor = start;
+  for (const [left, right] of gaps) {
+    if (left > cursor + ANGLE_EPSILON) arcs.push([cursor, left]);
+    cursor = Math.max(cursor, right);
+  }
+  if (end > cursor + ANGLE_EPSILON) arcs.push([cursor, end]);
+  return arcs;
 }
 
 /** Conservative world bounds for culling and placement. Invalid shapes return null. */
