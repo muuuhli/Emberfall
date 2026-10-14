@@ -1,6 +1,6 @@
 # Dauerhaft erreichbarer Emberfall-Spielserver
 
-Der dedizierte Einstiegspunkt `server/dedicated.mjs` betreibt die vorhandene autoritative Node-Simulation, liefert die Spielassets und hält Gruppenreisen in einem privaten Datenverzeichnis. Die aktuelle Sites-Veröffentlichung bleibt ihrem bisherigen Projekt und Zugriff zugeordnet. Dieses Repository enthält jetzt ein konkretes Betriebspaket; ein Internetserver wurde dadurch noch nicht bereitgestellt.
+Der dedizierte Einstiegspunkt `server/dedicated.mjs` betreibt die vorhandene autoritative Node-Simulation, liefert die Spielassets und hält Gruppenreisen in einem privaten Datenverzeichnis. Die aktuelle Sites-Veröffentlichung bleibt ihrem bisherigen Projekt und Zugriff zugeordnet. Zusätzlich ist die [IP-Hostingvariante](../deploy/HETZNER.md) auf dem vorhandenen Hetzner-Gaming-Server eingerichtet; der [Betriebsbericht](../docs/hetzner-hosting-quality.md) beschreibt die tatsächlichen Prüfungen.
 
 ## Lokal geprüfter Node-Einstieg
 
@@ -60,6 +60,6 @@ Für eine konsistente private Sicherung stoppe den Emberfall-Dienst, kopiere `/d
 
 Die native Node-Ausführung wurde mit echten HTTP-/SSE-Verbindungen geprüft: acht unterschiedliche Klassen, Alt-/Delta-Clients, erneuter Streambeginn, Gruppenreise-Neustart, sofort gespeicherte Technikprägungen, Dungeon-/Raid-Warnungen und portable Checkpoints. Gesonderte Prüfungen decken Umgebungsgrenzen, CORS, private Datenpfade, Health-Status und abgewiesene beschädigte Speicher ab.
 
-Docker und Caddy sind im aktuellen Arbeitsrechner nicht installiert. Ein Container-Build, ein tatsächliches TLS-Zertifikat und ein Test über ein öffentliches HTTPS-Deployment wurden hier nicht ausgeführt. Vor einer Behauptung über Internet-Koop fehlen daher die ausgewählte Infrastruktur, der tatsächliche Start und eine Probe mit unabhängigen Besuchern über genau diesen Dienst.
+Docker und Caddy sind im aktuellen Arbeitsrechner nicht installiert. Der Docker-Build und die öffentliche IP-Ausführung wurden auf dem ausgewählten Hetzner-Server geprüft, einschließlich zwei HTTP/SSE-Clients und Wiederaufnahme nach Neustart. Die IP-Fassung verwendet wie angefordert HTTP und einen eigenen Port. Eine Domain, ein TLS-Zertifikat und unabhängige menschliche Gruppenproben über HTTPS sind weiterhin nicht geprüft.
 
 Die [Transportmessungen](../docs/internet-backend-v10.md) zeigen weniger unveränderte Daten und geringeren CPU-Aufwand. Sie belegen keine MMO-Kapazität, keine Browser-FPS und keinen bereits abgeschlossenen 200-Stunden-Spielumfang.

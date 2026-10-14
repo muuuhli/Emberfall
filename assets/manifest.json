@@ -446,7 +446,7 @@
     "campaignHoursTarget": 200,
     "fullCampaignHoursVerified": 0,
     "externalStarRating": null,
-    "internetMultiplayerBackendDeployed": false,
+    "internetMultiplayerBackendDeployed": true,
     "note": "Content counts and automated checks do not establish 200 hours of varied play or completed long-term balance."
   }
 }
