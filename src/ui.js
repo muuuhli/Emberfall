@@ -43,9 +43,9 @@ const learnedIcon = ability => ({'⬡':'shield','⚑':'group','⚔':'sword','✚
 const branchIcons = {'Wächter':'shield','Arkanist':'flame','Wildläufer':'leaf'};
 const branchDescriptions = {'Wächter':'Halte stand. Jede Wunde macht dich stärker.','Arkanist':'Entfache die Glut und forme den Äther.','Wildläufer':'Bewege dich frei. Lebe von den Gaben des Hains.'};
 const combatPatterns = { melee:'Nahkampf',ranged:'Fernkampf',charge:'Ansturm',caster:'Zauberwirker',summon:'Beschwörer',swarm:'Schwarm',ambush:'Hinterhalt',artillery:'Artillerie',support:'Unterstützer',guardian:'Wächter',bruiser:'Brecher',skirmisher:'Plänkler',assassin:'Meuchler',siege:'Belagerung',drain:'Lebensraub',nova:'Flächenangriff',burst:'Angriffsserie',hex:'Fluch',ring:'Geschossring',fan:'Geschossfächer',summoner:'Beschwörer' };
-const menuGroups=[{id:'hero',name:'Held',icon:'shield',panels:[['character','Charakter'],['talents','Talente']]},{id:'arsenal',name:'Arsenal',icon:'bag',panels:[['inventory','Gepäck & Lager'],['craft','Schmieden & Brauen']]},{id:'chronicle',name:'Chronik',icon:'book',panels:[['journal','Questen & Aufträge'],['journey','Ruf & Gefährten'],['bestiary','Bestiarium']]},{id:'world',name:'Welt',icon:'map',panels:[['map','Atlas'],['adventures','Ereignisse'],['dungeons','Dungeons'],['interactions','Spuren'],['party','Gruppe']]}];
+const menuGroups=[{id:'hero',name:'Held',icon:'shield',panels:[['character','Charakter'],['talents','Fähigkeiten']]},{id:'arsenal',name:'Inventar',icon:'bag',panels:[['inventory','Ausrüstung & Lager'],['craft','Handwerk']]},{id:'chronicle',name:'Quests',icon:'book',panels:[['journal','Quests & Aufträge'],['journey','Ruf & Gefährten'],['bestiary','Bestiarium']]},{id:'world',name:'Welt',icon:'map',panels:[['map','Weltkarte'],['adventures','Abenteuer'],['dungeons','Dungeons'],['interactions','Entdeckungen'],['party','Gruppe']]}];
 const groupFor=panel=>menuGroups.find(group=>group.panels.some(([id])=>id===panel));
-const panels = {map:['Atlas der Asche','Verlorene Siedlungen, alte Tore und gefährliche Wege.'],world:['Atlas der Asche','Verlorene Siedlungen, alte Tore und gefährliche Wege.'],character:['Der Glutträger','Rüstung, Werte und die Macht deiner Klasse.'],inventory:['Dein Arsenal','Vergleiche Beute, verstärke Ausrüstung und bereite dich vor.'],talents:['Pfade der Macht','Aktive Techniken, Talentzweige und folgenschwere Entscheidungen.'],craft:['Die schwarze Werkbank','Schmiede Waffen, braue Elixiere und verarbeite deine Beute.'],journal:['Chronik der Verlorenen','Questen, regionale Aufträge und unerfüllte Eide.'],bestiary:['Bestiarium der Finsternis','Jede Kreatur kann als mächtiger Boss wiederkehren.'],interactions:['Spuren in der Asche','Altäre, Reliquien und Begegnungen auf deinem Weg.'],party:['Ein Bund in der Dunkelheit','Gemeinsam bestehen: bis zu acht Glutträger.'],dungeons:['Tore in die Tiefe','Runenrätsel, schwere Bosse und immer tiefere Herausforderungen.'],journey:['Dein Vermächtnis','Fraktionen, Errungenschaften und Gefährten auf deiner Reise.'],adventures:['Jenseits der Straßen','Regionale Ereignisse und Expeditionen mit eigenen Entscheidungen.'],settings:['Am letzten Feuer','Deine Reise wird direkt in diesem Browser gespeichert.']};
+const panels = {map:['Weltkarte','Regionen, Wege und Reiseziele.'],world:['Weltkarte','Regionen, Wege und Reiseziele.'],character:['Charakter','Ausrüstung, Werte und Klassenaufbau.'],inventory:['Inventar','Beute anlegen, vergleichen und verwalten.'],talents:['Fähigkeiten','Techniken lernen und Talente verteilen.'],craft:['Handwerk','Ausrüstung schmieden und Vorräte herstellen.'],journal:['Quests','Aufgaben, Ziele und regionale Aufträge.'],bestiary:['Bestiarium','Gegner und ihre Bossformen.'],interactions:['Entdeckungen','Altäre, Reliquien und Begegnungen.'],party:['Gruppe','Gemeinsam spielen mit bis zu acht Personen.'],dungeons:['Dungeons','Wege, Bosse und Gruppenvoraussetzungen.'],journey:['Ruf & Gefährten','Orden, Errungenschaften und Begleiter.'],adventures:['Abenteuer','Ereignisse, Prüfungen und Expeditionen.'],settings:['Einstellungen','Ton, Bedienung und Spielstand.']};
 
 export class GameUI {
   constructor(game) {
@@ -103,8 +103,11 @@ export class GameUI {
     this.lastSeenLevel = game.player?.level || 1;
     this.notices = [];
     this.noticeQueue = new NoticeQueue();
+    this.infoOpen = false;
+    this.infoTab = 'history';
+    this.infoLastReadReceipt = 0;
     this.elements = {};
-    for (const id of ['welcome-overlay','welcome-classes','start-button','continue-button','panel-overlay','game-panel','panel-title','panel-description','panel-content','close-panel','save-button','save-state','save-import','world-hud','quest-tracker','region-name','region-subtitle','player-name','player-class','player-level','hp-fill','hp-text','hp-shield','party-hud','mana-fill','mana-text','xp-fill','xp-text','gold-count','talent-badge','potion-count','interact-prompt','world-time','world-weather','world-effects','pvp-hud','waypoint-text','notice-stack','minimap','world']) this.elements[id] = document.getElementById(id);
+    for (const id of ['welcome-overlay','welcome-classes','start-button','continue-button','panel-overlay','game-panel','panel-title','panel-description','panel-content','close-panel','save-button','save-state','save-import','world-hud','quest-tracker','region-name','region-subtitle','player-name','player-class','player-level','hp-fill','hp-text','hp-shield','party-hud','mana-fill','mana-text','xp-fill','xp-text','gold-count','talent-badge','potion-count','interact-prompt','world-time','world-weather','world-effects','pvp-hud','waypoint-text','notice-stack','info-panel','info-close','info-tabs','info-history','info-objectives','minimap','world']) this.elements[id] = document.getElementById(id);
     this.bind();
     window.addEventListener('resize',()=>this.updateHudLayout(true));
     window.visualViewport?.addEventListener('resize',()=>this.updateHudLayout(true));
@@ -116,8 +119,9 @@ export class GameUI {
     document.addEventListener('click', event => {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;
+      if (button.dataset.infoTab) { this.selectInformationTab(button.dataset.infoTab); return; }
       if (button.dataset.panel) { this.togglePanel(button.dataset.panel === 'world' ? 'map' : button.dataset.panel); return; }
-      if (button.dataset.action) { if(this.game.started&&!this.activePanel&&!this.game.paused)this.game.action(button.dataset.action); this.update(true); return; }
+      if (button.dataset.action) { if(this.game.started&&!this.activePanel&&!this.infoOpen&&!this.game.paused)this.game.action(button.dataset.action); this.update(true); return; }
       if (button.dataset.abilitySlot !== undefined) { this.useAbilitySlot(Number(button.dataset.abilitySlot)); return; }
       if (button.dataset.talentBranch) { this.talentPage=0;this.talentBranch=button.dataset.talentBranch;this.renderPanel();return; }
       if (button.dataset.talentTab) { this.pendingScrollReset=true;this.talentPage=0;this.talentTab=button.dataset.talentTab;this.renderPanel();return; }
@@ -169,6 +173,7 @@ export class GameUI {
       if (key === 'reducedMotion') document.body.classList.toggle('reduced-motion', value);
     });
     document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && this.infoOpen) { event.preventDefault(); event.stopImmediatePropagation(); this.closeInformation(); return; }
       if (event.key === 'Escape' && this.activePanel) { event.preventDefault(); event.stopImmediatePropagation(); this.closePanel(); }
       if (event.key === 'Tab') this.trapFocus(event);
     });
@@ -180,9 +185,10 @@ export class GameUI {
   }
 
   get currentPanel() { return this.activePanel; }
+  get informationOpen() { return Boolean(this.infoOpen); }
 
   useAbilitySlot(slot) {
-    if(!this.game.started||this.activePanel||this.game.paused)return;
+    if(!this.game.started||this.activePanel||this.infoOpen||this.game.paused)return;
     if(this.game.abilityLoadout?.[slot])this.game.useLearnedAbility(slot);
     else {this.talentTab='abilities';this.togglePanel('talents');}
     this.update(true);
@@ -195,6 +201,7 @@ export class GameUI {
   }
 
   begin() {
+    this.closeInformation({restoreFocus:false});
     this.closePanel();
     this.game.start();
     this.elements['welcome-overlay'].hidden = true;
@@ -312,7 +319,7 @@ export class GameUI {
       this.elements['world-effects'].hidden=!buffs.length;
     }
     this.updateCooldowns(stats);
-    const blocked=!game.started||Boolean(this.activePanel)||game.paused||this.inPvp&&game.pvp?.duel?.state!=='active';
+    const blocked=!game.started||Boolean(this.activePanel)||this.infoOpen||game.paused||this.inPvp&&game.pvp?.duel?.state!=='active';
     document.querySelector('.touch-controls').hidden=blocked;
     document.querySelector('.touch-controls').inert=blocked;
     document.body.classList.toggle('gameplay-blocked',blocked);
@@ -385,7 +392,8 @@ export class GameUI {
   updatePvp() {
     const arena=this.inPvp,pvp=this.game.pvp || {},duel=pvp.duel,phase=duel?.state;
     document.body.classList.toggle('pvp-mode',arena);document.body.classList.toggle('pvp-finished',arena&&phase==='finished');
-    if(arena&&!this.wasInPvp){this.noticeQueue?.clear();for(const notice of this.notices)notice.remove();this.notices=[];}
+    if(arena&&!this.wasInPvp){this.closeInformation({restoreFocus:false});this.noticeQueue?.clear();for(const notice of this.notices)notice.remove();this.notices=[];}
+    if(arena&&phase==='finished'&&this.lastPvpPhase!=='finished')this.closeInformation({restoreFocus:false});
     if(arena&&this.activePanel&&!(phase==='finished'&&['party','settings'].includes(this.activePanel))){this.closePanel();this.game.paused=false;}
     for(const button of document.querySelectorAll('button[data-panel]')){
       const blocked=arena&&!(phase==='finished'&&['party','settings'].includes(button.dataset.panel));
@@ -457,8 +465,10 @@ export class GameUI {
     if (name === 'skills') name = 'talents';
     if (name === 'crafting') name = 'craft';
     if (this.activePanel === 'death' && this.game.player?.hp <= 0 && name !== 'death' && !this.inPvp) return;
+    const informationFocus=this.infoOpen?this.informationPreviousFocus:null;
+    this.closeInformation({restoreFocus:false});
     if (name === this.activePanel) { this.closePanel(); return; }
-    if (!this.activePanel) this.previousFocus = document.activeElement;
+    if (!this.activePanel) this.previousFocus = informationFocus?.isConnected?informationFocus:document.activeElement;
     this.activePanel = name;
     this.pendingScrollReset=true;
     this.elements['panel-content'].scrollTop=0;
@@ -479,6 +489,7 @@ export class GameUI {
 
   closePanel() {
     if (this.activePanel === 'death' && this.game.player?.hp <= 0 && !this.inPvp) return;
+    this.closeInformation({restoreFocus:false});
     const previous = this.activePanel;
     this.activePanel = null;
     document.body.classList.remove('panel-open');
@@ -512,11 +523,15 @@ export class GameUI {
     this.elements['close-panel'].hidden = name === 'death';
     const navigation=document.getElementById('panel-navigation'),group=groupFor(name);
     if(navigation){
-      navigation.hidden=!group||this.inPvp;
-      if(group)navigation.innerHTML=`<div class="menu-group-switcher">${menuGroups.map(entry=>`<button type="button" data-panel="${entry.panels[0][0]}" class="${entry.id===group.id?'active':''}" aria-pressed="${entry.id===group.id}">${icon(entry.icon)}${entry.name}</button>`).join('')}</div><div class="menu-section-switcher" role="group" aria-label="${group.name}">${group.panels.map(([id,label])=>`<button type="button" data-panel="${id}" class="${id===name?'active':''}" aria-pressed="${id===name}">${label}</button>`).join('')}</div>`;
+      navigation.hidden=(!group&&name!=='settings')||this.inPvp;
+      if(group||name==='settings'){
+        const markup=this.menuNavigation(name);
+        if(navigation.innerHTML!==markup)navigation.innerHTML=markup;
+      }
     }
     const renderers = {inventory:()=>this.inventory(),character:()=>this.character(),talents:()=>this.talents(),craft:()=>this.craft(),journal:()=>this.journal(),map:()=>this.map(),party:()=>this.party(),dungeons:()=>this.dungeons(),settings:()=>this.settings(),bestiary:()=>this.bestiary(),journey:()=>this.journey(),adventures:()=>this.adventures(),interactions:()=>this.interactions(),dialogue:()=>this.dialogue(),death:()=>this.death(),victory:()=>this.victory(),reset:()=>this.resetConfirmation()};
     this.elements['panel-content'].innerHTML = (renderers[name] || renderers.inventory)();
+    this.lastInformationBadge=null;
     this.elements['game-panel'].dataset.panel=name;
     this.elements['panel-content'].scrollTop=scroll;
     this.renderedPanel=name;this.pendingScrollReset=false;
@@ -530,6 +545,12 @@ export class GameUI {
       const target = [...this.elements['panel-content'].querySelectorAll('button')].find(button=>button.dataset.id===focusId&&button.dataset.command===focusCommand);
       if (target && !target.disabled) target.focus({preventScroll:true});
     }
+    this.renderInformation();
+  }
+
+  menuNavigation(name) {
+    const group=groupFor(name);
+    return `<div class="menu-navigation-tree" aria-label="Spielbereiche">${menuGroups.map(entry=>`<div class="menu-navigation-group ${entry.id===group?.id?'active':''}"><button type="button" data-panel="${entry.panels[0][0]}" class="menu-group-button menu-primary ${entry.id===group?.id?'active':''}" aria-expanded="${entry.id===group?.id}">${icon(entry.icon)}<span>${entry.name}</span></button>${entry.id===group?.id?`<div class="menu-section-list" role="group" aria-label="${escape(entry.name)}">${entry.panels.map(([id,label])=>`<button type="button" data-panel="${id}" class="${id===name?'active':''}" ${id===name?'aria-current="page"':''}>${label}</button>`).join('')}</div>`:''}</div>`).join('')}</div>`;
   }
 
   statsText(stats = {}, compare = null) {
@@ -1077,10 +1098,9 @@ export class GameUI {
   }
 
   settings() {
-    if(this.inPvp)return `${this.audioControls()}${this.noticeHistory()}<button class="small-button" data-command="resume">Zum Duellstatus zurück</button>`;
+    if(this.inPvp)return `${this.audioControls()}${this.informationLink()}<button class="small-button" data-command="resume">Zum Duellstatus zurück</button>`;
     const abilities=getClass(this.game.player.classId).abilities;
-    const mobileMenu=`<div class="mobile-menu-shortcuts">${[["map","map","Weltkarte"],["character","shield","Charakter"],["inventory","bag","Inventar"],["talents","tree","Talente"],["craft","craft","Handwerk"],["journal","book","Questen"],["dungeons","portal","Dungeons"],["party","group","Gruppe"],["bestiary","skull","Bestiarium"],["interactions","relic","Spuren"]].map(([panel,glyph,label])=>`<button class="small-button" data-panel="${panel}">${icon(glyph)}${label}</button>`).join("")}</div>`;
-    return `${mobileMenu}${this.audioControls()}${this.noticeHistory()}<div class="settings-row"><div><h3>Weniger Bewegung</h3><p>Reduziert Kamerabewegungen und Animationen in der Oberfläche.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="reducedMotion" ${this.game.settings?.reducedMotion?'checked':''}/>Aktiv</label></div><h3 class="section-title">Dein Spielstand</h3><p class="panel-note">Emberfall speichert deine Einzelspieler-Reise in diesem Browser und deine Gruppenreise auf dem Spielserver. Exportiere deinen Einzelspieler-Spielstand, um ihn zu sichern oder auf einem anderen Gerät weiterzuspielen.</p><div class="settings-actions"><button class="small-button" data-command="save">${icon('save')}Jetzt speichern</button><button class="small-button" data-command="export">Spielstand exportieren</button><button class="small-button" data-command="import">Spielstand laden</button><button class="small-button danger-button" data-panel="reset">Neue Reise</button></div><h3 class="section-title">Deine Hände, deine Fähigkeiten</h3><p class="panel-note">Auf dem Handy: Joystick für acht Richtungen ziehen, Angriff für automatische Wiederholung halten. Bewegung, Angriff und eine weitere Aktion funktionieren gleichzeitig. Angriffe zielen auf den nächsten sichtbaren Gegner.</p><div class="settings-controls"><div class="summary-stat"><span>Bewegen</span><strong>WASD / Pfeiltasten</strong></div><div class="summary-stat"><span>${escape(abilities.attack.name)} / Ausweichen</span><strong>J oder Klick / Leertaste</strong></div><div class="summary-stat"><span>${escape(abilities.nova.name)} / ${escape(abilities.bolt.name)} / Heiltrank</span><strong>F / Q / R</strong></div><div class="summary-stat"><span>Erlernte Zusatzfähigkeiten</span><strong>3 / 4 · Im Talentfenster belegen</strong></div><div class="summary-stat"><span>Sprechen, sammeln, pflanzen & ernten</span><strong>E</strong></div><div class="summary-stat"><span>Inventar / Talente / Handwerk / Questen</span><strong>I / T / B / L</strong></div><div class="summary-stat"><span>Weltkarte / Charakter / Gruppe</span><strong>M / C / P</strong></div></div>`;
+    return `${this.audioControls()}${this.informationLink()}<div class="settings-row"><div><h3>Weniger Bewegung</h3><p>Reduziert Kamerabewegungen und Animationen in der Oberfläche.</p></div><label class="settings-toggle"><input type="checkbox" data-setting="reducedMotion" ${this.game.settings?.reducedMotion?'checked':''}/>Aktiv</label></div><h3 class="section-title">Dein Spielstand</h3><p class="panel-note">Emberfall speichert deine Einzelspieler-Reise in diesem Browser und deine Gruppenreise auf dem Spielserver. Exportiere deinen Einzelspieler-Spielstand, um ihn zu sichern oder auf einem anderen Gerät weiterzuspielen.</p><div class="settings-actions"><button class="small-button" data-command="save">${icon('save')}Jetzt speichern</button><button class="small-button" data-command="export">Spielstand exportieren</button><button class="small-button" data-command="import">Spielstand laden</button><button class="small-button danger-button" data-panel="reset">Neue Reise</button></div><h3 class="section-title">Deine Hände, deine Fähigkeiten</h3><p class="panel-note">Auf dem Handy: Joystick für acht Richtungen ziehen, Angriff für automatische Wiederholung halten. Bewegung, Angriff und eine weitere Aktion funktionieren gleichzeitig. Angriffe zielen auf den nächsten sichtbaren Gegner.</p><div class="settings-controls"><div class="summary-stat"><span>Bewegen</span><strong>WASD / Pfeiltasten</strong></div><div class="summary-stat"><span>${escape(abilities.attack.name)} / Ausweichen</span><strong>J oder Klick / Leertaste</strong></div><div class="summary-stat"><span>${escape(abilities.nova.name)} / ${escape(abilities.bolt.name)} / Heiltrank</span><strong>F / Q / R</strong></div><div class="summary-stat"><span>Erlernte Zusatzfähigkeiten</span><strong>3 / 4 · Im Talentfenster belegen</strong></div><div class="summary-stat"><span>Sprechen, sammeln, pflanzen & ernten</span><strong>E</strong></div><div class="summary-stat"><span>Inventar / Talente / Handwerk / Questen</span><strong>I / T / B / L</strong></div><div class="summary-stat"><span>Weltkarte / Charakter / Gruppe</span><strong>M / C / P</strong></div><div class="summary-stat"><span>Informationen öffnen</span><strong>H</strong></div></div>`;
   }
 
   contractBoard() {
@@ -1155,6 +1175,8 @@ export class GameUI {
   showVictory() { if (this.activePanel==='victory') return; this.togglePanel('victory'); }
 
   async command(name, id, button) {
+    if(name==='toggle-info'){this.toggleInformation();return;}
+    if(name==='close-info'){this.closeInformation();return;}
     if(name==='dismiss-notice'){this.noticeQueue?.dismiss();this.renderNotice();this.updateHudLayout(true);return;}
     if(name.startsWith('pvp-')){await this.pvpCommand(name,id);return;}
     if(this.inPvp&&name!=='resume'){this.showNotice('Kehre zuerst aus dem Duell zurück.','info');return;}
@@ -1281,8 +1303,7 @@ export class GameUI {
 
   renderNotice() {
     const stack=this.elements['notice-stack'];if(!stack)return;
-    const host=this.activePanel?document.getElementById('panel-notice-slot'):this.inPvp?this.elements['pvp-hud']?.querySelector('[data-pvp-notice-slot]'):document.getElementById('hud-status-rail');
-    if(host&&stack.parentElement!==host)host.appendChild(stack);
+    this.renderInformation();
     const entry=this.noticeQueue?.advance();stack.hidden=!entry;
     if(!entry){for(const notice of this.notices || [])notice.remove();this.notices=[];this.lastNoticeId=null;return;}
     if(entry.id!==this.lastNoticeId){
@@ -1297,7 +1318,86 @@ export class GameUI {
 
   noticeHistory() {
     const history=this.noticeQueue?.history || [];
-    return `<details class="notice-history"><summary>${icon('book')}Letzte Hinweise <span>${history.length}</span></summary><p class="panel-note">Beute und gleichzeitige Questziele werden zusammengefasst. Hier bleibt auch eine Meldung erhalten, die im Gefecht Platz für eine wichtigere gemacht hat.</p>${history.length?`<ol>${history.map(entry=>`<li class="${entry.kind}"><span>${escape({error:'AKTION NICHT MÖGLICH',danger:'GEFAHR',level:'NEUE MACHT',story:'REISE',progress:'QUESTZIELE',rewards:'BEUTE',craft:'WERKBANK'}[entry.kind] || 'HINWEIS')}</span><p>${escape(entry.text)}</p></li>`).join('')}</ol>`:'<p class="panel-note">Deine letzten Reisehinweise erscheinen hier.</p>'}</details>`;
+    return history.length?`<ol class="information-history">${history.map(entry=>{
+      const date=new Date(entry.updated || entry.created || 0),time=date.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+      const messages=entry.fullMessages || entry.messages || [entry.text];
+      return `<li class="${escape(entry.kind)}" data-notice-id="${entry.id}"><div class="information-history-meta"><span>${escape({error:'Aktion fehlgeschlagen',danger:'Gefahr',level:'Stufenaufstieg',story:'Reise',progress:'Questziele',rewards:'Beute',craft:'Handwerk',success:'Erfolg'}[entry.kind] || 'Hinweis')}</span><time datetime="${date.toISOString()}">${time}</time>${entry.count>1?`<small>×${format(entry.count)}</small>`:''}</div>${messages.map(message=>`<p>${escape(message)}</p>`).join('')}</li>`;
+    }).join('')}</ol>`:'<div class="information-empty"><p>Noch keine Hinweise.</p><small>Beute, Questmeldungen und wichtige Hinweise bleiben hier zum Nachlesen.</small></div>';
+  }
+
+  informationLink() {
+    return `<button type="button" class="text-button information-link" data-command="toggle-info" aria-controls="info-panel" aria-expanded="${!!this.infoOpen}">${icon('book')}Hinweise nachlesen <span data-info-count hidden></span></button>`;
+  }
+
+  toggleInformation(tab = null) {
+    if(this.infoOpen&&tab===null){this.closeInformation();return false;}
+    if(!this.game.started||['death','victory','reset'].includes(this.activePanel)||this.inPvp&&this.game.pvp?.duel?.state==='finished'&&!this.activePanel)return false;
+    const panel=this.elements['info-panel'];if(!panel)return false;
+    if(!this.infoOpen){
+      this.informationPreviousFocus=document.activeElement;
+      this.pausedByInformation=!this.game.paused&&!this.inPvp&&!this.network?.online&&!this.game.networkActive&&this.game.player?.hp>0;
+      if(this.pausedByInformation)this.game.paused=true;
+      this.infoOpen=true;panel.hidden=false;
+      this.game.keys?.clear();this.onInputReset?.();
+      document.body.classList.add('information-open');
+    }
+    if(tab==='history'||tab==='objectives')this.infoTab=tab;
+    this.renderInformation(true);this.update(true);
+    requestAnimationFrame(()=>{if(this.infoOpen)this.elements['info-close']?.focus({preventScroll:true});});
+    return true;
+  }
+
+  closeInformation({restoreFocus = true} = {}) {
+    if(!this.infoOpen)return false;
+    this.infoOpen=false;this.elements['info-panel'].hidden=true;
+    document.body.classList.remove('information-open');
+    this.game.keys?.clear();this.onInputReset?.();
+    if(this.pausedByInformation&&!this.activePanel&&this.game.started&&!this.game.dead&&this.game.player?.hp>0&&!this.inPvp)this.game.paused=false;
+    this.pausedByInformation=false;
+    if(restoreFocus){
+      const previous=this.informationPreviousFocus;
+      if(previous?.isConnected&&!previous.closest?.('[hidden]'))previous.focus({preventScroll:true});
+      else if(this.activePanel)this.elements['close-panel']?.focus({preventScroll:true});
+      else if(this.game.started)this.elements.world?.focus({preventScroll:true});
+    }
+    this.informationPreviousFocus=null;
+    this.renderInformation();this.update(true);return true;
+  }
+
+  selectInformationTab(tab) {
+    if(!['history','objectives'].includes(tab))return false;
+    this.infoTab=tab;this.renderInformation(true);return true;
+  }
+
+  renderInformation(force = false) {
+    const queue=this.noticeQueue,history=queue?.history || [];
+    const newest=queue?.receiptSerial || 0;
+    if(this.infoOpen&&this.infoTab==='history')this.infoLastReadReceipt=newest;
+    const unread=history.filter(entry=>(entry.receiptId||0)>(this.infoLastReadReceipt||0)).length;
+    const badgeDigest=`${unread}:${!!this.infoOpen}`;
+    if(force||badgeDigest!==this.lastInformationBadge){
+      this.lastInformationBadge=badgeDigest;
+      for(const badge of document.querySelectorAll('[data-info-count]')){badge.hidden=!unread;badge.textContent=unread>99?'99+':String(unread);badge.setAttribute('aria-label',`${unread} ungelesene Hinweise`);}
+      for(const button of document.querySelectorAll('[data-command="toggle-info"]'))button.setAttribute('aria-expanded',String(!!this.infoOpen));
+    }
+    if(!this.infoOpen)return;
+    const historyElement=this.elements['info-history'],objectives=this.elements['info-objectives'];
+    if(force||this.infoTab!==this.lastInformationTab){
+      this.lastInformationTab=this.infoTab;
+      if(historyElement)historyElement.hidden=this.infoTab!=='history';
+      if(objectives)objectives.hidden=this.infoTab!=='objectives';
+      for(const button of this.elements['info-tabs']?.querySelectorAll('[data-info-tab]') || []){
+        const selected=button.dataset.infoTab===this.infoTab;button.setAttribute('aria-pressed',String(selected));button.classList.toggle('active',selected);
+      }
+    }
+    if(this.infoTab!=='history'||!historyElement)return;
+    const revision=queue?.revision??JSON.stringify(history.map(entry=>[entry.id,entry.updated,entry.count,entry.text]));
+    if(revision===this.lastInformationRevision)return;
+    this.lastInformationRevision=revision;
+    const scroller=historyElement.parentElement?.classList.contains('info-body')?historyElement.parentElement:historyElement;
+    const scroll=scroller.scrollTop;
+    // Header and tab controls stay mounted while the bounded log changes.
+    historyElement.innerHTML=this.noticeHistory();scroller.scrollTop=scroll;
   }
 
   updateEncounter() {
@@ -1332,8 +1432,6 @@ export class GameUI {
     if(typeof window==='undefined'||!window.matchMedia||!document.getElementById)return;
     const stage=document.getElementById('game-stage'),rail=document.getElementById('hud-status-rail'),controls=document.querySelector('.touch-controls');if(!stage||!rail||!controls)return;
     const mobile=window.matchMedia('(any-pointer:coarse),(max-width:900px)').matches;
-    const tracker=document.querySelector('.quest-tracker'),trackerHost=mobile?rail.querySelector('.hud-status-toolbar'):this.elements['world-hud'];
-    if(tracker&&trackerHost&&tracker.parentElement!==trackerHost)trackerHost.appendChild(tracker);
     const digest=JSON.stringify([mobile,stage.clientWidth,stage.clientHeight,this.activePanel,this.inPvp,this.game.pvp?.duel?.state,controls.hidden,this.elements['notice-stack']?.hidden,this.notices?.[0]?.textContent,document.getElementById('exploration-pill')?.className,document.getElementById('encounter-pressure')?.hidden,this.elements['interact-prompt']?.hidden]);
     if(!force&&digest===this.lastHudGeometry)return;this.lastHudGeometry=digest;
     const bounds=stage.getBoundingClientRect(),visible=element=>element&&!element.hidden&&element.getClientRects().length&&getComputedStyle(element).display!=='none';
@@ -1368,7 +1466,7 @@ export class GameUI {
   }
 
   trapFocus(event) {
-    const overlay = this.activePanel ? this.elements['game-panel'] : this.inPvp&&this.game.pvp?.duel?.state==='finished'?this.elements['pvp-hud']:!this.game.started ? this.elements['welcome-overlay'] : null;
+    const overlay = this.infoOpen ? this.elements['info-panel'] : this.activePanel ? this.elements['game-panel'] : this.inPvp&&this.game.pvp?.duel?.state==='finished'?this.elements['pvp-hud']:!this.game.started ? this.elements['welcome-overlay'] : null;
     if (!overlay) return;
     const controls = [...overlay.querySelectorAll('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href],summary,[tabindex="0"]')].filter(element=>!element.hidden && element.getClientRects().length);
     if (!controls.length) return;

@@ -399,7 +399,7 @@
       "sha256": "e35bd4769065bcf0fd5e8ade49e90af37779001a3d1d2eb6c92b1ad2ed26264d"
     }
   ],
-  "version": "10.0.0",
+  "version": "11.0.0",
   "updated": "2026-10-14",
   "developmentStatus": {
     "releaseState": "playable development build",
@@ -422,6 +422,10 @@
       "equipmentSlots": 7,
       "touchActions": 8,
       "mobilePortraitAndLandscape": true,
+      "compactResponsiveMenus": true,
+      "optionalInformationDrawer": true,
+      "notificationHistoryEntries": 40,
+      "maximumNotificationLifetimeMs": 4000,
       "gearBalanceVersion": 2,
       "classTalents": 196,
       "uniqueRaidBosses": 3,

@@ -35,33 +35,42 @@ export class NoticeQueue {
   constructor({ now = () => Date.now(), limit = 8, historyLimit = 40 } = {}) {
     this.now = now; this.limit = limit; this.historyLimit = historyLimit;
     this.pending = []; this.history = []; this.active = null; this.serial = 0;
+    this.receiptSerial = 0; this.revision = 0;
   }
   clear() { this.active = null; this.pending = []; }
   dismiss() { this.active = null; this.advance(); }
   push(message, tone = 'info') {
     const text = String(message || '').trim(); if (!text) return null;
     const now = this.now(), classification = noticeKind(text, tone), aggregate = ['rewards', 'progress', 'craft'].includes(classification.kind);
+    const receiptId = ++this.receiptSerial; this.revision++;
+    this.advance();
+    const remember = entry => {
+      entry.receiptId = receiptId;
+      this.history = [entry, ...this.history.filter(previous => previous !== entry)].slice(0, this.historyLimit);
+    };
     // Held buttons must not keep the same warning visible indefinitely.
     const duplicate = this.history.find(entry => entry.messages.length === 1 && entry.messages[0] === text && now - entry.updated < 6500);
-    if (duplicate && !aggregate) { duplicate.count++; duplicate.updated = now; if (duplicate.kind !== 'error') duplicate.text = noticeText(duplicate); return duplicate; }
+    if (duplicate && !aggregate) { duplicate.count++; duplicate.updated = now; if (duplicate.kind !== 'error') duplicate.text = noticeText(duplicate); remember(duplicate); return duplicate; }
     const merge = [this.active, ...this.pending].find(entry => entry && entry.kind === classification.kind && now - entry.updated < 1400 && (aggregate || entry.messages[0] === text));
     if (merge) {
       merge.count++; if (!merge.messages.includes(text)) merge.messages.push(text);
       merge.messages = merge.messages.slice(-6); merge.updated = now;
+      merge.fullMessages.push(text); merge.fullMessages = merge.fullMessages.slice(-80);
       merge.xp += amount(text, 'EP'); merge.gold += amount(text, 'Gold');
       if (tone === 'loot' && classification.kind === 'rewards') { merge.finds++; merge.latestFind = text.replace(/ gefunden$/, ''); }
-      merge.text = noticeText(merge); return merge;
+      merge.text = noticeText(merge); remember(merge); return merge;
     }
-    const entry = { id: ++this.serial, ...classification, tone, messages: [text], text, count: 1, created: now, updated: now,
-      readyAt: now + (aggregate ? 250 : 0), expiresAt: now + (classification.priority >= 70 ? 45000 : 12000),
+    const entry = { id: ++this.serial, receiptId, ...classification, tone, messages: [text], fullMessages: [text], text, count: 1, created: now, updated: now,
+      readyAt: now + (aggregate ? 250 : 0), expiresAt: now + 4000,
       xp: amount(text, 'EP'), gold: amount(text, 'Gold'), finds: tone === 'loot' && classification.kind === 'rewards' ? 1 : 0,
       latestFind: tone === 'loot' && classification.kind === 'rewards' ? text.replace(/ gefunden$/, '') : null };
     this.history.unshift(entry); this.history.length = Math.min(this.history.length, this.historyLimit);
-    if (this.active && (entry.priority > this.active.priority || entry.kind === 'error' && this.active.kind === 'error')) {
-      if (this.active.priority >= 70 && this.active.kind !== 'error') this.pending.push(this.active);
+    if (this.active && entry.priority >= this.active.priority) {
       this.active = null;
     }
-    this.pending.push(entry); this.pending.sort((a, b) => b.priority - a.priority || a.id - b.id);
+    // Obsolete progress remains readable in history, without replaying later.
+    this.pending = this.pending.filter(previous => previous.kind !== entry.kind || aggregate);
+    this.pending.push(entry); this.pending.sort((a, b) => b.priority - a.priority || b.id - a.id);
     this.pending.length = Math.min(this.pending.length, this.limit);
     this.advance(); return entry;
   }
@@ -71,7 +80,11 @@ export class NoticeQueue {
     this.pending = this.pending.filter(entry => now < entry.expiresAt);
     if (!this.active) {
       const index = this.pending.findIndex(entry => now >= entry.readyAt);
-      if (index >= 0) { this.active = this.pending.splice(index, 1)[0]; this.active.visibleUntil = now + (this.active.priority >= 70 ? 5200 : 3000); }
+      if (index >= 0) {
+        this.active = this.pending.splice(index, 1)[0];
+        const duration = this.active.priority >= 90 ? 4000 : this.active.priority >= 70 ? 3200 : 3000;
+        this.active.visibleUntil = Math.min(this.active.expiresAt, now + duration);
+      }
     }
     return this.active;
   }

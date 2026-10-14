@@ -20,10 +20,10 @@ game.onSound=(event,details)=>audio.play(event,details);
 
 const canvas=document.getElementById('world');
 const keyboardKeys=new Set(),touch=new MobileInput();
-const blocked=()=>!game.started||game.paused||Boolean(ui.currentPanel)||network.online&&!network.connected||!document.getElementById('welcome-overlay').hidden;
+const blocked=()=>!game.started||game.paused||Boolean(ui.currentPanel)||ui.informationOpen||network.online&&!network.connected||!document.getElementById('welcome-overlay').hidden;
 const touchControls=bindMobileControls(document.querySelector('.touch-controls'),touch,{isBlocked:blocked,onPress:()=>audio.unlock()});
 let attackRepeat=0;
-const syncKeys=()=>{game.keys.clear();for(const key of keyboardKeys)game.keys.add(key);for(const key of touch.keys())game.keys.add(key);};
+const syncKeys=()=>{game.keys.clear();if(blocked())return;for(const key of keyboardKeys)game.keys.add(key);for(const key of touch.keys())game.keys.add(key);};
 const clearInput=()=>{keyboardKeys.clear();touchControls.clear();game.keys.clear();game.aim=null;attackRepeat=0;};
 ui.onInputReset=clearInput;
 network.onWorldChange=clearInput;
@@ -46,15 +46,16 @@ function performAction(action,autoAim=false) {
   }else game.action(action);
 }
 const actionKeys={j:'attack',' ':'dash',q:'bolt','1':'bolt','2':'nova','3':'skill0','4':'skill1',f:'nova',r:'potion',e:'interact'};
-const panelKeys={i:'inventory',t:'skills',c:'character',m:'map',l:'journal',b:'crafting',p:'party',u:'dungeons',v:'bestiary',h:'interactions',n:'journey',o:'adventures'};
+const panelKeys={i:'inventory',t:'skills',c:'character',m:'map',l:'journal',b:'crafting',p:'party',u:'dungeons',v:'bestiary',n:'journey',o:'adventures'};
 document.addEventListener('keydown',event=>{
   if(event.target.matches('input,textarea,select,[contenteditable="true"]')) return;
-  if(event.target.closest('button')&&(ui.currentPanel||!game.started)&&[' ','Enter'].includes(event.key))return;
+  if(event.target.closest('button')&&[' ','Enter'].includes(event.key))return;
   const key=event.key.toLowerCase();
-  if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(key)) event.preventDefault();
-  if(key==='escape') { ui.togglePanel('settings');clearInput();return; }
+  if(key==='escape') { if(ui.informationOpen)ui.closeInformation();else ui.togglePanel('settings');clearInput();return; }
+  if(!event.repeat&&key==='h'&&game.started) { ui.toggleInformation();clearInput();return; }
   if(!event.repeat&&panelKeys[key]&&game.started) { ui.togglePanel(panelKeys[key]);clearInput();return; }
   if(blocked()) return;
+  if([' ','arrowup','arrowdown','arrowleft','arrowright'].includes(key)) event.preventDefault();
   keyboardKeys.add(key);syncKeys();
   if(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright'].includes(key)) game.aim=null;
   if(!event.repeat&&actionKeys[key]) performAction(actionKeys[key]);
@@ -90,7 +91,7 @@ function frame(now) {
     network.update(dt);
     const dx=(game.keys.has('d')||game.keys.has('arrowright')?1:0)-(game.keys.has('a')||game.keys.has('arrowleft')?1:0),dy=(game.keys.has('s')||game.keys.has('arrowdown')?1:0)-(game.keys.has('w')||game.keys.has('arrowup')?1:0);
     const angle=game.aim?Math.atan2(game.aim.y-game.player.y,game.aim.x-game.player.x):dx||dy?Math.atan2(dy,dx):game.player.face;
-    network.sendInput(ui.currentPanel?[]:game.keys,angle);
+    network.sendInput(blocked()?[]:game.keys,angle);
   } else game.update(dt);
   audio.update?.({regionId:game.regionAt().id,dungeonId:game.dungeonInstance?.id||null,boss:!!game.dungeonInstance?.bossEngaged&&!game.dungeonInstance?.bossDefeated||game.world.enemies.some(e=>e.alive&&e.aggro&&(ENEMY_TYPES[e.type]?.boss||e.boss||e.bossVariant)&&Math.hypot(e.x-game.player.x,e.y-game.player.y)<650),pvp:game.worldMode==='pvp'});
   renderer.draw(game,dt);
