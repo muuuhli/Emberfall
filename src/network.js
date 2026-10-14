@@ -7,7 +7,7 @@ export function invitationCode(pageUrl=globalThis.location?.href||'') {
   try{const code=new URL(pageUrl).searchParams.get('join')?.trim().toUpperCase();return /^[A-F0-9]{8}$/.test(code||'')?code:null;}catch{return null;}
 }
 const INPUT_KEYS=new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
-const REMOTE_METHODS=['questAccept','questTurnIn','learn','learnAbility','learnTechniqueSpecialization','selectTechniqueSpecialization','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward'];
+const REMOTE_METHODS=['questAccept','questTurnIn','learn','learnAbility','learnTechniqueSpecialization','selectTechniqueSpecialization','setAbilityLoadout','useLearnedAbility','equip','unequip','pickupLoot','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward'];
 const PERSONAL_FIELDS=['inventory','resources','equipment','generatedItems','lootPity','lootSerial','skills','learnedAbilities','abilityLoadout','techniqueSpecializations','questState','discovered','unlockedShrines','flags','ledger','kills','cooldowns','playTime','dead','classId','dungeonProgress','dungeonRecords','contracts','professionXp','buffs','itemFlags','stash','loadouts','trackedQuestId','waypoint','journey','endgame','deathPenalty'];
 
 /** Browser transport; the server owns combat, progression, drops and movement. */
@@ -224,7 +224,10 @@ export class NetworkClient {
     this.roomCode=snapshot.roomCode;this.playerId=snapshot.playerId;this._hasSnapshot=true;this._worldContext=context;
     for(const event of snapshot.events||[]) {
       if(event.id<=this._lastEventId)continue;this._lastEventId=event.id;
-      if(event.kind==='notice')game.onNotice(event.text,event.tone);
+      if(event.kind==='notice'){
+        if(typeof event.itemId==='string'&&event.itemId.length<=120&&game.item(event.itemId)&&game.inventory[event.itemId]>0)game.onNotice(event.text,event.tone,event.itemId);
+        else game.onNotice(event.text,event.tone);
+      }
       if(event.kind==='sound')game.onSound(event.name);
       if(event.kind==='dialogue')game.onDialogue(event.npc);
       if(event.kind==='death')game.onDeath();

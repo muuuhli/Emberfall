@@ -42,13 +42,18 @@ test('fixed edge notices suppress ordinary arena updates and still show genuine 
   const ui=view(),appended=[];ui.game.worldMode='pvp';ui.game.pvp={duel:{state:'finished'}};
   ui.notices=[];ui.elements={'notice-stack':{appendChild:notice=>appended.push(notice),setAttribute(){}}};
   const originalDocument=globalThis.document,originalTimeout=globalThis.setTimeout;
-  globalThis.document={getElementById:()=>null,querySelectorAll:()=>[],createElement:()=>{const text={textContent:''};return {classList:{add(){}},querySelector:()=>text,get textContent(){return text.textContent;},remove(){this.removed=true;}};}};
+  globalThis.document={getElementById:()=>null,querySelectorAll:()=>[],createElement:()=>{
+    const text={textContent:''},art={dataset:{},innerHTML:''},inspect={dataset:{},setAttribute(){}};
+    const parts={'.notice-text':text,'.notice-item-art':art,'.notice-inspect':inspect};
+    return {classList:{add(){}},querySelector:selector=>parts[selector]||null,get textContent(){return text.textContent;},remove(){this.removed=true;}};
+  }};
   globalThis.setTimeout=()=>0;
   try{
     for(const tone of ['info','quest','success'])GameUI.prototype.showNotice.call(ui,'Duell beendet; deine Reise bleibt erhalten.',tone);
     assert.equal(appended.length,0);
     GameUI.prototype.showNotice.call(ui,'Die Rückkehr konnte nicht ausgeführt werden.','error');
     assert.equal(appended.length,1);assert.equal(appended[0].className,'notice error');
+    assert.equal(appended[0].querySelector('.notice-item-art').hidden,true);assert.equal(appended[0].querySelector('.notice-inspect').hidden,true);
     GameUI.prototype.showNotice.call(ui,'Versuche die Rückkehr erneut.','error');
     assert.equal(ui.notices.length,1);assert.equal(appended[0].removed,true);assert.equal(ui.notices[0].textContent,'Versuche die Rückkehr erneut.');
   }finally{globalThis.document=originalDocument;globalThis.setTimeout=originalTimeout;}

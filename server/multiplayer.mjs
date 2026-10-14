@@ -16,7 +16,7 @@ import { AccountManager } from './accounts.mjs';
 
 const KEYS = new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
 const ACTIONS = new Set(['attack','dash','bolt','nova','potion','interact','primary','secondary','ultimate']);
-const METHODS = new Set(['questAccept','questTurnIn','learn','learnAbility','learnTechniqueSpecialization','selectTechniqueSpecialization','setAbilityLoadout','useLearnedAbility','equip','unequip','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward','setSetting']);
+const METHODS = new Set(['questAccept','questTurnIn','learn','learnAbility','learnTechniqueSpecialization','selectTechniqueSpecialization','setAbilityLoadout','useLearnedAbility','equip','unequip','pickupLoot','buy','sell','consume','craft','travel','respawn','enterDungeon','exitDungeon','leaveDungeon','attune','salvage','socket','upgradeItem','acceptContract','turnInContract','cancelContract','interactWorldObject','setItemFlag','depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','respecTalents','trackQuest','setWaypoint','claimAchievement','selectCompanion','chooseMastery','interactWorldEvent','claimWorldEvent','pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn','startHunt','abandonHunt','claimHunt','redeemHuntReward','setSetting']);
 const PVP_METHODS = new Set(['pvpInvite','pvpAccept','pvpDecline','pvpCancel','pvpForfeit','pvpReturn']);
 const SHOP_STOCK = {
   elin:new Set(['forest_blade','sentinel_mail']),
@@ -95,7 +95,7 @@ export class MultiplayerHub {
     game.player.name=cleanName(playerName,'Reisender');game.player.id=randomUUID();
     game.classId=classId;game.started=true;game.paused=false;game.dead=false;game.storage=null;
     const member={id:game.player.id,token:randomBytes(32).toString('base64url'),accountId,membershipVersion:0,game,room,active:true,streams:new Set(),events:[],eventSequence:0,lastSeen:this.clock(),lastInput:this.clock(),windowAt:this.clock(),windowCommands:0,layoutKey:null,aimAngle:game.player.face};
-    game.onNotice=(text,tone='info')=>this._event(member,{kind:'notice',text,tone});
+    game.onNotice=(text,tone='info',itemId=null)=>this._event(member,{kind:'notice',text,tone,...(typeof itemId==='string'&&itemId.length<=120&&game.item(itemId)&&game.inventory[itemId]>0?{itemId}:{})});
     game.onSound=name=>this._event(member,{kind:'sound',name});
     game.onDialogue=npc=>this._event(member,{kind:'dialogue',npc});
     game.onDeath=()=>{this._event(member,{kind:'death'});this.persist();};
@@ -638,7 +638,7 @@ export class MultiplayerHub {
         const [key,value]=command.args;
         if(command.args.length!==2||typeof key!=='string'||(!(['sound','shake','reducedMotion'].includes(key)&&typeof value==='boolean')&&!(['masterVolume','musicVolume','effectsVolume'].includes(key)&&Number.isFinite(value)&&value>=0&&value<=1)))throw new HttpError(400,'Ungültige Audio- oder Darstellungsoption.');
       }
-      if(['learn','learnTechniqueSpecialization','interactWorldObject'].includes(command.name)&&(command.args.length!==1||typeof command.args[0]!=='string'))throw new HttpError(400,'Diese Aktion benötigt eine bekannte Kennung.');
+      if(['learn','learnTechniqueSpecialization','interactWorldObject','pickupLoot'].includes(command.name)&&(command.args.length!==1||typeof command.args[0]!=='string'||command.name==='pickupLoot'&&!command.args[0].length))throw new HttpError(400,'Diese Aktion benötigt eine bekannte Kennung.');
       if(['depositItem','withdrawItem','saveLoadout','applyLoadout','deleteLoadout','trackQuest','claimAchievement','chooseMastery','claimWorldEvent','startHunt','abandonHunt','claimHunt','redeemHuntReward'].includes(command.name)&&(command.args.length!==1||typeof command.args[0]!=='string'))throw new HttpError(400,'Diese Aktion benötigt eine bekannte Kennung.');
       if(['selectCompanion','selectTechniqueSpecialization'].includes(command.name)&&(command.args.length!==1||command.args[0]!==null&&typeof command.args[0]!=='string')||command.name==='respecTalents'&&command.args.length!==0||['setItemFlag','setWaypoint'].includes(command.name)&&(command.args.length!==2||command.args.some(value=>typeof value!=='string'))||command.name==='interactWorldEvent'&&(command.args.length<1||command.args.some(value=>typeof value!=='string')))throw new HttpError(400,'Ungültige Parameter für diese Reiseaktion.');
       if(command.name==='setItemFlag'&&!['favorite','locked'].includes(command.args[1])||command.name==='setWaypoint'&&!['npc','shrine','quest','event','interaction','dungeon','region','clear'].includes(command.args[0]))throw new HttpError(400,'Unbekannte Markierung.');

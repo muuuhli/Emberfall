@@ -12,7 +12,7 @@ const network=new NetworkClient(game,{baseUrl:readPreferredServerAddress()});gam
 const renderer=new Renderer(document.getElementById('world'),game.world);
 const ui=new GameUI(game);
 const audio=new GameAudio(game);
-game.onNotice=(text,tone)=>ui.showNotice(text,tone);
+game.onNotice=(text,tone,itemId)=>ui.showNotice(text,tone,itemId);
 game.onDialogue=npc=>ui.showDialogue(npc);
 game.onDeath=()=>ui.showDeath();
 game.onVictory=()=>ui.showVictory();

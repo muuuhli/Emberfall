@@ -8,6 +8,8 @@ import { drawPixelTree, drawPixelRock, drawPixelEnemy, drawPixelCompanion, drawP
 import { drawRaidObjective, RAID_OBJECTIVE_HEIGHT, RAID_WARNING_COLOR, RAID_SAFE_COLOR } from './raid-visuals.js';
 import { dungeonRouteSummary, routeHazardShapes } from './dungeon-routes.js';
 import { pveLevelGap } from './balance.js';
+import { drawPixelItem } from './item-art.js';
+import { RARITIES, equipmentRequiredLevel } from './loot.js';
 
 export const TERRAIN_CHUNK_SIZE = 512;
 export const TERRAIN_CACHE_LIMIT = 64;
@@ -357,6 +359,7 @@ export class Renderer {
         this.encounterShapes(c,e,game,true);
       }else if(e.phase==='windup'&&this.visible(e.telegraphX??e.x,e.telegraphY??e.y,Math.max(100,e.telegraphRange||0,e.telegraphChargeDistance||0,e.telegraphExtraFan?.range||0)))this.telegraph(c,e,game);
     }
+    this.floorLootFocusGame=game;this.floorLootFocus=this.closestFloorLoot(game);
     for(const d of game.drops||[])if(this.visible(d.x,d.y))this.drop(c,d,game);
     const actors=[];
     this.interactionFocusGame=game;this.interactionFocus=typeof game.nearby==='function'?game.nearby()?.object?.id:null;
@@ -1048,12 +1051,45 @@ export class Renderer {
       if(e.telegraphMechanic&&!game.dungeonInstance?.raidEncounter)this.label(c,e.telegraphMechanic==='stack'?`Zusammen · mindestens ${e.stackRequired||2}`:'Auseinander · Fläche verlassen',center.x,center.y-radius-18,color,10);
     }
   }
+  closestFloorLoot(game) {
+    let selected=null,best=Infinity;
+    for(const drop of game.drops||[]) {
+      if(!(drop.life>0)||!Number.isFinite(drop.x)||!Number.isFinite(drop.y))continue;
+      const distance=Math.hypot(drop.x-game.player.x,drop.y-game.player.y);
+      if(distance>=180)continue;
+      const own=!drop.ownerId||drop.ownerId===(game.player.id||'local'),score=distance+(own?0:180);
+      if(score<best){best=score;selected=drop;}
+    }
+    return selected;
+  }
   drop(c,d,game) {
-    const item=d.loot||game.item?.(d.item),rarity=item?.rarity;
-    const color=d.gold?'#e4bd6c':({common:'#d4d1bb',uncommon:'#98bf83',rare:'#83bbe3',epic:'#c299e5',legendary:'#edb477',mythic:'#eca4b1'})[rarity]||'#9bbbde';glow(c,d.x,d.y-7,rarity==='legendary'?44:25,`${color}24`);ellipse(c,d.x,d.y+4,9,3,'#182d2c60');
-    if(d.gold){ellipse(c,d.x,d.y-4,5,4,'#d8b970');ellipse(c,d.x,d.y-7,5,4,'#e6cb85');}else poly(c,[[d.x,d.y-16],[d.x-7,d.y-7],[d.x,d.y+1],[d.x+7,d.y-7]],color,'#27464e',1);
-    const tall=['epic','legendary','mythic'].includes(rarity);line(c,[[d.x,d.y-18],[d.x,d.y-(tall?80:39)-Math.sin(game.time*2)*3]],`${color}70`,tall?3:2);
-    if(item?.name&&Math.hypot(d.x-game.player.x,d.y-game.player.y)<180)this.label(c,item.name,d.x,d.y-(tall?91:50),color,10);
+    if(d.life<=0)return;
+    const item=d.loot||game.item?.(d.item),rarity=item?.rarity||'common';
+    const rank=Math.max(0,['common','uncommon','rare','epic','legendary'].indexOf(rarity));
+    const own=!d.ownerId||d.ownerId===(game.player.id||'local'),color=RARITIES[rarity]?.color||'#bdc3b0';
+    const x=Math.round(d.x),y=Math.round(d.y),moving=!game.settings?.reducedMotion;
+    const landing=Number.isFinite(d.pickupAfter)?game.time-d.pickupAfter+.55:.55;
+    const lift=moving&&landing>=0&&landing<.55?Math.round(Math.sin(landing/.55*Math.PI)*10):0;
+    const height=rank>=3?60:rank>=1?38:0;
+    c.save();c.globalAlpha*=own?1:.38;
+    rect(c,x-13,y+2,26,3,'#151b2488');rect(c,x-9,y+5,18,2,'#151b2455');
+    if(height){
+      c.save();c.globalAlpha*=.28;
+      rect(c,x-2,y-height-18,4,height,color);rect(c,x-5,y-height-9,10,height-16,color);c.restore();
+      for(let i=0;i<rank;i++){
+        const phase=moving?(game.time*.65+i*.27)%1:i/(rank+1),sx=x+(i%2?-1:1)*(8+i*3),sy=Math.round(y-20-phase*height);
+        rect(c,sx,sy,2,2,color);if(rank>=3){rect(c,sx-1,sy+1,4,1,color);rect(c,sx+1,sy-1,1,4,color);}
+      }
+    }
+    if(d.gold){rect(c,x-5,y-9,10,6,'#987343');rect(c,x-4,y-11,8,5,'#dcb56e');rect(c,x-3,y-11,5,2,'#f0d99f');}
+    else drawPixelItem(c,item,x,y-13-lift,{size:32});
+    if(rank>=2){rect(c,x-18,y+1,5,2,color);rect(c,x+13,y+1,5,2,color);rect(c,x-1,y+7,2,2,color);}
+    c.restore();
+    if(item?.name&&(this.floorLootFocusGame!==game||this.floorLootFocus===d)&&Math.hypot(d.x-game.player.x,d.y-game.player.y)<180){
+      const name=item.name.length>40?item.name.slice(0,39)+'…':item.name;
+      this.label(c,name,d.x,d.y-height-43,own?color:'#8f919f',10);
+      this.label(c,own?`${RARITIES[rarity]?.name||'Beute'} · Stufe ${equipmentRequiredLevel(item)}`:'Für Gefährten',d.x,d.y-height-30,own?'#d7d0ba':'#8f919f',8);
+    }
   }
   projectile(c,p,game) {
     const hostile=p.hostile||p.owner==='enemy'||p.type==='enemy',actor=(game.partyPlayers||[]).find(a=>(a.player||a).id===p.actorId),classId=(actor?.player||actor)?.classId||game.player.classId;

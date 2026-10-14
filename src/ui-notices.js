@@ -2,6 +2,7 @@
 const number = value => Number(String(value).replace(/\./g, '').replace(',', '.')) || 0;
 const amount = (text, unit) => [...text.matchAll(new RegExp(`\\+([\\d.,]+)\\s*${unit}\\b`, 'g'))].reduce((sum, match) => sum + number(match[1]), 0);
 const failure = /nicht genug|keine Heiltränke|nicht möglich|konnte nicht|fehlen noch|Gepäck ist voll|beschädigt|nicht kompatibel/i;
+const itemReference = value => typeof value === 'string' && /^[a-zA-Z0-9:_-]{1,120}$/.test(value) ? value : null;
 
 export function noticeKind(message, tone = 'info') {
   if (tone === 'error' || failure.test(message)) return { kind: 'error', priority: 100 };
@@ -39,9 +40,10 @@ export class NoticeQueue {
   }
   clear() { this.active = null; this.pending = []; }
   dismiss() { this.active = null; this.advance(); }
-  push(message, tone = 'info') {
+  push(message, tone = 'info', itemId = null) {
     const text = String(message || '').trim(); if (!text) return null;
     const now = this.now(), classification = noticeKind(text, tone), aggregate = ['rewards', 'progress', 'craft'].includes(classification.kind);
+    const referencedItem = itemReference(itemId);
     const receiptId = ++this.receiptSerial; this.revision++;
     this.advance();
     const remember = entry => {
@@ -50,17 +52,18 @@ export class NoticeQueue {
     };
     // Held buttons must not keep the same warning visible indefinitely.
     const duplicate = this.history.find(entry => entry.messages.length === 1 && entry.messages[0] === text && now - entry.updated < 6500);
-    if (duplicate && !aggregate) { duplicate.count++; duplicate.updated = now; if (duplicate.kind !== 'error') duplicate.text = noticeText(duplicate); remember(duplicate); return duplicate; }
+    if (duplicate && !aggregate) { duplicate.count++; duplicate.updated = now; if (referencedItem) duplicate.itemId = referencedItem; if (duplicate.kind !== 'error') duplicate.text = noticeText(duplicate); remember(duplicate); return duplicate; }
     const merge = [this.active, ...this.pending].find(entry => entry && entry.kind === classification.kind && now - entry.updated < 1400 && (aggregate || entry.messages[0] === text));
     if (merge) {
       merge.count++; if (!merge.messages.includes(text)) merge.messages.push(text);
       merge.messages = merge.messages.slice(-6); merge.updated = now;
       merge.fullMessages.push(text); merge.fullMessages = merge.fullMessages.slice(-80);
+      if (referencedItem) merge.itemId = referencedItem;
       merge.xp += amount(text, 'EP'); merge.gold += amount(text, 'Gold');
       if (tone === 'loot' && classification.kind === 'rewards') { merge.finds++; merge.latestFind = text.replace(/ gefunden$/, ''); }
       merge.text = noticeText(merge); remember(merge); return merge;
     }
-    const entry = { id: ++this.serial, receiptId, ...classification, tone, messages: [text], fullMessages: [text], text, count: 1, created: now, updated: now,
+    const entry = { id: ++this.serial, receiptId, ...classification, tone, itemId: referencedItem, messages: [text], fullMessages: [text], text, count: 1, created: now, updated: now,
       readyAt: now + (aggregate ? 250 : 0), expiresAt: now + 4000,
       xp: amount(text, 'EP'), gold: amount(text, 'Gold'), finds: tone === 'loot' && classification.kind === 'rewards' ? 1 : 0,
       latestFind: tone === 'loot' && classification.kind === 'rewards' ? text.replace(/ gefunden$/, '') : null };

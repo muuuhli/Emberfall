@@ -5,7 +5,8 @@
     "world": "Original pixel-cluster trees, rocks and enemy silhouettes over a fixed-resolution Canvas fantasy landscape; 39-color world sprite palette",
     "interface": "dark moss, aged brass, warm ivory, restrained serif typography",
     "filtering": "Native 32x48 character cells, integer 2x nearest-neighbor world display, pixel-snapped camera; full-resolution text overlay",
-    "characters": "Eight original 2D pixel class silhouettes and 18 NPC identities; shared 25-color indexed palette, four directions and eight poses per direction"
+    "characters": "Eight original 2D pixel class silhouettes and 18 NPC identities; shared 25-color indexed palette, four directions and eight poses per direction",
+    "items": "Original 32x32 grid-authored pixel objects, shared indexed 25-color palette; identical integer runs for Canvas floor loot and crisp SVG inventory art; finite rarity, material and elemental variants"
   },
   "assets": [
     {
@@ -397,9 +398,52 @@
       "license": "MIT / original project artwork",
       "bytes": 5211,
       "sha256": "e35bd4769065bcf0fd5e8ade49e90af37779001a3d1d2eb6c92b1ad2ed26264d"
+    },
+    {
+      "file": "item-art-preview.png",
+      "role": "all 52 original item families at native and 3x size",
+      "source": "Original Emberfall grid-authored integer pixel objects",
+      "published": false,
+      "license": "Original project artwork; repository license applies",
+      "bytes": 64042,
+      "sha256": "ec328db7d513916042b6735b36b7b16d2547decd3f80ae6aa58e52bbcb04cebc",
+      "status": "Native contact sheet and integrated desktop/mobile item pipeline visually inspected; all families found in gameplay is not claimed",
+      "width": 1024,
+      "height": 1404,
+      "format": "PNG"
+    },
+    {
+      "file": "item-art-manifest.json",
+      "role": "pixel item family mapping, cache budget and QA provenance",
+      "source": "Original Emberfall grid-authored integer pixel objects",
+      "published": false,
+      "license": "Original project artwork; repository license applies",
+      "bytes": 61235,
+      "sha256": "ce540d4d055d170d8292c16fb4b680528ec50998eb90e6948f6d39a6c9d1c934",
+      "status": "Native contact sheet and integrated desktop/mobile item pipeline visually inspected; all families found in gameplay is not claimed"
+    },
+    {
+      "file": "item-art-direction.md",
+      "role": "original pixel item visual and runtime brief",
+      "source": "Original Emberfall grid-authored integer pixel objects",
+      "published": false,
+      "license": "Original project artwork; repository license applies",
+      "bytes": 6092,
+      "sha256": "cd1bc269df8d3e1dc1627fbfa625a123094c4a9ba9b606fb318947fbc916c2d3",
+      "status": "Native contact sheet and integrated desktop/mobile item pipeline visually inspected; all families found in gameplay is not claimed"
+    },
+    {
+      "file": "../src/item-art.js",
+      "role": "shared integer pixel item renderer for Canvas and inline SVG",
+      "source": "Original Emberfall grid-authored integer pixel objects",
+      "published": true,
+      "license": "Original project artwork; repository license applies",
+      "bytes": 40579,
+      "sha256": "7095904204294d11505dae8137dddade320e65123d9c56c287547698ddeaf132",
+      "status": "Native contact sheet and integrated desktop/mobile item pipeline visually inspected; all families found in gameplay is not claimed"
     }
   ],
-  "version": "13.0.1",
+  "version": "14.0.0",
   "updated": "2026-10-14",
   "developmentStatus": {
     "releaseState": "playable development build",
@@ -446,7 +490,10 @@
       "crossDeviceCharacterProgress": true,
       "canonicalAccountCharacter": true,
       "groupInvitationLinks": true,
-      "ipHttpsAccountDeployment": true
+      "ipHttpsAccountDeployment": true,
+      "pixelItemFamilies": 52,
+      "itemInspectionFromNotices": true,
+      "personalGroundLootInteraction": true
     },
     "campaignHoursTarget": 200,
     "fullCampaignHoursVerified": 0,

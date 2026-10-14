@@ -1,0 +1,3019 @@
+{
+  "version": 1,
+  "source": "src/item-art.js",
+  "format": "original integer pixel runs rendered identically to inline SVG and Canvas",
+  "nativeSize": [
+    32,
+    32
+  ],
+  "pivot": [
+    16,
+    16
+  ],
+  "transparent": true,
+  "palette": [
+    null,
+    "#252a2b",
+    "#3c4145",
+    "#594139",
+    "#815a40",
+    "#b17c52",
+    "#dcad79",
+    "#f0d29a",
+    "#f4e4ba",
+    "#997443",
+    "#c5a45b",
+    "#efd086",
+    "#51626b",
+    "#829797",
+    "#b8c9bf",
+    "#3f593e",
+    "#668253",
+    "#9fa76b",
+    "#703a3c",
+    "#ab5145",
+    "#d47b52",
+    "#396777",
+    "#76a2ac",
+    "#514565",
+    "#8c759c"
+  ],
+  "cache": {
+    "runs": 192,
+    "svgBodies": 192,
+    "browserBitmaps": 128,
+    "bitmapRgbaBytes": 524288
+  },
+  "families": [
+    {
+      "family": "sword",
+      "representative": {
+        "id": "iron_longsword"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "daggers",
+      "representative": {
+        "id": "twilight_daggers"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "axe",
+      "representative": {
+        "id": "vanguard_axe"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "hammer",
+      "representative": {
+        "id": "oath_hammer"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "spear",
+      "representative": {
+        "id": "grave_halberd"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "flail",
+      "representative": {
+        "id": "reliquary_flail"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "bow",
+      "representative": {
+        "id": "greenwood_bow"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "crossbow",
+      "representative": {
+        "id": "witchhunter_crossbow"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "staff",
+      "representative": {
+        "id": "ember_wand"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "scepter",
+      "representative": {
+        "id": "rime_scepter"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "grimoire",
+      "representative": {
+        "id": "ash_tongue_grimoire"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "lantern",
+      "representative": {
+        "id": "funeral_lantern"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "candle",
+      "representative": {
+        "id": "crypt_candle"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "censer",
+      "representative": {
+        "id": "pyre_censer"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "bell",
+      "representative": {
+        "id": "bell_of_embers"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "hourglass",
+      "representative": {
+        "id": "reaper_hourglass"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "orb",
+      "representative": {
+        "id": "soul_focus"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "mirror",
+      "representative": {
+        "id": "obsidian_soulmirror"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "plate",
+      "representative": {
+        "id": "iron_scale"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "leather",
+      "representative": {
+        "id": "traveler_coat"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "robe",
+      "representative": {
+        "id": "linen_robes"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "helm",
+      "representative": {
+        "id": "relic_helmet_1_1"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "hood",
+      "representative": {
+        "id": "relic_helmet_1_2"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "circlet",
+      "representative": {
+        "id": "last_winter_crown"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "gauntlets",
+      "representative": {
+        "id": "relic_gloves_1_1"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "gloves",
+      "representative": {
+        "id": "relic_gloves_1_2"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "wraps",
+      "representative": {
+        "id": "relic_gloves_1_3"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "sabatons",
+      "representative": {
+        "id": "relic_boots_1_1"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "boots",
+      "representative": {
+        "id": "relic_boots_1_2"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "slippers",
+      "representative": {
+        "id": "relic_boots_1_3"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "signet",
+      "representative": {
+        "id": "relic_ring_1_1"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "gem_ring",
+      "representative": {
+        "id": "relic_ring_1_2"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "band",
+      "representative": {
+        "id": "relic_ring_1_3"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "amulet",
+      "representative": {
+        "id": "ember_locket"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "tooth",
+      "representative": {
+        "id": "wolf_tooth"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "talisman",
+      "representative": {
+        "id": "warding_rune"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "chime",
+      "representative": {
+        "id": "wind_chime"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "lens",
+      "representative": {
+        "id": "sundial"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "potion",
+      "representative": {
+        "id": "heal_potion"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "elixir",
+      "representative": {
+        "id": "penitent_elixir"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "bread",
+      "representative": {
+        "id": "hearty_meal"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "stew",
+      "representative": {
+        "id": "mourning_stew"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "ration",
+      "representative": {
+        "id": "blackgrain_ration"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "log",
+      "representative": {
+        "id": "wood"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "ore",
+      "representative": {
+        "id": "ore"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "herb",
+      "representative": {
+        "id": "herb"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "crystal",
+      "representative": {
+        "id": "crystal"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "wheat",
+      "representative": {
+        "id": "wheat"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "seed",
+      "representative": {
+        "id": "seed"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "dust",
+      "representative": {
+        "id": "dust"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "gold",
+      "representative": {
+        "id": "gold"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    },
+    {
+      "family": "bag",
+      "representative": {
+        "id": "unknown-world-loot"
+      },
+      "frame": 0,
+      "frames": 1,
+      "collision": "none",
+      "nativeSize": [
+        32,
+        32
+      ],
+      "pivot": [
+        16,
+        16
+      ],
+      "filtering": "nearest",
+      "status": "native-preview-approved; system-integrated; individual-gameplay-drop-coverage-not-claimed"
+    }
+  ],
+  "canonicalItems": [
+    {
+      "id": "iron_longsword",
+      "family": "sword",
+      "material": "steel",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "oath_hammer",
+      "family": "hammer",
+      "material": "bronze",
+      "element": "holy",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "greenwood_bow",
+      "family": "bow",
+      "material": "wood",
+      "element": "nature",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "twilight_daggers",
+      "family": "daggers",
+      "material": "steel",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "ember_wand",
+      "family": "staff",
+      "material": "wood",
+      "element": "fire",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "rime_scepter",
+      "family": "scepter",
+      "material": "bronze",
+      "element": "frost",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "living_branch",
+      "family": "staff",
+      "material": "wood",
+      "element": "nature",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "soul_focus",
+      "family": "orb",
+      "material": "glass",
+      "element": "void",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "vanguard_axe",
+      "family": "axe",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "starfall_staff",
+      "family": "staff",
+      "material": "wood",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "moon_string",
+      "family": "bow",
+      "material": "wood",
+      "element": "none",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "void_fangs",
+      "family": "daggers",
+      "material": "steel",
+      "element": "void",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "sunforged_maul",
+      "family": "hammer",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "horizon_focus",
+      "family": "orb",
+      "material": "glass",
+      "element": "none",
+      "tier": 3,
+      "variant": 1
+    },
+    {
+      "id": "traveler_coat",
+      "family": "leather",
+      "material": "leather",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "iron_scale",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "linen_robes",
+      "family": "robe",
+      "material": "cloth",
+      "element": "none",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "hunter_vest",
+      "family": "leather",
+      "material": "leather",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "ritual_shroud",
+      "family": "robe",
+      "material": "cloth",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "bark_guard",
+      "family": "plate",
+      "material": "steel",
+      "element": "nature",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "frostweave",
+      "family": "robe",
+      "material": "cloth",
+      "element": "frost",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "ashen_plate",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "shadow_cloak",
+      "family": "robe",
+      "material": "cloth",
+      "element": "void",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "dawn_mantle",
+      "family": "robe",
+      "material": "cloth",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "storm_mail",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "eternal_carapace",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 3,
+      "variant": 1
+    },
+    {
+      "id": "ember_locket",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "fire",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "river_stone",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "wolf_tooth",
+      "family": "tooth",
+      "material": "bone",
+      "element": "none",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "warding_rune",
+      "family": "talisman",
+      "material": "bronze",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "harvest_talisman",
+      "family": "talisman",
+      "material": "bronze",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "soul_bead",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "void",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "wind_chime",
+      "family": "chime",
+      "material": "bronze",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "sundial",
+      "family": "lens",
+      "material": "glass",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "frost_heart",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "frost",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "blood_sigil",
+      "family": "talisman",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "astral_lens",
+      "family": "lens",
+      "material": "glass",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "world_seed",
+      "family": "talisman",
+      "material": "bronze",
+      "element": "none",
+      "tier": 3,
+      "variant": 1
+    },
+    {
+      "id": "grave_halberd",
+      "family": "spear",
+      "material": "steel",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "cinder_bulwark",
+      "family": "sword",
+      "material": "steel",
+      "element": "fire",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "mourning_axe",
+      "family": "axe",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "executioner_steel",
+      "family": "sword",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "reliquary_flail",
+      "family": "flail",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "raven_pike",
+      "family": "spear",
+      "material": "steel",
+      "element": "none",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "crypt_maul",
+      "family": "hammer",
+      "material": "steel",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "last_watch_glaive",
+      "family": "spear",
+      "material": "steel",
+      "element": "none",
+      "tier": 3,
+      "variant": 0
+    },
+    {
+      "id": "penitent_mace",
+      "family": "hammer",
+      "material": "steel",
+      "element": "holy",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "vigil_hammer",
+      "family": "hammer",
+      "material": "steel",
+      "element": "holy",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "martyr_brand",
+      "family": "staff",
+      "material": "wood",
+      "element": "fire",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "confessor_scepter",
+      "family": "scepter",
+      "material": "bronze",
+      "element": "holy",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "black_chapel_flail",
+      "family": "flail",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "cenotaph_maul",
+      "family": "hammer",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "ashen_benediction",
+      "family": "staff",
+      "material": "wood",
+      "element": "holy",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "judgement_cleaver",
+      "family": "axe",
+      "material": "steel",
+      "element": "holy",
+      "tier": 3,
+      "variant": 2
+    },
+    {
+      "id": "yew_funeral_bow",
+      "family": "bow",
+      "material": "wood",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "witchhunter_crossbow",
+      "family": "crossbow",
+      "material": "wood",
+      "element": "none",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "gallows_longbow",
+      "family": "bow",
+      "material": "wood",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "bonewind_arbalest",
+      "family": "crossbow",
+      "material": "bone",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "widow_string",
+      "family": "bow",
+      "material": "wood",
+      "element": "nature",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "iron_thicket_bow",
+      "family": "bow",
+      "material": "wood",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "eclipse_recurve",
+      "family": "bow",
+      "material": "wood",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "wild_hunt_repeater",
+      "family": "crossbow",
+      "material": "wood",
+      "element": "nature",
+      "tier": 3,
+      "variant": 1
+    },
+    {
+      "id": "gravedigger_shivs",
+      "family": "daggers",
+      "material": "steel",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "leech_kukris",
+      "family": "daggers",
+      "material": "steel",
+      "element": "void",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "raven_feather_knives",
+      "family": "daggers",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "hush_rapiers",
+      "family": "daggers",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "serpent_teeth",
+      "family": "daggers",
+      "material": "steel",
+      "element": "nature",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "hex_ritual_blades",
+      "family": "daggers",
+      "material": "steel",
+      "element": "none",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "iron_widow_sabres",
+      "family": "daggers",
+      "material": "steel",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "midnight_requiem",
+      "family": "daggers",
+      "material": "steel",
+      "element": "void",
+      "tier": 3,
+      "variant": 0
+    },
+    {
+      "id": "cinder_crozier",
+      "family": "staff",
+      "material": "wood",
+      "element": "fire",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "coal_heart_wand",
+      "family": "staff",
+      "material": "wood",
+      "element": "fire",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "pyre_censer",
+      "family": "censer",
+      "material": "bronze",
+      "element": "fire",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "hellglass_rod",
+      "family": "staff",
+      "material": "wood",
+      "element": "none",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "bell_of_embers",
+      "family": "bell",
+      "material": "bronze",
+      "element": "fire",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "furnace_spine",
+      "family": "staff",
+      "material": "wood",
+      "element": "fire",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "ash_tongue_grimoire",
+      "family": "grimoire",
+      "material": "leather",
+      "element": "none",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "sunless_pyrestaff",
+      "family": "staff",
+      "material": "wood",
+      "element": "fire",
+      "tier": 3,
+      "variant": 2
+    },
+    {
+      "id": "grave_rime_rod",
+      "family": "staff",
+      "material": "wood",
+      "element": "frost",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "mourning_ice_scepter",
+      "family": "scepter",
+      "material": "bronze",
+      "element": "frost",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "winter_bell",
+      "family": "bell",
+      "material": "bronze",
+      "element": "frost",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "black_ice_tome",
+      "family": "grimoire",
+      "material": "leather",
+      "element": "frost",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "glacier_bone_staff",
+      "family": "staff",
+      "material": "bone",
+      "element": "none",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "pale_tide_scepter",
+      "family": "scepter",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "hoarfrost_needle",
+      "family": "staff",
+      "material": "wood",
+      "element": "frost",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "last_winter_crown",
+      "family": "circlet",
+      "material": "cloth",
+      "element": "frost",
+      "tier": 3,
+      "variant": 1
+    },
+    {
+      "id": "gallows_root",
+      "family": "staff",
+      "material": "wood",
+      "element": "nature",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "bone_oak_crook",
+      "family": "staff",
+      "material": "bone",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "plague_bloom_wand",
+      "family": "staff",
+      "material": "wood",
+      "element": "nature",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "night_moss_focus",
+      "family": "orb",
+      "material": "glass",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "wolfmoon_branch",
+      "family": "staff",
+      "material": "wood",
+      "element": "nature",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "hollow_heart_staff",
+      "family": "staff",
+      "material": "wood",
+      "element": "none",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "thorn_covenant",
+      "family": "staff",
+      "material": "wood",
+      "element": "nature",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "withered_worldroot",
+      "family": "staff",
+      "material": "wood",
+      "element": "nature",
+      "tier": 3,
+      "variant": 0
+    },
+    {
+      "id": "funeral_lantern",
+      "family": "lantern",
+      "material": "bronze",
+      "element": "none",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "leech_bone_focus",
+      "family": "orb",
+      "material": "bone",
+      "element": "void",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "crypt_candle",
+      "family": "candle",
+      "material": "bone",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "obsidian_soulmirror",
+      "family": "mirror",
+      "material": "glass",
+      "element": "void",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "chains_of_confession",
+      "family": "flail",
+      "material": "steel",
+      "element": "nature",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "hollow_covenant_tome",
+      "family": "grimoire",
+      "material": "leather",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "reaper_hourglass",
+      "family": "hourglass",
+      "material": "bronze",
+      "element": "void",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "abyssal_oracle",
+      "family": "orb",
+      "material": "glass",
+      "element": "void",
+      "tier": 3,
+      "variant": 2
+    },
+    {
+      "id": "grave_heavy_1",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "grave_light_1",
+      "family": "leather",
+      "material": "leather",
+      "element": "nature",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "grave_ritual_1",
+      "family": "robe",
+      "material": "cloth",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "grave_heavy_2",
+      "family": "plate",
+      "material": "steel",
+      "element": "holy",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "grave_light_2",
+      "family": "leather",
+      "material": "leather",
+      "element": "nature",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "grave_ritual_2",
+      "family": "robe",
+      "material": "cloth",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "grave_heavy_3",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "grave_light_3",
+      "family": "leather",
+      "material": "leather",
+      "element": "nature",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "grave_ritual_3",
+      "family": "robe",
+      "material": "cloth",
+      "element": "frost",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "grave_heavy_4",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "grave_light_4",
+      "family": "leather",
+      "material": "leather",
+      "element": "nature",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "grave_ritual_4",
+      "family": "robe",
+      "material": "cloth",
+      "element": "holy",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "grave_heavy_5",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "grave_light_5",
+      "family": "leather",
+      "material": "leather",
+      "element": "nature",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "grave_ritual_5",
+      "family": "robe",
+      "material": "cloth",
+      "element": "holy",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "grave_heavy_6",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "grave_light_6",
+      "family": "leather",
+      "material": "leather",
+      "element": "nature",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "grave_ritual_6",
+      "family": "robe",
+      "material": "cloth",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "grave_heavy_7",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "grave_light_7",
+      "family": "leather",
+      "material": "leather",
+      "element": "nature",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "grave_ritual_7",
+      "family": "robe",
+      "material": "cloth",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "grave_heavy_8",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 3,
+      "variant": 0
+    },
+    {
+      "id": "grave_light_8",
+      "family": "leather",
+      "material": "leather",
+      "element": "nature",
+      "tier": 3,
+      "variant": 1
+    },
+    {
+      "id": "grave_ritual_8",
+      "family": "robe",
+      "material": "cloth",
+      "element": "none",
+      "tier": 3,
+      "variant": 2
+    },
+    {
+      "id": "grave_martial_charm_1",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "grave_arcane_charm_1",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "void",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "grave_ward_charm_1",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "grave_martial_charm_2",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "grave_arcane_charm_2",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "void",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "grave_ward_charm_2",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "holy",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "grave_martial_charm_3",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "grave_arcane_charm_3",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "frost",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "grave_ward_charm_3",
+      "family": "talisman",
+      "material": "bronze",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "grave_martial_charm_4",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "grave_arcane_charm_4",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "void",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "grave_ward_charm_4",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "grave_martial_charm_5",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "grave_arcane_charm_5",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "void",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "grave_ward_charm_5",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "grave_martial_charm_6",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "grave_arcane_charm_6",
+      "family": "lens",
+      "material": "glass",
+      "element": "void",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "grave_ward_charm_6",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "grave_martial_charm_7",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "grave_arcane_charm_7",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "void",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "grave_ward_charm_7",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "grave_martial_charm_8",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 3,
+      "variant": 0
+    },
+    {
+      "id": "grave_arcane_charm_8",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "void",
+      "tier": 3,
+      "variant": 1
+    },
+    {
+      "id": "grave_ward_charm_8",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 3,
+      "variant": 2
+    },
+    {
+      "id": "relic_helmet_1_1",
+      "family": "helm",
+      "material": "steel",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "relic_helmet_1_2",
+      "family": "hood",
+      "material": "leather",
+      "element": "none",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "relic_helmet_1_3",
+      "family": "circlet",
+      "material": "cloth",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "relic_helmet_2_1",
+      "family": "helm",
+      "material": "steel",
+      "element": "holy",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "relic_helmet_2_2",
+      "family": "hood",
+      "material": "leather",
+      "element": "none",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "relic_helmet_2_3",
+      "family": "circlet",
+      "material": "cloth",
+      "element": "holy",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "relic_helmet_3_1",
+      "family": "helm",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "relic_helmet_3_2",
+      "family": "hood",
+      "material": "leather",
+      "element": "none",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "relic_helmet_3_3",
+      "family": "circlet",
+      "material": "cloth",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "relic_helmet_4_1",
+      "family": "helm",
+      "material": "steel",
+      "element": "none",
+      "tier": 3,
+      "variant": 0
+    },
+    {
+      "id": "relic_helmet_4_2",
+      "family": "hood",
+      "material": "leather",
+      "element": "none",
+      "tier": 3,
+      "variant": 1
+    },
+    {
+      "id": "relic_helmet_4_3",
+      "family": "circlet",
+      "material": "cloth",
+      "element": "void",
+      "tier": 3,
+      "variant": 2
+    },
+    {
+      "id": "relic_gloves_1_1",
+      "family": "gauntlets",
+      "material": "steel",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "relic_gloves_1_2",
+      "family": "gloves",
+      "material": "leather",
+      "element": "none",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "relic_gloves_1_3",
+      "family": "wraps",
+      "material": "cloth",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "relic_gloves_2_1",
+      "family": "gauntlets",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "relic_gloves_2_2",
+      "family": "gloves",
+      "material": "leather",
+      "element": "none",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "relic_gloves_2_3",
+      "family": "wraps",
+      "material": "cloth",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "relic_gloves_3_1",
+      "family": "gauntlets",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "relic_gloves_3_2",
+      "family": "gloves",
+      "material": "leather",
+      "element": "none",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "relic_gloves_3_3",
+      "family": "wraps",
+      "material": "cloth",
+      "element": "void",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "relic_gloves_4_1",
+      "family": "gauntlets",
+      "material": "steel",
+      "element": "none",
+      "tier": 3,
+      "variant": 0
+    },
+    {
+      "id": "relic_gloves_4_2",
+      "family": "gloves",
+      "material": "leather",
+      "element": "none",
+      "tier": 3,
+      "variant": 1
+    },
+    {
+      "id": "relic_gloves_4_3",
+      "family": "wraps",
+      "material": "cloth",
+      "element": "none",
+      "tier": 3,
+      "variant": 2
+    },
+    {
+      "id": "relic_boots_1_1",
+      "family": "sabatons",
+      "material": "steel",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "relic_boots_1_2",
+      "family": "boots",
+      "material": "leather",
+      "element": "none",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "relic_boots_1_3",
+      "family": "slippers",
+      "material": "cloth",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "relic_boots_2_1",
+      "family": "sabatons",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "relic_boots_2_2",
+      "family": "boots",
+      "material": "leather",
+      "element": "none",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "relic_boots_2_3",
+      "family": "slippers",
+      "material": "cloth",
+      "element": "holy",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "relic_boots_3_1",
+      "family": "sabatons",
+      "material": "steel",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "relic_boots_3_2",
+      "family": "boots",
+      "material": "leather",
+      "element": "none",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "relic_boots_3_3",
+      "family": "slippers",
+      "material": "cloth",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "relic_boots_4_1",
+      "family": "sabatons",
+      "material": "steel",
+      "element": "none",
+      "tier": 3,
+      "variant": 0
+    },
+    {
+      "id": "relic_boots_4_2",
+      "family": "boots",
+      "material": "leather",
+      "element": "nature",
+      "tier": 3,
+      "variant": 1
+    },
+    {
+      "id": "relic_boots_4_3",
+      "family": "slippers",
+      "material": "cloth",
+      "element": "none",
+      "tier": 3,
+      "variant": 2
+    },
+    {
+      "id": "relic_ring_1_1",
+      "family": "signet",
+      "material": "bronze",
+      "element": "holy",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "relic_ring_1_2",
+      "family": "gem_ring",
+      "material": "bronze",
+      "element": "void",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "relic_ring_1_3",
+      "family": "band",
+      "material": "bronze",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "relic_ring_2_1",
+      "family": "signet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 1,
+      "variant": 0
+    },
+    {
+      "id": "relic_ring_2_2",
+      "family": "gem_ring",
+      "material": "bronze",
+      "element": "void",
+      "tier": 1,
+      "variant": 1
+    },
+    {
+      "id": "relic_ring_2_3",
+      "family": "band",
+      "material": "bronze",
+      "element": "holy",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "relic_ring_3_1",
+      "family": "signet",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "relic_ring_3_2",
+      "family": "gem_ring",
+      "material": "bronze",
+      "element": "void",
+      "tier": 2,
+      "variant": 1
+    },
+    {
+      "id": "relic_ring_3_3",
+      "family": "band",
+      "material": "bronze",
+      "element": "none",
+      "tier": 2,
+      "variant": 2
+    },
+    {
+      "id": "relic_ring_4_1",
+      "family": "signet",
+      "material": "bronze",
+      "element": "holy",
+      "tier": 3,
+      "variant": 0
+    },
+    {
+      "id": "relic_ring_4_2",
+      "family": "gem_ring",
+      "material": "bronze",
+      "element": "void",
+      "tier": 3,
+      "variant": 1
+    },
+    {
+      "id": "relic_ring_4_3",
+      "family": "band",
+      "material": "bronze",
+      "element": "none",
+      "tier": 3,
+      "variant": 2
+    },
+    {
+      "id": "rusty_blade",
+      "family": "sword",
+      "material": "bronze",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "forest_blade",
+      "family": "sword",
+      "material": "steel",
+      "element": "nature",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "frost_blade",
+      "family": "sword",
+      "material": "steel",
+      "element": "frost",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "ember_edge",
+      "family": "sword",
+      "material": "steel",
+      "element": "fire",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "arcanist_staff",
+      "family": "staff",
+      "material": "wood",
+      "element": "none",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "novice_hammer",
+      "family": "hammer",
+      "material": "steel",
+      "element": "frost",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "novice_bow",
+      "family": "bow",
+      "material": "wood",
+      "element": "frost",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "novice_daggers",
+      "family": "daggers",
+      "material": "steel",
+      "element": "frost",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "novice_ember_staff",
+      "family": "staff",
+      "material": "wood",
+      "element": "frost",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "novice_rime_scepter",
+      "family": "scepter",
+      "material": "bronze",
+      "element": "frost",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "novice_living_branch",
+      "family": "staff",
+      "material": "wood",
+      "element": "frost",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "novice_soul_focus",
+      "family": "orb",
+      "material": "glass",
+      "element": "frost",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "leather_armor",
+      "family": "leather",
+      "material": "leather",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "sentinel_mail",
+      "family": "plate",
+      "material": "steel",
+      "element": "none",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "frost_armor",
+      "family": "leather",
+      "material": "leather",
+      "element": "frost",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "ember_charm",
+      "family": "amulet",
+      "material": "bronze",
+      "element": "fire",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "heal_potion",
+      "family": "potion",
+      "material": "glass",
+      "element": "fire",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "mana_potion",
+      "family": "potion",
+      "material": "glass",
+      "element": "frost",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "hearty_meal",
+      "family": "bread",
+      "material": "leather",
+      "element": "nature",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "grave_red_vial",
+      "family": "bread",
+      "material": "leather",
+      "element": "fire",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "bloodroot_draught",
+      "family": "potion",
+      "material": "glass",
+      "element": "fire",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "martyr_lifeblood",
+      "family": "potion",
+      "material": "glass",
+      "element": "fire",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "pale_ether_vial",
+      "family": "potion",
+      "material": "glass",
+      "element": "frost",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "blackwell_tonic",
+      "family": "potion",
+      "material": "glass",
+      "element": "frost",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "night_oracle_tears",
+      "family": "potion",
+      "material": "glass",
+      "element": "frost",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "penitent_elixir",
+      "family": "elixir",
+      "material": "glass",
+      "element": "void",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "reliquary_elixir",
+      "family": "elixir",
+      "material": "glass",
+      "element": "void",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "abyssal_recovery",
+      "family": "elixir",
+      "material": "glass",
+      "element": "void",
+      "tier": 3,
+      "variant": 0
+    },
+    {
+      "id": "mourning_stew",
+      "family": "stew",
+      "material": "leather",
+      "element": "none",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "blackgrain_ration",
+      "family": "ration",
+      "material": "leather",
+      "element": "none",
+      "tier": 1,
+      "variant": 2
+    },
+    {
+      "id": "last_supper_ration",
+      "family": "ration",
+      "material": "leather",
+      "element": "none",
+      "tier": 2,
+      "variant": 0
+    },
+    {
+      "id": "wood",
+      "family": "log",
+      "material": "wood",
+      "element": "nature",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "ore",
+      "family": "ore",
+      "material": "steel",
+      "element": "none",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "herb",
+      "family": "herb",
+      "material": "leaf",
+      "element": "nature",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "crystal",
+      "family": "crystal",
+      "material": "glass",
+      "element": "fire",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "seed",
+      "family": "seed",
+      "material": "leather",
+      "element": "nature",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "wheat",
+      "family": "wheat",
+      "material": "leaf",
+      "element": "nature",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "dust",
+      "family": "dust",
+      "material": "leather",
+      "element": "void",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "ruby",
+      "family": "crystal",
+      "material": "glass",
+      "element": "fire",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "sapphire",
+      "family": "crystal",
+      "material": "glass",
+      "element": "frost",
+      "tier": 0,
+      "variant": 0
+    },
+    {
+      "id": "emerald",
+      "family": "crystal",
+      "material": "glass",
+      "element": "nature",
+      "tier": 0,
+      "variant": 1
+    },
+    {
+      "id": "raidSigil",
+      "family": "talisman",
+      "material": "bronze",
+      "element": "void",
+      "tier": 0,
+      "variant": 2
+    },
+    {
+      "id": "gold",
+      "family": "gold",
+      "material": "bronze",
+      "element": "none",
+      "tier": 0,
+      "variant": 0
+    }
+  ],
+  "rarities": [
+    "common",
+    "uncommon",
+    "rare",
+    "epic",
+    "legendary"
+  ],
+  "elements": [
+    "none",
+    "fire",
+    "frost",
+    "nature",
+    "void",
+    "holy"
+  ],
+  "tiers": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "preview": "assets/item-art-preview.png",
+  "provenance": {
+    "creator": "Original code-authored pixel artwork created for the Emberfall project",
+    "thirdPartyContent": false,
+    "imageGeneration": false,
+    "sourceLicense": "Project-owned original artwork; repository licensing applies",
+    "reference": "Established original Emberfall 25-colour character-atlas palette and muted dark fantasy world"
+  },
+  "systemStatus": "in-game-qa-approved",
+  "integrationQa": {
+    "viewports": [
+      [
+        390,
+        844
+      ],
+      [
+        844,
+        390
+      ],
+      [
+        847,
+        853
+      ]
+    ],
+    "inventoryAndInspectorVerified": true,
+    "nativeKillsVerified": 2,
+    "observedLootFamily": "hammer",
+    "lootNotificationAndHistoryNavigateToOwnedItemPage": 2,
+    "allFamiliesFoundInGameplay": false,
+    "scope": "Entire family contact sheet approved; actual inventory/inspector and one hammer loot flow verified in the game. No claim that all 52 families dropped during gameplay."
+  }
+}

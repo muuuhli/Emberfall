@@ -100,7 +100,7 @@ export class Game {
     this.player.hp=this.stats().maxHp;
   }
   change() { this.dirty = true; this.onChange(); }
-  notice(text,tone='info') { this.onNotice(text,tone); }
+  notice(text,tone='info',itemId=null) { if(typeof itemId==='string')this.onNotice(text,tone,itemId);else this.onNotice(text,tone); }
   presentAction(kind,profile={}) {
     this.player.presentation=createCharacterPresentation(kind,this.time,{angle:this.player.face,
       duration:profile.presentationDuration||(profile.windup?profile.windup+(profile.kind==='channel'?(profile.ticks-1)*profile.interval:0)+.3:undefined),
@@ -322,6 +322,35 @@ export class Game {
     this.inventory[id]=(this.inventory[id]||0)+amount; this.change(); return true;
   }
   bagUsed() {return Object.keys(this.generatedItems).filter(id=>this.inventory[id]>0).length;}
+  _lootInReach(drop,range=85) {
+    return !!(this.started&&!this.dead&&!this.paused&&this.player.hp>0&&this.worldMode!=='pvp'&&!this.world?.isPvp&&drop
+      &&typeof drop.item==='string'&&drop.item.length>0&&drop.item.length<=120&&drop.ownerId===(this.player.id||'local')
+      &&Number.isFinite(drop.life)&&drop.life>0&&Number.isFinite(drop.x)&&Number.isFinite(drop.y)&&dist(drop,this.player)<range
+      &&(drop.pickupAfter===undefined||Number.isFinite(drop.pickupAfter)&&drop.pickupAfter<=this.time));
+  }
+  _groundLootItem(drop) {
+    if(!drop)return null;
+    if(drop.loot===undefined)return Object.hasOwn(ITEMS,drop.item)?ITEMS[drop.item]:null;
+    return drop.loot?.id===drop.item&&validateLootItem(drop.loot)?drop.loot:null;
+  }
+  _pickupLootDrop(drop,range=85) {
+    if(!this._lootInReach(drop,range))return false;
+    const item=this._groundLootItem(drop);
+    if(!item)return false;
+    if(!this.addItem(item.id.startsWith('loot:')?item:item.id)){
+      if(!drop.warned){this.notice('Dein Gepäck ist voll. Die Beute liegt noch am Boden.');drop.warned=true;}
+      return false;
+    }
+    drop.life=0;
+    this.notice(`${item.name} gefunden`,'loot',item.id);
+    this.onSound(getRelic(item)||item.rarity==='legendary'?'rare_loot':'loot');
+    return true;
+  }
+  pickupLoot(itemId) {
+    if(arguments.length!==1||typeof itemId!=='string'||!itemId.length||itemId.length>120)return false;
+    const drop=this.drops.find(value=>value.item===itemId&&value.life>0);
+    return this._pickupLootDrop(drop);
+  }
   setItemFlag(id,flag) {return toggleItemFlag(this,id,flag);}
   depositItem(id) {return transferStashItem(this,id,true);}
   withdrawItem(id) {return transferStashItem(this,id,false);}
@@ -504,6 +533,9 @@ export class Game {
     for(const n of this.world.puzzleObjects||[]) add('puzzle',n,n.label||'Runenmechanismus betätigen',60);
     if(this.world.dungeonExit) add('exit',this.world.dungeonExit,'Dungeon verlassen',65);
     for(const other of this.partyGames||[]) if(other!==this&&other.dead) add('revive',other.player,`${other.player.name} wiederbeleben`,75);
+    for(const drop of this.drops||[])if(this._lootInReach(drop)) {
+      const item=this._groundLootItem(drop);if(item?.name)add('loot',drop,`${item.name} aufnehmen`,85);
+    }
     const destination=this.waypointTarget();
     return candidates.sort((a,b)=>Number(b.object.id===destination?.objectId)-Number(a.object.id===destination?.objectId)||a.distance-b.distance)[0]||null;
   }
@@ -604,6 +636,7 @@ export class Game {
     if(!this.started || this.dead || this.paused) return;
     const n=this.nearby(); if(!n) { this.notice('Gehe näher an eine Person oder Ressource.'); return; }
     const o=n.object;
+    if(n.kind==='loot')return this.pickupLoot(o.item);
     if(n.kind==='worldEvent'){this.interactWorldEvent(o.id,o.choice);return;}
     if(n.kind==='worldObject'){this.interactWorldObject(o.id);return;}
     if(n.kind==='dungeon') {this.enterDungeon(o.dungeonId||o.id);return;}
@@ -974,7 +1007,7 @@ export class Game {
     if(this.random()<(def.boss?1:e.directorId ? .15 : .3)) {
       for(const ally of party) {
         const item=generateLoot({level:e.lootLevel||e.level||def.level,tier:e.lootTier||1,boss:def.boss,classId:ally.player.classId,traits:def.traits,rng:ally.random,source:e.type,pity:ally.lootPity,relicOrigin:{kind:this.dungeonInstance&&def.boss?'dungeon_boss':def.boss?'boss':'enemy',enemyId:e.type,dungeonId:this.dungeonInstance?.id||null},uid:`loot-${++ally.lootSerial}-${Math.floor(ally.random()*1e9)}-${ally.player.id||'local'}`});
-        this.drops.push({x:e.x+(party.indexOf(ally)-.5)*16,y:e.y,item:item.id,loot:item,ownerId:ally.player.id||'local',life:120,color:item.rarity});
+        this.drops.push({x:e.x+(party.indexOf(ally)-.5)*16,y:e.y,item:item.id,loot:item,ownerId:ally.player.id||'local',life:120,color:item.rarity,pickupAfter:this.time+.55});
         if(ally.random()<.06)ally.resources[['ruby','sapphire','emerald'][Math.floor(ally.random()*3)]]++;
       }
     }
@@ -1111,8 +1144,8 @@ export class Game {
     this.effects=this.effects.filter(f=>f.life>0);
     for(const drop of this.drops) {
       drop.life-=dt;
-      const owner=living.find(g=>(!drop.ownerId||(g.player.id||'local')===drop.ownerId)&&dist(drop,g.player)<40);
-      if(owner) {if(owner.addItem(drop.loot||drop.item)){owner.notice(`${owner.item(drop.item)?.name} gefunden`,'loot');owner.onSound(getRelic(owner.item(drop.item))||owner.item(drop.item)?.rarity==='legendary'?'rare_loot':'loot');drop.life=0;}else if(!drop.warned){owner.notice('Dein Gepäck ist voll. Die Beute liegt noch am Boden.');drop.warned=true;} }
+      const owner=living.find(g=>g._lootInReach(drop,40));
+      if(owner)owner._pickupLootDrop(drop,40);
     }
     this.drops=this.drops.filter(d=>d.life>0);
     for(const trap of this.hazards) {
